@@ -76,8 +76,8 @@ class _RssTabState extends State<RssTab> {
       _api.rssAdd(url.trim());
       _reload();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('已添加，正在后台抓取……')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('已添加，正在后台抓取……')));
       }
     } catch (e) {
       if (mounted) showError(context, e);
@@ -103,8 +103,8 @@ class _RssTabState extends State<RssTab> {
             onPressed: () {
               try {
                 _api.rssRefresh();
-                ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('正在刷新全部订阅')));
+                ScaffoldMessenger.of(context)
+                    .showSnackBar(const SnackBar(content: Text('正在刷新全部订阅')));
               } catch (e) {
                 showError(context, e);
               }
@@ -205,7 +205,7 @@ class _RssTabState extends State<RssTab> {
                               _api.rssRemove(f.id);
                               _reload();
                             } catch (e) {
-                              if (mounted) showError(context, e);
+                              if (context.mounted) showError(context, e);
                             }
                           }
                         },
@@ -236,7 +236,6 @@ class _FeedItemsPageState extends State<FeedItemsPage> {
   late final BitteApi _api = BitteApi.instance;
   List<RssItem> _items = [];
   bool _unreadOnly = false;
-  int _unread = 0;
 
   @override
   void initState() {
@@ -250,11 +249,10 @@ class _FeedItemsPageState extends State<FeedItemsPage> {
   void _reload() {
     if (!mounted) return;
     try {
-      final r = _api.rssItems(widget.feed.id,
-          limit: 200, unreadOnly: _unreadOnly);
+      final r =
+          _api.rssItems(widget.feed.id, limit: 200, unreadOnly: _unreadOnly);
       setState(() {
         _items = r.items;
-        _unread = r.unread;
       });
     } catch (_) {}
   }
@@ -440,8 +438,7 @@ class _ItemDetailPageState extends State<ItemDetailPage> {
               onPressed: () async {
                 final uri = Uri.tryParse(it.link);
                 if (uri != null && await canLaunchUrl(uri)) {
-                  await launchUrl(uri,
-                      mode: LaunchMode.externalApplication);
+                  await launchUrl(uri, mode: LaunchMode.externalApplication);
                 }
               },
             ),
@@ -452,8 +449,8 @@ class _ItemDetailPageState extends State<ItemDetailPage> {
               onPressed: () {
                 try {
                   _api.rssDownload(it.id);
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                      content: Text('已开始后台处理，稍后见种子页')));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('已开始后台处理，稍后见种子页')));
                 } catch (e) {
                   showError(context, e);
                 }
@@ -509,7 +506,9 @@ class _ItemDetailPageState extends State<ItemDetailPage> {
             ),
           const SizedBox(height: 8),
           SelectableText(
-            (it.content ?? it.snippet).isEmpty ? '（无正文）' : (it.content ?? it.snippet),
+            (it.content ?? it.snippet).isEmpty
+                ? '（无正文）'
+                : (it.content ?? it.snippet),
             style: theme.textTheme.bodyLarge?.copyWith(height: 1.6),
           ),
           const SizedBox(height: 32),

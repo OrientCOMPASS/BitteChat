@@ -12,21 +12,23 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:ffi' as ffi;
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 
 typedef _InitNative = ffi.Int64 Function(
     ffi.Pointer<Utf8> cfg,
-    ffi.Pointer<ffi.NativeFunction<
-        ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<Utf8>, ffi.Uint32)>>
+    ffi.Pointer<
+            ffi.NativeFunction<
+                ffi.Void Function(
+                    ffi.Pointer<ffi.Void>, ffi.Pointer<Utf8>, ffi.Uint32)>>
         cb,
     ffi.Pointer<ffi.Void> ctx);
 typedef _InitDart = int Function(
     ffi.Pointer<Utf8>,
     ffi.Pointer<
         ffi.NativeFunction<
-            ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<Utf8>, ffi.Uint32)>>,
+            ffi.Void Function(
+                ffi.Pointer<ffi.Void>, ffi.Pointer<Utf8>, ffi.Uint32)>>,
     ffi.Pointer<ffi.Void>);
 
 typedef _CallNative = ffi.Pointer<Utf8> Function(
@@ -43,7 +45,9 @@ typedef _ShutdownDart = void Function(int);
 typedef _VersionNative = ffi.Pointer<Utf8> Function();
 typedef _VersionDart = ffi.Pointer<Utf8> Function();
 
-typedef _EventSig = ffi.Void Function(
+/// Native (C) signature of the event callback. The Dart-side closure uses
+/// `(Pointer<Void>, Pointer<Utf8>, int)` via NativeCallable's conversion.
+typedef _EventNative = ffi.Void Function(
     ffi.Pointer<ffi.Void>, ffi.Pointer<Utf8>, ffi.Uint32);
 
 class BridgeException implements Exception {
@@ -59,7 +63,7 @@ class BitteBridge {
 
   final ffi.DynamicLibrary _lib;
   final int _handle;
-  final ffi.NativeCallable<_EventSig> _callable;
+  final ffi.NativeCallable<_EventNative> _callable;
   final StreamController<String> _controller;
 
   /// Raw JSON event strings pushed by the core.
@@ -75,7 +79,8 @@ class BitteBridge {
   static String? get nativeVersion {
     try {
       final lib = _openLib();
-      final v = lib.lookupFunction<_VersionNative, _VersionDart>('bc_version')();
+      final v =
+          lib.lookupFunction<_VersionNative, _VersionDart>('bc_version')();
       return v.toDartString();
     } catch (_) {
       return null;
@@ -89,12 +94,14 @@ class BitteBridge {
 
   /// Open the core. Returns null when the native library is unavailable
   /// (host tests / desktop).
-  static BitteBridge? tryOpen({required String dataDir, int listenPort = 17531}) {
+  static BitteBridge? tryOpen(
+      {required String dataDir, int listenPort = 17531}) {
     try {
       final lib = _openLib();
       final controller = StreamController<String>.broadcast();
-      late final ffi.NativeCallable<_EventSig> callable;
-      callable = ffi.NativeCallable<_EventSig>.listener((ctx, json, len) {
+      late final ffi.NativeCallable<_EventNative> callable;
+      callable = ffi.NativeCallable<_EventNative>.listener(
+          (ffi.Pointer<ffi.Void> ctx, ffi.Pointer<Utf8> json, int len) {
         if (json == ffi.nullptr) return;
         final bytes = json.cast<ffi.Uint8>().asTypedList(len);
         try {
@@ -113,14 +120,16 @@ class BitteBridge {
         callable.close();
         return null;
       }
-      return BitteBridge._(lib, handle, callable, controller, controller.stream);
+      return BitteBridge._(
+          lib, handle, callable, controller, controller.stream);
     } catch (e) {
       return null;
     }
   }
 
   /// Invoke a core method; throws [BridgeException] on error responses.
-  Map<String, dynamic> call(String method, [Map<String, dynamic> params = const {}]) {
+  Map<String, dynamic> call(String method,
+      [Map<String, dynamic> params = const {}]) {
     final mPtr = method.toNativeUtf8();
     final pPtr = jsonEncode(params).toNativeUtf8();
     try {

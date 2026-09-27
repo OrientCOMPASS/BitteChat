@@ -108,7 +108,7 @@ class _ChatViewPageState extends State<ChatViewPage> {
 
   Future<void> _pickAndSendFile() async {
     try {
-      final result = await FilePicker.platform.pickFiles(
+      final result = await FilePicker.pickFiles(
         dialogTitle: '选择要发送的文件',
         type: FileType.any,
         // Android SAF: we need a real path the native core can read
@@ -299,7 +299,7 @@ class _GenesisHeader extends StatelessWidget {
 }
 
 class DayDivider extends StatelessWidget {
-  const DayDivider({required this.ts});
+  const DayDivider({super.key, required this.ts});
   final int ts;
 
   @override
@@ -327,6 +327,7 @@ class DayDivider extends StatelessWidget {
 
 class MessageBubble extends StatelessWidget {
   const MessageBubble({
+    super.key,
     required this.message,
     required this.showAuthor,
     this.onDownload,
@@ -355,8 +356,9 @@ class MessageBubble extends StatelessWidget {
     }
 
     final own = m.own;
-    final bubbleColor =
-        own ? theme.colorScheme.primaryContainer : theme.colorScheme.surfaceContainerHigh;
+    final bubbleColor = own
+        ? theme.colorScheme.primaryContainer
+        : theme.colorScheme.surfaceContainerHigh;
     final align = own ? Alignment.centerRight : Alignment.centerLeft;
 
     return Align(
@@ -377,7 +379,7 @@ class MessageBubble extends StatelessWidget {
                     m.authorName.isEmpty ? '匿名' : m.authorName,
                     style: theme.textTheme.labelSmall?.copyWith(
                       color: HSLColor.fromAHSL(
-                              1, colorFromKey(m.authorPk), 0.5, 0.4)
+                              1, colorFromKey(m.authorPk).toDouble(), 0.5, 0.4)
                           .toColor(),
                       fontWeight: FontWeight.w600,
                     ),
@@ -406,8 +408,7 @@ class MessageBubble extends StatelessWidget {
                         ),
                       ),
                       child: m.payloadKind == MsgPayloadKind.attachment
-                          ? _AttachmentBody(
-                              message: m, onDownload: onDownload)
+                          ? _AttachmentBody(message: m, onDownload: onDownload)
                           : _TextBody(message: m),
                     ),
                   ),
@@ -418,14 +419,15 @@ class MessageBubble extends StatelessWidget {
                 ],
               ),
               Padding(
-                padding: EdgeInsets.only(left: own ? 0 : 40, right: own ? 40 : 0, top: 2),
+                padding: EdgeInsets.only(
+                    left: own ? 0 : 40, right: own ? 40 : 0, top: 2),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
                       formatClock(m.ts),
-                      style: theme.textTheme.labelSmall
-                          ?.copyWith(color: theme.colorScheme.outline, fontSize: 10),
+                      style: theme.textTheme.labelSmall?.copyWith(
+                          color: theme.colorScheme.outline, fontSize: 10),
                     ),
                     if (own) ...[
                       const SizedBox(width: 4),
@@ -491,7 +493,8 @@ class _AttachmentBody extends StatelessWidget {
         Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(_fileIcon(att.name), size: 28, color: theme.colorScheme.primary),
+            Icon(_fileIcon(att.name),
+                size: 28, color: theme.colorScheme.primary),
             const SizedBox(width: 8),
             Flexible(
               child: Column(
@@ -516,7 +519,8 @@ class _AttachmentBody extends StatelessWidget {
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.check_circle, size: 16, color: theme.colorScheme.tertiary),
+              Icon(Icons.check_circle,
+                  size: 16, color: theme.colorScheme.tertiary),
               const SizedBox(width: 4),
               Flexible(
                 child: Text(message.localPath ?? '',
@@ -551,13 +555,20 @@ class _AttachmentBody extends StatelessWidget {
         lower.endsWith('.gif')) {
       return Icons.image_outlined;
     }
-    if (lower.endsWith('.mp4') || lower.endsWith('.mkv') || lower.endsWith('.avi')) {
+    if (lower.endsWith('.mp4') ||
+        lower.endsWith('.mkv') ||
+        lower.endsWith('.avi')) {
       return Icons.movie_outlined;
     }
-    if (lower.endsWith('.mp3') || lower.endsWith('.flac') || lower.endsWith('.ogg')) {
+    if (lower.endsWith('.mp3') ||
+        lower.endsWith('.flac') ||
+        lower.endsWith('.ogg')) {
       return Icons.audiotrack_outlined;
     }
-    if (lower.endsWith('.zip') || lower.endsWith('.tar') || lower.endsWith('.gz') || lower.endsWith('.7z')) {
+    if (lower.endsWith('.zip') ||
+        lower.endsWith('.tar') ||
+        lower.endsWith('.gz') ||
+        lower.endsWith('.7z')) {
       return Icons.folder_zip_outlined;
     }
     if (lower.endsWith('.apk')) return Icons.android_outlined;
@@ -607,8 +618,10 @@ class _InputBar extends StatelessWidget {
                 onSubmitted: (_) => onSend(),
                 decoration: const InputDecoration(
                   hintText: '说点什么……（消息将签名并写入哈希链）',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(22))),
-                  contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.all(Radius.circular(22))),
+                  contentPadding:
+                      EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                   isDense: true,
                 ),
               ),
@@ -714,7 +727,9 @@ class _GroupDetailSheetState extends State<GroupDetailSheet> {
                 ),
               ),
               IconButton(
-                  tooltip: '刷新', icon: const Icon(Icons.refresh), onPressed: _refresh),
+                  tooltip: '刷新',
+                  icon: const Icon(Icons.refresh),
+                  onPressed: _refresh),
             ],
           ),
           const SizedBox(height: 16),
@@ -723,7 +738,9 @@ class _GroupDetailSheetState extends State<GroupDetailSheet> {
           _StatRow(label: '缺失历史', value: '${d['missing'] ?? 0}'),
           _StatRow(label: '头指针版本 (seq)', value: '${d['head_seq'] ?? 0}'),
           _StatRow(label: '在线成员', value: '${peers.length}'),
-          _StatRow(label: '清单种子', value: shortHash('${d['manifest_infohash'] ?? ''}', 16)),
+          _StatRow(
+              label: '清单种子',
+              value: shortHash('${d['manifest_infohash'] ?? ''}', 16)),
           const SizedBox(height: 16),
           Text('邀请链接', style: theme.textTheme.titleSmall),
           const SizedBox(height: 8),
@@ -870,7 +887,8 @@ class InviteSheet extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(10),
               color: Colors.white,
-              child: QrImageView(data: magnet, size: 200, backgroundColor: Colors.white),
+              child: QrImageView(
+                  data: magnet, size: 200, backgroundColor: Colors.white),
             ),
           const SizedBox(height: 12),
           Row(

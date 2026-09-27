@@ -20,8 +20,8 @@ class BtTab extends StatefulWidget {
 class _BtTabState extends State<BtTab> {
   late final BitteApi _api = BitteApi.instance;
   List<TorrentInfo> _torrents = [];
-  SessionStats _stats =
-      SessionStats(dhtNodes: -1, uploadRate: 0, downloadRate: 0, numTorrents: 0);
+  SessionStats _stats = SessionStats(
+      dhtNodes: -1, uploadRate: 0, downloadRate: 0, numTorrents: 0);
   StreamSubscription<CoreEvent>? _sub;
   Timer? _pollTimer;
 
@@ -88,35 +88,37 @@ class _BtTabState extends State<BtTab> {
       ),
     );
     if (magnet == null || magnet.trim().isEmpty) return;
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
     try {
       _api.btAdd(magnet.trim());
       _reload();
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('已添加')));
-      }
+      messenger.showSnackBar(const SnackBar(content: Text('已添加')));
     } catch (e) {
-      if (mounted) showError(context, e);
+      messenger.showSnackBar(SnackBar(content: Text('$e')));
     }
   }
 
   Future<void> _addTorrentFile() async {
     try {
-      final result = await FilePicker.platform.pickFiles(
+      final result = await FilePicker.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['torrent'],
         withData: true,
       );
       final file = result?.files.single;
       if (file == null || file.bytes == null) return;
-      _api.btAddFile(file.bytes!, name: file.name);
-      _reload();
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('已添加种子文件')));
+      if (!mounted) return;
+      final messenger = ScaffoldMessenger.of(context);
+      try {
+        _api.btAddFile(file.bytes!, name: file.name);
+        _reload();
+        messenger.showSnackBar(const SnackBar(content: Text('已添加种子文件')));
+      } catch (e) {
+        messenger.showSnackBar(SnackBar(content: Text('$e')));
       }
     } catch (e) {
-      if (mounted) showError(context, e);
+      return;
     }
   }
 
@@ -174,7 +176,7 @@ class _BtTabState extends State<BtTab> {
                       onCopyMagnet: () async {
                         await Clipboard.setData(
                             ClipboardData(text: _torrents[i].magnet));
-                        if (mounted) {
+                        if (context.mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(content: Text('磁力链接已复制')));
                         }
@@ -282,10 +284,8 @@ class _StatChip extends StatelessWidget {
         Icon(icon, size: 14, color: color),
         const SizedBox(width: 3),
         Text(label,
-            style: Theme.of(context)
-                .textTheme
-                .labelSmall
-                ?.copyWith(color: color)),
+            style:
+                Theme.of(context).textTheme.labelSmall?.copyWith(color: color)),
       ],
     );
   }
@@ -399,8 +399,7 @@ class _TorrentTile extends StatelessWidget {
           const PopupMenuDivider(),
           PopupMenuItem(
             value: 'delete',
-            child: Text('删除',
-                style: TextStyle(color: theme.colorScheme.error)),
+            child: Text('删除', style: TextStyle(color: theme.colorScheme.error)),
           ),
         ],
       ),

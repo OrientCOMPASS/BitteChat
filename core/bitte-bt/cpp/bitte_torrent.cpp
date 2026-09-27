@@ -679,7 +679,7 @@ static void alert_loop(bc_session* s)
             case dht_immutable_item_alert::alert_type:
             {
                 auto* ia = alert_cast<dht_immutable_item_alert>(a);
-                bool const found = ia->item.type() != entry::types::undefined_t;
+                bool const found = ia->item.type() != entry::undefined_t;
                 json::object data;
                 data["target_hex"] = hex_encode(ia->target.data(), 20);
                 data["found"] = found;
@@ -690,7 +690,7 @@ static void alert_loop(bc_session* s)
             case dht_mutable_item_alert::alert_type:
             {
                 auto* ma = alert_cast<dht_mutable_item_alert>(a);
-                bool const found = ma->item.type() != entry::types::undefined_t;
+                bool const found = ma->item.type() != entry::undefined_t;
                 json::object data;
                 data["pk_hex"] = hex_encode(ma->key);
                 data["salt"] = ma->salt;

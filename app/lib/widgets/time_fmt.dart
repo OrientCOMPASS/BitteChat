@@ -2,8 +2,7 @@
 
 import 'package:intl/intl.dart';
 
-DateTime _dt(int ms) =>
-    DateTime.fromMillisecondsSinceEpoch(ms <= 0 ? 0 : ms);
+DateTime _dt(int ms) => DateTime.fromMillisecondsSinceEpoch(ms <= 0 ? 0 : ms);
 
 /// 列表页时间：今天 → HH:mm；今年 → MM-dd；更早 → yyyy-MM-dd
 String formatListTime(int ms) {
@@ -20,7 +19,8 @@ String formatListTime(int ms) {
 }
 
 /// 气泡时间 HH:mm
-String formatClock(int ms) => ms <= 0 ? '' : DateFormat('HH:mm').format(_dt(ms));
+String formatClock(int ms) =>
+    ms <= 0 ? '' : DateFormat('HH:mm').format(_dt(ms));
 
 /// 日期分割条：今天/昨天/星期X/MM-dd/yyyy-MM-dd
 String formatDayLabel(int ms) {

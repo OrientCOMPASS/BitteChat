@@ -8,8 +8,8 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../models.dart';
 import 'bridge.dart';
-import 'models.dart';
 
 class CoreEvent {
   CoreEvent(this.type, this.data);
@@ -21,7 +21,8 @@ class CoreEvent {
       type == 'chat.group_updated' ||
       type == 'chat.group_joined' ||
       type == 'chat.group_restored';
-  bool get isBtUpdated => type == 'bt.updated' || type == 'bt.added' || type == 'bt.removed';
+  bool get isBtUpdated =>
+      type == 'bt.updated' || type == 'bt.added' || type == 'bt.removed';
   bool get isRssUpdated => type == 'rss.updated' || type == 'rss.error';
 }
 
@@ -69,13 +70,15 @@ class BitteApi extends ChangeNotifier {
         final type = j['type'];
         final data = j['data'];
         if (type is String) {
-          _events.add(CoreEvent(type, data is Map<String, dynamic> ? data : {}));
+          _events
+              .add(CoreEvent(type, data is Map<String, dynamic> ? data : {}));
         }
       }
     } catch (_) {}
   }
 
-  Map<String, dynamic> call(String method, [Map<String, dynamic> params = const {}]) {
+  Map<String, dynamic> call(String method,
+      [Map<String, dynamic> params = const {}]) {
     final b = bridge;
     if (b == null) throw BridgeException('原生核心不可用（当前为演示模式）');
     return b.call(method, params);
@@ -139,9 +142,9 @@ class BitteApi extends ChangeNotifier {
   Map<String, dynamic> joinGroup(String magnet) =>
       call('chat.join_group', {'magnet': magnet.trim()});
 
-  void leaveGroup(String groupId, {bool deleteHistory = false}) =>
-      call('chat.leave_group',
-          {'group_id': groupId, 'delete_history': deleteHistory});
+  void leaveGroup(String groupId, {bool deleteHistory = false}) => call(
+      'chat.leave_group',
+      {'group_id': groupId, 'delete_history': deleteHistory});
 
   List<String> sendText(String groupId, String text) {
     final r = call('chat.send', {'group_id': groupId, 'text': text});
@@ -227,12 +230,12 @@ class BitteApi extends ChangeNotifier {
         .toList();
   }
 
-  Map<String, dynamic> rssAdd(String url) => call('rss.add', {'url': url.trim()});
+  Map<String, dynamic> rssAdd(String url) =>
+      call('rss.add', {'url': url.trim()});
 
   void rssRemove(int id) => call('rss.remove', {'id': id});
 
-  void rssRefresh({int? id}) =>
-      call('rss.refresh', {if (id != null) 'id': id});
+  void rssRefresh({int? id}) => call('rss.refresh', {if (id != null) 'id': id});
 
   ({List<RssItem> items, int unread}) rssItems(int feedId,
       {int limit = 50, int offset = 0, bool unreadOnly = false}) {

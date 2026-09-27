@@ -18,8 +18,6 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   int _index = 0;
 
-  static const _titles = ['BitteChat', 'BitTorrent', 'RSS 订阅'];
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -89,8 +87,8 @@ class TabScaffold extends StatelessWidget {
 
 /// Small helper: show a snackbar with an error message.
 void showError(BuildContext context, Object e) {
-  ScaffoldMessenger.of(context)
-      .showSnackBar(SnackBar(content: Text('$e'), duration: const Duration(seconds: 3)));
+  ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('$e'), duration: const Duration(seconds: 3)));
 }
 
 /// Helper: core available guard for actions.

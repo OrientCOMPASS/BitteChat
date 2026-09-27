@@ -21,10 +21,15 @@ class BitteChatApp extends StatelessWidget {
       theme: ThemeData(
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(seedColor: seed),
-        fontFamilyFallback: const ['Noto Sans CJK SC', 'PingFang SC', 'sans-serif'],
+        fontFamilyFallback: const [
+          'Noto Sans CJK SC',
+          'PingFang SC',
+          'sans-serif'
+        ],
         listTileTheme: const ListTileThemeData(dense: false),
         appBarTheme: const AppBarTheme(centerTitle: false),
-        snackBarTheme: const SnackBarThemeData(behavior: SnackBarBehavior.floating),
+        snackBarTheme:
+            const SnackBarThemeData(behavior: SnackBarBehavior.floating),
       ),
       darkTheme: ThemeData(
         useMaterial3: true,
@@ -32,9 +37,14 @@ class BitteChatApp extends StatelessWidget {
           seedColor: seed,
           brightness: Brightness.dark,
         ),
-        fontFamilyFallback: const ['Noto Sans CJK SC', 'PingFang SC', 'sans-serif'],
+        fontFamilyFallback: const [
+          'Noto Sans CJK SC',
+          'PingFang SC',
+          'sans-serif'
+        ],
         appBarTheme: const AppBarTheme(centerTitle: false),
-        snackBarTheme: const SnackBarThemeData(behavior: SnackBarBehavior.floating),
+        snackBarTheme:
+            const SnackBarThemeData(behavior: SnackBarBehavior.floating),
       ),
       home: const HomePage(),
     );

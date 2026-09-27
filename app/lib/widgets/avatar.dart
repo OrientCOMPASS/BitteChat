@@ -19,7 +19,8 @@ class KeyAvatar extends StatelessWidget {
   final double? fontSize;
 
   Color get _color =>
-      HSLColor.fromAHSL(1, colorFromKey(keyHex), 0.45, 0.45).toColor();
+      HSLColor.fromAHSL(1, colorFromKey(keyHex).toDouble(), 0.45, 0.45)
+          .toColor();
 
   String get _initial {
     final n = name.trim();

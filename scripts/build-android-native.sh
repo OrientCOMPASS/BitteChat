@@ -100,7 +100,11 @@ build_libtorrent() { # <abi> <deps>
         -DBoost_DIR="$BOOST_SHIM_DIR" \
         -DBITTE_BOOST_INCLUDE="$BOOST_SRC" \
         -DOPENSSL_ROOT_DIR="$DEPS" \
+        -DOPENSSL_INCLUDE_DIR="$DEPS/include" \
+        -DOPENSSL_CRYPTO_LIBRARY="$DEPS/lib/libcrypto.a" \
+        -DOPENSSL_SSL_LIBRARY="$DEPS/lib/libssl.a" \
         -DOPENSSL_USE_STATIC_LIBS=TRUE \
+        -Dwebtorrent=OFF \
         -Dbuild_tests=OFF -Dbuild_examples=OFF -Dbuild_tools=OFF \
         -Dpython-bindings=OFF -Dpython-egg-info=OFF \
         -Diconv=OFF \
@@ -123,6 +127,9 @@ build_cpp_wrapper() { # <abi> <deps>
         -DBoost_DIR="$BOOST_SHIM_DIR" \
         -DBITTE_BOOST_INCLUDE="$BOOST_SRC" \
         -DOPENSSL_ROOT_DIR="$DEPS" \
+        -DOPENSSL_INCLUDE_DIR="$DEPS/include" \
+        -DOPENSSL_CRYPTO_LIBRARY="$DEPS/lib/libcrypto.a" \
+        -DOPENSSL_SSL_LIBRARY="$DEPS/lib/libssl.a" \
         -DOPENSSL_USE_STATIC_LIBS=TRUE \
         -DCMAKE_INSTALL_PREFIX="$DEPS" \
         -DCMAKE_POLICY_VERSION_MINIMUM=3.5

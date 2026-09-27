@@ -70,9 +70,9 @@ class _ChatTabState extends State<ChatTab> {
       confirm: '创建',
     );
     if (name == null || name.trim().isEmpty) return;
+    if (!mounted) return;
     try {
       final r = _api.createGroup(name.trim());
-      if (!mounted) return;
       _reload();
       await _showInviteSheet(r['invite_magnet'] as String? ?? '');
     } catch (e) {
@@ -162,8 +162,8 @@ class _ChatTabState extends State<ChatTab> {
                   child: ListView.separated(
                     itemCount: _groups.length,
                     separatorBuilder: (_, __) => const Divider(height: 1),
-                    itemBuilder: (context, i) =>
-                        _GroupTile(group: _groups[i], onTap: () => _openGroup(_groups[i])),
+                    itemBuilder: (context, i) => _GroupTile(
+                        group: _groups[i], onTap: () => _openGroup(_groups[i])),
                   ),
                 ),
       floatingActionButton: !_api.available || _groups.isEmpty
@@ -258,7 +258,8 @@ class _GroupTile extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           Text(
-            formatListTime(group.previewTs > 0 ? group.previewTs : group.lastTs),
+            formatListTime(
+                group.previewTs > 0 ? group.previewTs : group.lastTs),
             style: theme.textTheme.bodySmall,
           ),
           const SizedBox(height: 4),
@@ -334,7 +335,10 @@ class _EmptyState extends StatelessWidget {
                   ?.copyWith(color: theme.colorScheme.outline),
             ),
             const SizedBox(height: 24),
-            Wrap(spacing: 12, runSpacing: 12, alignment: WrapAlignment.center,
+            Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                alignment: WrapAlignment.center,
                 children: actions),
           ],
         ),
@@ -355,7 +359,8 @@ class _DemoModeHint extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.memory, size: 56, color: theme.colorScheme.outlineVariant),
+            Icon(Icons.memory,
+                size: 56, color: theme.colorScheme.outlineVariant),
             const SizedBox(height: 16),
             Text('演示模式', style: theme.textTheme.titleMedium),
             const SizedBox(height: 8),

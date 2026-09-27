@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/api.dart';
+import '../widgets/avatar.dart';
 import '../models.dart';
 import 'home.dart';
 
@@ -76,7 +77,8 @@ class _SettingsPageState extends State<SettingsPage> {
               leading: KeyAvatar(keyHex: id.pk, name: id.name, size: 48),
               title: Text(id.name,
                   style: const TextStyle(fontWeight: FontWeight.w600)),
-              subtitle: Text('公钥 ${id.pk.length > 16 ? '${id.pk.substring(0, 16)}…' : id.pk}'),
+              subtitle: Text(
+                  '公钥 ${id.pk.length > 16 ? '${id.pk.substring(0, 16)}…' : id.pk}'),
               trailing: const Icon(Icons.edit),
               onTap: _editName,
             )
@@ -113,7 +115,6 @@ class _SettingsPageState extends State<SettingsPage> {
             icon: Icon(Icons.favorite_outline),
             applicationName: 'BitteChat',
             applicationVersion: '0.3.0',
-            licensePageShown: false,
             aboutBoxChildren: [
               Text(
                 '去中心化 BitTorrent 群聊：一个种子就是一个群，'
