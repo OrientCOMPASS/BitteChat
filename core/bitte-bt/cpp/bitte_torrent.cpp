@@ -28,6 +28,7 @@
 #include <thread>
 #include <vector>
 
+#include <filesystem>
 #include <sys/stat.h>
 
 #include <boost/json.hpp>
@@ -791,6 +792,8 @@ static json::value cmd_add_magnet(bc_session* s, json::object const& o)
     if (!name.empty()) atp.name = name;
     if (jbool(o, "always_active"))
         atp.flags &= ~(torrent_flags::auto_managed | torrent_flags::paused);
+    std::error_code fec;
+    std::filesystem::create_directories(atp.save_path, fec);
     std::string const key = hex_encode(atp.info_hashes.v1.data(), 20);
     torrent_handle th = s->ses->add_torrent(std::move(atp));
     {
@@ -819,6 +822,8 @@ static json::value cmd_add_torrent(bc_session* s, json::object const& o)
     if (!name_hint.empty()) atp.name = name_hint;
     if (jbool(o, "always_active"))
         atp.flags &= ~(torrent_flags::auto_managed | torrent_flags::paused);
+    std::error_code fec;
+    std::filesystem::create_directories(atp.save_path, fec);
     std::string const magnet = make_magnet_uri(atp);
     auto const ih = atp.ti->info_hashes();
     std::string key = ih_hex(ih);

@@ -63,11 +63,11 @@ fn native_engine_smoke() {
     // fires for magnets (metadata fetched from peers); a torrent added with
     // full metadata goes straight to checking/seeding, so we assert via the
     // state cache instead.
+    let seed_dir = dir.path().join("seed");
+    std::fs::create_dir_all(&seed_dir).unwrap();
+    std::fs::copy(&fpath, seed_dir.join("payload.bin")).unwrap();
     let ih = engine
-        .add_torrent_bytes(
-            &created.torrent_bytes,
-            &dir.path().join("seed").to_string_lossy(),
-        )
+        .add_torrent_bytes(&created.torrent_bytes, &seed_dir.to_string_lossy())
         .expect("add_torrent_bytes");
     assert_eq!(ih, hex::encode(created.infohash));
 
