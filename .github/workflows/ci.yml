@@ -151,9 +151,9 @@ jobs:
         working-directory: app
         run: |
           flutter pub get
-          # universal APK; ndk.abiFilters restricts packaged ABIs to
-          # arm64-v8a + x86_64 (where libbitte_core.so is built)
-          flutter build apk --release
+          # universal APK restricted to the ABIs we build the native core
+          # for (also strips v7a engine libs from the package)
+          flutter build apk --release --target-platform android-arm64,android-x64
 
       - name: List outputs
         run: |

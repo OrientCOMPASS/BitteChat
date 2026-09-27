@@ -57,7 +57,7 @@ cd app && flutter build apk --release --split-per-abi
 
 ## 路线图
 
-- [x] v0.1 核心协议 + Rust 全逻辑 + CI
-- [x] v0.2 libtorrent Android 构建链 + APK 产出
-- [ ] v0.3 Flutter 三页签 UI 完整接入
-- [ ] v0.4 打磨：图标/通知/设置/多语言、armeabi-v7a、目录做种
+- [x] v0.1 核心协议 + Rust 全逻辑 + CI（49 个 Rust 测试）
+- [x] v0.2 libtorrent 2.1.2 Android 交叉编译链 + APK 产出
+- [x] v0.3 Flutter 三页签 UI 完整接入（16 个 Dart 测试、analyze 0 issue）
+- [ ] v0.4 打磨：前台服务保活、消息搜索、armeabi-v7a、目录做种、多语言
