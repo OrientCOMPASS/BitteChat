@@ -146,12 +146,14 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Build APKs
+      - name: Build APK
         if: ${{ hashFiles('app/pubspec.yaml') != '' }}
         working-directory: app
         run: |
           flutter pub get
-          flutter build apk --release --split-per-abi
+          # universal APK; ndk.abiFilters restricts packaged ABIs to
+          # arm64-v8a + x86_64 (where libbitte_core.so is built)
+          flutter build apk --release
 
       - name: List outputs
         run: |
@@ -162,8 +164,9 @@ jobs:
         if: ${{ hashFiles('app/build/app/outputs/flutter-apk/*.apk') != '' }}
         uses: actions/upload-artifact@v4
         with:
-          name: bittechat-apks-${{ github.sha }}
-          path: app/build/app/outputs/flutter-apk/*.apk
+          name: bittechat-apk-${{ github.sha }}
+          path: |
+            app/build/app/outputs/flutter-apk/app-release.apk
           retention-days: 14
           if-no-files-found: warn
 
@@ -189,7 +192,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          pattern: bittechat-apks-*
+          pattern: bittechat-apk-*
           merge-multiple: true
           path: apks
       - uses: softprops/action-gh-release@v2

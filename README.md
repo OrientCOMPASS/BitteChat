@@ -39,7 +39,7 @@ Flutter (Android) 前端 + Rust 核心 + [libtorrent](https://www.libtorrent.org
 
 - **core-test**：`cargo fmt` / `clippy -D warnings` / 49 个单元与端到端测试（两个 Mock 引擎实例模拟双用户全流程：建群、入群、离线 DHT 同步、附件传输、长文分块、篡改拒绝）。
 - **app-analyze**：`flutter analyze` + `flutter test`。
-- **android**：交叉编译 OpenSSL 3.5.5、libtorrent 2.1.2（NDK, arm64-v8a + x86_64）→ Rust `libbitte_core.so` → `flutter build apk --release --split-per-abi`，APK 作为 artifact 上传；打 `v*` tag 自动发布 Release。
+- **android**：交叉编译 OpenSSL 3.5.5、libtorrent 2.1.2（NDK, arm64-v8a + x86_64）→ Rust `libbitte_core.so` → `flutter build apk --release`（通用 APK，abiFilters 限定 arm64-v8a/x86_64），APK 作为 artifact 上传；打 `v*` tag 自动发布 Release。
 
 本地复现原生构建（需要 NDK + Rust android targets + cargo-ndk）：
 
