@@ -14,23 +14,23 @@ use std::sync::Mutex;
 #[allow(non_camel_case_types)]
 pub type bc_session = c_void;
 
-/// Event callback signature expected by `bc_create`.
+/// Event callback signature expected by `bct_create`.
 pub type EventCallback = extern "C" fn(ctx: *mut c_void, json: *const c_char, len: c_uint);
 
 extern "C" {
-    pub fn bc_create(
+    pub fn bct_create(
         cfg_json: *const c_char,
         cb: EventCallback,
         ctx: *mut c_void,
     ) -> *mut bc_session;
-    pub fn bc_call(
+    pub fn bct_call(
         s: *mut bc_session,
         method: *const c_char,
         params_json: *const c_char,
     ) -> *mut c_char;
-    pub fn bc_free_str(s: *mut c_char);
-    pub fn bc_destroy(s: *mut bc_session);
-    pub fn bc_libtorrent_version() -> *const c_char;
+    pub fn bct_free_str(s: *mut c_char);
+    pub fn bct_destroy(s: *mut bc_session);
+    pub fn bct_libtorrent_version() -> *const c_char;
 }
 
 // ---- safe wrapper ----------------------------------------------------------
@@ -49,13 +49,13 @@ pub struct LtSession {
 }
 
 // SAFETY: the C++ session object is internally synchronized and designed for
-// cross-thread use (bc_call from any thread; events emitted from its alert
+// cross-thread use (bct_call from any thread; events emitted from its alert
 // thread through our callback which is itself synchronized).
 unsafe impl Send for LtSession {}
 unsafe impl Sync for LtSession {}
 
 impl LtSession {
-    /// Create a session. `cfg_json`: see `bc_create`. `on_event` receives JSON
+    /// Create a session. `cfg_json`: see `bct_create`. `on_event` receives JSON
     /// event documents from the alert thread.
     pub fn new<F>(cfg_json: &str, on_event: F) -> Option<LtSession>
     where
@@ -68,7 +68,7 @@ impl LtSession {
         // SAFETY: ctx_ptr validity is tied to this LtSession (leaked on purpose
         // until Drop, which reclaims it).
         let cfg = CString::new(cfg_json).ok()?;
-        let handle = unsafe { bc_create(cfg.as_ptr(), trampoline, ctx_ptr as *mut c_void) };
+        let handle = unsafe { bct_create(cfg.as_ptr(), trampoline, ctx_ptr as *mut c_void) };
         if handle.is_null() {
             // reclaim the context to avoid a leak
             unsafe { drop(Box::from_raw(ctx_ptr)) };
@@ -93,19 +93,19 @@ impl LtSession {
             Err(_) => return r#"{"ok":false,"error":"params contain NUL"}"#.to_string(),
         };
         // SAFETY: handle is valid for self's lifetime; result freed below.
-        let out = unsafe { bc_call(self.handle, m.as_ptr(), p.as_ptr()) };
+        let out = unsafe { bct_call(self.handle, m.as_ptr(), p.as_ptr()) };
         if out.is_null() {
             return r#"{"ok":false,"error":"null response"}"#.to_string();
         }
-        // SAFETY: bc_call returns a malloc'd NUL-terminated string
+        // SAFETY: bct_call returns a malloc'd NUL-terminated string
         let s = unsafe { CStr::from_ptr(out) }.to_string_lossy().to_string();
-        unsafe { bc_free_str(out) };
+        unsafe { bct_free_str(out) };
         s
     }
 
     pub fn libtorrent_version() -> String {
         // SAFETY: static string from the library
-        unsafe { CStr::from_ptr(bc_libtorrent_version()) }
+        unsafe { CStr::from_ptr(bct_libtorrent_version()) }
             .to_string_lossy()
             .to_string()
     }
@@ -114,9 +114,9 @@ impl LtSession {
 impl Drop for LtSession {
     fn drop(&mut self) {
         // SAFETY: destroys the session exactly once; the alert thread is
-        // joined inside bc_destroy before the ctx callback could dangle.
-        unsafe { bc_destroy(self.handle) };
-        // NOTE: _ctx (the Box) drops after bc_destroy, so no events can arrive
+        // joined inside bct_destroy before the ctx callback could dangle.
+        unsafe { bct_destroy(self.handle) };
+        // NOTE: _ctx (the Box) drops after bct_destroy, so no events can arrive
         // into a freed sink.
     }
 }
@@ -126,7 +126,7 @@ extern "C" fn trampoline(ctx: *mut c_void, json: *const c_char, len: c_uint) {
         return;
     }
     // SAFETY: ctx is the leaked EventSink box owned by the LtSession; it stays
-    // valid because bc_destroy joins the alert thread before the box drops.
+    // valid because bct_destroy joins the alert thread before the box drops.
     let sink = unsafe { &*(ctx as *const EventSink<Box<dyn Fn(&str) + Send>>) };
     let bytes = unsafe { std::slice::from_raw_parts(json as *const u8, len as usize) };
     let s = String::from_utf8_lossy(bytes);

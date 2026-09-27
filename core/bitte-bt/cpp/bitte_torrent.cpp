@@ -1137,12 +1137,12 @@ static json::value cmd_set_limits(bc_session* s, json::object const& o)
 // public C API
 // ---------------------------------------------------------------------------
 
-extern "C" const char* bc_libtorrent_version(void)
+extern "C" const char* bct_libtorrent_version(void)
 {
     return LIBTORRENT_VERSION;
 }
 
-extern "C" bc_session* bc_create(const char* cfg_json, bc_event_fn cb, void* cb_ctx)
+extern "C" bc_session* bct_create(const char* cfg_json, bc_event_fn cb, void* cb_ctx)
 {
 #ifdef __unix__
     ::signal(SIGPIPE, SIG_IGN);
@@ -1196,7 +1196,7 @@ extern "C" bc_session* bc_create(const char* cfg_json, bc_event_fn cb, void* cb_
     }
     catch (std::exception const& e)
     {
-        fprintf(stderr, "bc_create: session init failed: %s\n", e.what());
+        fprintf(stderr, "bct_create: session init failed: %s\n", e.what());
         delete s;
         return nullptr;
     }
@@ -1210,7 +1210,7 @@ extern "C" bc_session* bc_create(const char* cfg_json, bc_event_fn cb, void* cb_
     return s;
 }
 
-extern "C" char* bc_call(bc_session* s, const char* method, const char* params_json)
+extern "C" char* bct_call(bc_session* s, const char* method, const char* params_json)
 {
     if (!s || !method) return json_to_cstr(json_err("null session"));
     boost::system::error_code jec;
@@ -1245,12 +1245,12 @@ extern "C" char* bc_call(bc_session* s, const char* method, const char* params_j
     }
 }
 
-extern "C" void bc_free_str(char* str)
+extern "C" void bct_free_str(char* str)
 {
     std::free(str);
 }
 
-extern "C" void bc_destroy(bc_session* s)
+extern "C" void bct_destroy(bc_session* s)
 {
     if (!s) return;
     s->stop.store(true);
