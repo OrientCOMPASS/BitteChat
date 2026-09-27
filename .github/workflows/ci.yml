@@ -16,7 +16,7 @@ permissions:
 
 env:
   FLUTTER_VERSION: "3.47.5"
-  NATIVE_CACHE_V: "3"
+  NATIVE_CACHE_V: "4"
 
 jobs:
   # ------------------------------------------------------------------

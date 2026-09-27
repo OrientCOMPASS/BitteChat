@@ -19,7 +19,8 @@ android {
         applicationId = "dev.orientcompass.bittechat"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        // API 28+: libtorrent/boost.asio need std::aligned_alloc (NDK, API 28)
+        minSdk = 28
         ndk {
             // native core (libbitte_core.so) is built for these ABIs only
             abiFilters += listOf("arm64-v8a", "x86_64")
