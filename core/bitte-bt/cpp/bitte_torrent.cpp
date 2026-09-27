@@ -186,8 +186,7 @@ static std::string entry_to_b64(entry const& e)
 
 static std::string peer_endpoint_str(tcp::endpoint const& ep)
 {
-    error_code ec;
-    return ep.address().to_string(ec) + ":" + std::to_string(ep.port());
+    return ep.address().to_string() + ":" + std::to_string(ep.port());
 }
 
 static json::value json_err(std::string const& msg)
@@ -562,7 +561,6 @@ static char const* state_name(torrent_status::state_t s)
     case torrent_status::downloading: return "downloading";
     case torrent_status::finished: return "finished";
     case torrent_status::seeding: return "seeding";
-    case torrent_status::allocating: return "allocating";
     case torrent_status::checking_resume_data: return "resume";
     default: return "unknown";
     }
@@ -583,7 +581,7 @@ static json::value status_to_json(torrent_status const& st)
     o["num_seeds"] = st.num_seeds;
     o["paused"] = bool(st.flags & torrent_flags::paused);
     o["finished"] = st.is_finished;
-    o["error"] = st.error;
+    o["error"] = st.errc.message();
     o["state"] = state_name(st.state);
     return o;
 }
@@ -657,7 +655,7 @@ static void alert_loop(bc_session* s)
             {
                 auto* ea = alert_cast<torrent_error_alert>(a);
                 json::object data;
-                data["infohash"] = ih_hex(ea->info_hashes);
+                data["infohash"] = ih_hex(ea->handle.info_hashes());
                 data["error"] = ea->error.message();
                 s->ctx.emit_event("torrent_error", std::move(data));
                 break;
@@ -825,6 +823,7 @@ static json::value cmd_add_torrent(bc_session* s, json::object const& o)
     std::string key = ih_hex(ih);
     if (!ih.has_v1()) return json_err("v2-only torrents are not supported yet");
     torrent_handle th = s->ses->add_torrent(std::move(atp));
+    std::string const tname = th.status(torrent_handle::query_name).name;
     {
         std::lock_guard<std::mutex> l(s->st_mx);
         s->handles[key] = th;
@@ -832,7 +831,7 @@ static json::value cmd_add_torrent(bc_session* s, json::object const& o)
     json::object r;
     r["ok"] = true;
     r["infohash"] = key;
-    r["name"] = th.name();
+    r["name"] = tname;
     r["magnet"] = magnet;
     return r;
 }
@@ -1148,7 +1147,7 @@ extern "C" bc_session* bc_create(const char* cfg_json, bc_event_fn cb, void* cb_
 #ifdef __unix__
     ::signal(SIGPIPE, SIG_IGN);
 #endif
-    json::error_code jec;
+    boost::system::error_code jec;
     json::value cfgv = json::parse(cfg_json ? cfg_json : "{}", jec);
     if (jec) cfgv = json::object{};
     json::object const& cfg = cfgv.is_object() ? cfgv.get_object() : json::object{};
@@ -1214,7 +1213,7 @@ extern "C" bc_session* bc_create(const char* cfg_json, bc_event_fn cb, void* cb_
 extern "C" char* bc_call(bc_session* s, const char* method, const char* params_json)
 {
     if (!s || !method) return json_to_cstr(json_err("null session"));
-    json::error_code jec;
+    boost::system::error_code jec;
     json::value pv = json::parse(params_json && *params_json ? params_json : "{}", jec);
     json::object obj;
     if (!jec && pv.is_object()) obj = pv.get_object();
