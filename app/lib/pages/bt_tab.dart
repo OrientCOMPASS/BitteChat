@@ -101,17 +101,17 @@ class _BtTabState extends State<BtTab> {
 
   Future<void> _addTorrentFile() async {
     try {
-      final result = await FilePicker.pickFiles(
+      final files = await FilePicker.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['torrent'],
-        withData: true,
       );
-      final file = result?.files.single;
-      if (file == null || file.bytes == null) return;
+      if (files.isEmpty) return;
+      final file = files.single;
+      final bytes = await file.xFile.readAsBytes();
       if (!mounted) return;
       final messenger = ScaffoldMessenger.of(context);
       try {
-        _api.btAddFile(file.bytes!, name: file.name);
+        _api.btAddFile(bytes, name: file.name);
         _reload();
         messenger.showSnackBar(const SnackBar(content: Text('已添加种子文件')));
       } catch (e) {

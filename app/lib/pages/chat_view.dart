@@ -108,14 +108,13 @@ class _ChatViewPageState extends State<ChatViewPage> {
 
   Future<void> _pickAndSendFile() async {
     try {
-      final result = await FilePicker.pickFiles(
+      final files = await FilePicker.pickFiles(
         dialogTitle: '选择要发送的文件',
         type: FileType.any,
-        // Android SAF: we need a real path the native core can read
-        withData: false,
       );
-      final path = result?.files.single.path;
-      final name = result?.files.single.name;
+      if (files.isEmpty) return;
+      final path = files.single.path;
+      final name = files.single.name;
       if (path == null) return;
       if (!mounted) return;
       final messenger = ScaffoldMessenger.of(context);
