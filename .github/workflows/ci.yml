@@ -91,6 +91,34 @@ jobs:
       - run: flutter test
 
   # ------------------------------------------------------------------
+  # Real-engine FFI smoke test on linux (catches Rust<->C++ JSON contract
+  # drift that mock-engine tests cannot see)
+  # ------------------------------------------------------------------
+  native-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "core -> target"
+      - name: system deps
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libboost-dev libssl-dev
+      - name: cache host native stack
+        uses: actions/cache@v4
+        with:
+          path: build/linux-deps
+          key: native-linux-${{ env.NATIVE_CACHE_V }}-${{ hashFiles('scripts/versions.env', 'core/bitte-bt/cpp/*') }}
+      - name: build host libtorrent + wrapper
+        run: bash scripts/build-linux-native.sh
+      - name: smoke test against real libtorrent
+        working-directory: core
+        run: |
+          BITTE_BT_PREFIX="$GITHUB_WORKSPACE/build/linux-deps/deps" \
+            cargo test -p bitte-core --features native-bt --test native_smoke -- --nocapture --test-threads=1
+
+  # ------------------------------------------------------------------
   # Android: OpenSSL + libtorrent + C++ wrapper + Rust cdylib + APK
   # ------------------------------------------------------------------
   android:
@@ -185,7 +213,7 @@ jobs:
   # ------------------------------------------------------------------
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [android, core-test]
+    needs: [android, core-test, native-smoke]
     runs-on: ubuntu-24.04
     permissions:
       contents: write

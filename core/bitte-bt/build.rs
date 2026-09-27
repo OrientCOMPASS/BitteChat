@@ -19,6 +19,9 @@ fn main() {
         println!("cargo:rustc-link-lib=dylib=c++_shared");
         println!("cargo:rustc-link-lib=log");
         println!("cargo:rustc-link-lib=z");
+    } else {
+        // host smoke tests: the static C++ archive needs libstdc++
+        println!("cargo:rustc-link-lib=dylib=stdc++");
     }
 
     if let Ok(prefix) = env::var("BITTE_BT_PREFIX") {
