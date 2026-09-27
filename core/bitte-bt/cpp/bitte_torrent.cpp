@@ -976,6 +976,9 @@ static json::value cmd_create_torrent(bc_session* s, json::object const& o)
     auto const slash = base.find_last_of('/');
     if (slash != std::string::npos) base = base.substr(slash + 1);
 
+    // root dir = parent of the file (fs paths are relative to it)
+    std::string root_dir = (slash == std::string::npos) ? std::string(".")
+                                                        : path.substr(0, slash);
     file_storage fs;
     fs.add_file(base, st.st_size);
     fs.set_name(base);
@@ -983,6 +986,9 @@ static json::value cmd_create_torrent(bc_session* s, json::object const& o)
     std::string const comment = jstr(o, "comment", "BitteChat");
     ct.set_comment(comment.c_str());
     ct.set_creator("BitteChat/libtorrent");
+    error_code hec;
+    set_piece_hashes(ct, root_dir, hec);
+    if (hec) return json_err(std::string("set_piece_hashes: ") + hec.message());
     entry const te = ct.generate();
     std::vector<char> buf;
     bencode(std::back_inserter(buf), te);
