@@ -96,6 +96,9 @@ build_libtorrent() { # <abi> <deps>
         -DANDROID_PLATFORM="android-$ANDROID_API" \
         -DANDROID_STL=c++_shared \
         -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH \
+        -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=BOTH \
+        -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=BOTH \
         -DBUILD_SHARED_LIBS=OFF \
         -DBoost_DIR="$BOOST_SHIM_DIR" \
         -DBITTE_BOOST_INCLUDE="$BOOST_SRC" \
@@ -123,7 +126,11 @@ build_cpp_wrapper() { # <abi> <deps>
         -DANDROID_PLATFORM="android-$ANDROID_API" \
         -DANDROID_STL=c++_shared \
         -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH \
+        -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=BOTH \
+        -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=BOTH \
         -DCMAKE_PREFIX_PATH="$DEPS" \
+        -DLibtorrentRasterbar_DIR="$DEPS/lib/cmake/LibtorrentRasterbar" \
         -DBoost_DIR="$BOOST_SHIM_DIR" \
         -DBITTE_BOOST_INCLUDE="$BOOST_SRC" \
         -DOPENSSL_ROOT_DIR="$DEPS" \

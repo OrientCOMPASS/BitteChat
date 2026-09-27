@@ -126,7 +126,7 @@ jobs:
             build/android-deps/src
             build/android-deps/deps
             build/android-deps/build
-          key: native-${{ env.NATIVE_CACHE_V }}-${{ runner.os }}-${{ hashFiles('scripts/versions.env', 'core/bitte-bt/cpp/*', 'scripts/build-android-native.sh') }}
+          key: native-${{ env.NATIVE_CACHE_V }}-${{ runner.os }}-${{ hashFiles('scripts/versions.env') }}-${{ hashFiles('core/bitte-bt/cpp/*') }}
           restore-keys: |
             native-${{ env.NATIVE_CACHE_V }}-${{ runner.os }}-
 
