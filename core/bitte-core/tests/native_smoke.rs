@@ -61,12 +61,17 @@ fn native_engine_smoke() {
 
     // add it back as a seeding torrent; metadata event must arrive
     let ih = engine
-        .add_torrent_bytes(&created.torrent_bytes, &dir.path().join("seed").to_string_lossy())
+        .add_torrent_bytes(
+            &created.torrent_bytes,
+            &dir.path().join("seed").to_string_lossy(),
+        )
         .expect("add_torrent_bytes");
     assert_eq!(ih, hex::encode(created.infohash));
-    let got_meta = wait_event(&rx, Duration::from_secs(20), |ev| {
-        matches!(ev, EngineEvent::MetadataReceived { infohash } if *infohash == ih)
-    });
+    let got_meta = wait_event(
+        &rx,
+        Duration::from_secs(20),
+        |ev| matches!(ev, EngineEvent::MetadataReceived { infohash } if *infohash == ih),
+    );
     assert!(got_meta.is_some(), "metadata_received alert missing");
 
     // states expose the torrent
@@ -76,7 +81,10 @@ fn native_engine_smoke() {
         if states.iter().any(|s| s.infohash == ih) {
             break;
         }
-        assert!(Instant::now() < deadline, "torrent never appeared in states");
+        assert!(
+            Instant::now() < deadline,
+            "torrent never appeared in states"
+        );
         std::thread::sleep(Duration::from_millis(300));
     }
 
@@ -102,10 +110,14 @@ fn native_engine_smoke() {
     // get of an unknown target resolves to a not-found event (DHT may be
     // empty in CI; we only assert the alert plumbing works)
     let unknown = [0xABu8; 20];
-    engine.dht_get_immutable(&unknown).expect("dht_get_immutable");
-    let got = wait_event(&rx, Duration::from_secs(20), |ev| {
-        matches!(ev, EngineEvent::DhtImmutableItem { target, .. } if *target == unknown)
-    });
+    engine
+        .dht_get_immutable(&unknown)
+        .expect("dht_get_immutable");
+    let got = wait_event(
+        &rx,
+        Duration::from_secs(20),
+        |ev| matches!(ev, EngineEvent::DhtImmutableItem { target, .. } if *target == unknown),
+    );
     assert!(got.is_some(), "dht immutable alert plumbing broken");
 
     // ext broadcast with no peers reports zero sends, no crash
@@ -116,8 +128,10 @@ fn native_engine_smoke() {
     engine.set_paused(&ih, true).expect("pause");
     engine.set_paused(&ih, false).expect("resume");
     engine.remove_torrent(&ih, false).expect("remove");
-    let gone = wait_event(&rx, Duration::from_secs(15), |ev| {
-        matches!(ev, EngineEvent::TorrentRemoved { infohash } if *infohash == ih)
-    });
+    let gone = wait_event(
+        &rx,
+        Duration::from_secs(15),
+        |ev| matches!(ev, EngineEvent::TorrentRemoved { infohash } if *infohash == ih),
+    );
     assert!(gone.is_some(), "torrent_removed alert missing");
 }

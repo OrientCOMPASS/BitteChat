@@ -30,8 +30,13 @@ fn main() {
         println!("cargo:rustc-link-lib=static=bitte_bt_cpp");
         println!("cargo:rustc-link-lib=static=torrent-rasterbar");
         if let Ok(ssl) = env::var("BITTE_OPENSSL_PREFIX") {
+            println!("cargo:rustc-link-search=native={ssl}");
             println!("cargo:rustc-link-search=native={ssl}/lib");
             println!("cargo:rustc-link-search=native={ssl}/lib64");
+        } else if !target.contains("android") {
+            // host smoke builds: distro multiarch locations
+            println!("cargo:rustc-link-search=native=/usr/lib/x86_64-linux-gnu");
+            println!("cargo:rustc-link-search=native=/usr/lib/aarch64-linux-gnu");
         }
         println!("cargo:rustc-link-lib=static=ssl");
         println!("cargo:rustc-link-lib=static=crypto");
