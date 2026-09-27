@@ -14,7 +14,6 @@ endif()
 add_library(bitte_bt_cpp STATIC bitte_torrent.cpp)
 
 target_compile_definitions(bitte_bt_cpp PRIVATE
-  BOOST_JSON_HEADER_ONLY
   TORRENT_NO_DEPRECATE
   BOOST_ALL_NO_LIB
   BOOST_ASIO_ENABLE_CANCELIO

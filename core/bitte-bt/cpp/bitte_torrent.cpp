@@ -30,8 +30,9 @@
 
 #include <sys/stat.h>
 
-#define BOOST_JSON_HEADER_ONLY
 #include <boost/json.hpp>
+// compile the boost::json implementation into this TU (single-TU project)
+#include <boost/json/src.hpp>
 
 #include <libtorrent/libtorrent.hpp>
 #include <libtorrent/add_torrent_params.hpp>
