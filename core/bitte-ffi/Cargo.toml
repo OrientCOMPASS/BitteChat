@@ -1,0 +1,24 @@
+[package]
+name = "bitte-ffi"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "C ABI (libbitte_core.so) exposing the BitteChat core to Flutter/Dart via FFI"
+
+[lib]
+name = "bitte_core"
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = []
+native-bt = ["bitte-core/native-bt", "dep:bitte-bt"]
+
+[dependencies]
+bitte-core = { path = "../bitte-core" }
+bitte-bt = { path = "../bitte-bt", optional = true }
+serde_json = { workspace = true }
+log = { workspace = true }
+libc = "0.2"
+
+[target.'cfg(target_os = "android")'.dependencies]
+android_logger = "0.14"

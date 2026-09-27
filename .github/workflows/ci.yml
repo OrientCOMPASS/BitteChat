@@ -1,0 +1,181 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+permissions:
+  contents: read
+
+env:
+  FLUTTER_VERSION: "3.47.3"
+  NATIVE_CACHE_V: "3"
+
+jobs:
+  # ------------------------------------------------------------------
+  # Rust core: fmt, clippy, unit + e2e tests (mock engine, linux)
+  # ------------------------------------------------------------------
+  core-test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: core
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "core -> target"
+      - name: cargo fmt --check
+        run: cargo fmt --all --check
+      - name: clippy
+        run: cargo clippy -p bitte-core -p bitte-ffi -p bitte-bt --tests -- -D warnings
+      - name: unit + e2e tests
+        run: cargo test -p bitte-core
+      - name: check ffi (mock engine)
+        run: cargo check -p bitte-ffi
+      - name: check ffi (native-bt feature, no link)
+        run: cargo check -p bitte-ffi --features native-bt
+
+  # ------------------------------------------------------------------
+  # Flutter app: analyze + widget tests
+  # ------------------------------------------------------------------
+  app-analyze:
+    if: ${{ hashFiles('app/pubspec.yaml') != '' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: dart format --output=none --set-exit-if-changed lib test
+      - run: flutter analyze
+      - run: flutter test
+
+  # ------------------------------------------------------------------
+  # Android: OpenSSL + libtorrent + C++ wrapper + Rust cdylib + APK
+  # ------------------------------------------------------------------
+  android:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Rust toolchain (android targets)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android, x86_64-linux-android
+
+      - name: cargo-ndk
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-ndk
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "core -> target"
+
+      - name: Restore native deps cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            build/android-deps/downloads
+            build/android-deps/src
+            build/android-deps/deps
+            build/android-deps/build
+          key: native-${{ env.NATIVE_CACHE_V }}-${{ runner.os }}-${{ hashFiles('scripts/versions.env', 'core/bitte-bt/cpp/*', 'scripts/build-android-native.sh') }}
+          restore-keys: |
+            native-${{ env.NATIVE_CACHE_V }}-${{ runner.os }}-
+
+      - name: Show NDK
+        run: |
+          echo "NDK=$ANDROID_NDK_LATEST_HOME"
+          cat "$ANDROID_NDK_LATEST_HOME/source.properties" | head -2
+
+      - name: Build native stack
+        run: bash scripts/build-android-native.sh
+
+      - name: Flutter setup
+        if: ${{ hashFiles('app/pubspec.yaml') != '' }}
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Build APKs
+        if: ${{ hashFiles('app/pubspec.yaml') != '' }}
+        working-directory: app
+        run: |
+          flutter pub get
+          flutter build apk --release --split-per-abi
+
+      - name: List outputs
+        run: |
+          find app/android/app/src/main/jniLibs -type f | sort || true
+          ls -la app/build/app/outputs/flutter-apk/ 2>/dev/null || true
+
+      - name: Upload APKs
+        if: ${{ hashFiles('app/build/app/outputs/flutter-apk/*.apk') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: bittechat-apks-${{ github.sha }}
+          path: app/build/app/outputs/flutter-apk/*.apk
+          retention-days: 14
+          if-no-files-found: warn
+
+      - name: Upload native libs (debug aid)
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-build-logs-${{ github.sha }}
+          path: |
+            build/android-deps/build/cpp-*/CMakeFiles/*.dir/*.log
+          retention-days: 5
+          if-no-files-found: ignore
+
+  # ------------------------------------------------------------------
+  # Release on tag
+  # ------------------------------------------------------------------
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [android, core-test]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: bittechat-apks-*
+          merge-multiple: true
+          path: apks
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: apks/*.apk
+          generate_release_notes: true

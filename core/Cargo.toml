@@ -1,0 +1,28 @@
+[workspace]
+members = ["bitte-core", "bitte-bt", "bitte-ffi"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "Unlicense"
+repository = "https://github.com/OrientCOMPASS/BitteChat"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+log = "0.4"
+hex = "0.4"
+base64 = "0.22"
+sha1 = "0.10"
+rand = "0.8"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+
+# workspace-level profile: keep debug info small for android builds
+[profile.release]
+opt-level = 2
+lto = "thin"
+strip = "symbols"
+panic = "unwind"

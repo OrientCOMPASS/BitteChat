@@ -1,0 +1,31 @@
+[package]
+name = "bitte-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "BitteChat core: BT-backed P2P group chat engine (hash-chained messages over BitTorrent DHT + extension messages)"
+
+[features]
+default = []
+# enable the real libtorrent-backed engine (requires bitte-bt built against libtorrent)
+native-bt = ["dep:bitte-bt"]
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+log = { workspace = true }
+hex = { workspace = true }
+base64 = { workspace = true }
+sha1 = { workspace = true }
+rand = { workspace = true }
+chrono = { workspace = true }
+ed25519-dalek = { workspace = true }
+rusqlite = { version = "0.32", features = ["bundled"] }
+ureq = { version = "2.10", features = ["gzip"] }
+quick-xml = "0.36"
+bitte-bt = { path = "../bitte-bt", optional = true }
+
+[dev-dependencies]
+tempfile = "3"
+hex = "0.4"
