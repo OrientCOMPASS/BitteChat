@@ -1,5 +1,7 @@
 // QQ 风格三页签主框架：聊天 / 种子 / 订阅
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../core/api.dart';
@@ -17,6 +19,37 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   int _index = 0;
+  int _chatUnread = 0;
+  StreamSubscription<CoreEvent>? _sub;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    final api = BitteApi.instance;
+    _reloadBadge();
+    _sub = api.events.listen((e) {
+      if (e.isChatMessage || e.isChatGroupUpdated) _reloadBadge();
+    });
+    _timer = Timer.periodic(const Duration(seconds: 12), (_) => _reloadBadge());
+  }
+
+  @override
+  void dispose() {
+    _sub?.cancel();
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  void _reloadBadge() {
+    if (!mounted) return;
+    try {
+      final total = BitteApi.instance
+          .chatGroups()
+          .fold<int>(0, (sum, g) => sum + g.unread);
+      if (total != _chatUnread) setState(() => _chatUnread = total);
+    } catch (_) {}
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -32,10 +65,10 @@ class _HomePageState extends State<HomePage> {
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
         onDestinationSelected: (i) => setState(() => _index = i),
-        destinations: const [
+        destinations: [
           NavigationDestination(
-            icon: Icon(Icons.chat_bubble_outline),
-            selectedIcon: Icon(Icons.chat_bubble),
+            icon: _chatBadgeIcon(false),
+            selectedIcon: _chatBadgeIcon(true),
             label: '聊天',
           ),
           NavigationDestination(
@@ -50,6 +83,15 @@ class _HomePageState extends State<HomePage> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _chatBadgeIcon(bool selected) {
+    final icon = Icon(selected ? Icons.chat_bubble : Icons.chat_bubble_outline);
+    if (_chatUnread <= 0) return icon;
+    return Badge(
+      label: Text(_chatUnread > 99 ? '99+' : '$_chatUnread'),
+      child: icon,
     );
   }
 

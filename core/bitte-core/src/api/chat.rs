@@ -283,6 +283,8 @@ impl Api {
         let gid_hex = jstr(&p, "group_id")?.to_string();
         let delete_history = jbool(&p, "delete_history", false);
         let gid = hex20(&gid_hex)?;
+        // best-effort farewell message while we are still a member
+        self.send_system_message(&gid_hex, "leave", "");
         let mut st = self.inner.state.lock().unwrap();
         let ih = st
             .groups

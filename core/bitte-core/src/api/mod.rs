@@ -431,6 +431,10 @@ impl Api {
                 (row, false)
             }
         };
+        // announce ourselves with a signed system message (git-like log)
+        if !existed {
+            self.send_system_message(&gid_hex, "join", "");
+        }
         // kick sync outside the lock
         self.kick_group_sync(&gid_hex);
         Api::emit_from(
@@ -441,6 +445,72 @@ impl Api {
                 "chat.group_joined"
             },
             json!({"group": chat::group_summary_from_row(&row)}),
+        );
+    }
+
+    /// Create + broadcast a y=3 system message (join/leave/rename...).
+    pub fn send_system_message(&self, gid_hex: &str, code: &str, detail: &str) {
+        let gid = match crate::api::hex20(gid_hex) {
+            Ok(g) => g,
+            Err(_) => return,
+        };
+        let (identity, profile_name) = {
+            let id = self.inner.identity.read().unwrap().clone();
+            let pn = self.inner.profile.read().unwrap().name.clone();
+            (id, pn)
+        };
+        let now = crate::now_ms();
+        let sm = {
+            let mut guard = self.inner.state.lock().unwrap();
+            let st = &mut *guard;
+            let Some(rt) = st.groups.get_mut(gid_hex) else {
+                return;
+            };
+            let parents = rt.sync.dag.heads();
+            rt.own_seq += 1;
+            let sm = match crate::chat::message::create_message(
+                &gid,
+                &parents,
+                rt.own_seq,
+                now,
+                &identity,
+                &profile_name,
+                crate::chat::message::MsgKind::System,
+                &crate::chat::message::Payload::System {
+                    code: code.to_string(),
+                    detail: detail.to_string(),
+                },
+            ) {
+                Ok(sm) => sm,
+                Err(e) => {
+                    log::warn!("system message failed: {e}");
+                    return;
+                }
+            };
+            rt.sync.pending_puts.insert(sm.id);
+            if let Err(e) = rt.sync.ingest(&st.store, sm.clone(), 0) {
+                log::warn!("system message ingest failed: {e}");
+                return;
+            }
+            st.store.outbox_add(&gid, &sm.id).ok();
+            rt.sync.dirty_heads = true;
+            sm
+        };
+        let _ = self.inner.engine.dht_put_immutable(&sm.bytes, &sm.id);
+        {
+            let mut guard = self.inner.state.lock().unwrap();
+            let st = &mut *guard;
+            if let Some(rt) = st.groups.get_mut(gid_hex) {
+                let payload = crate::chat::sync::ExtPayload::Msg(sm.bytes.clone()).encode();
+                let _ = self.inner.engine.ext_send(&rt.sync.swarm_ih, &payload);
+                if rt.sync.publish_heads(&st.store, &*self.inner.engine, now) {
+                    rt.last_publish = now;
+                }
+            }
+        }
+        self.emit_event(
+            "chat.message_new",
+            serde_json::json!({"group": gid_hex, "message": sm.msg}),
         );
     }
 
