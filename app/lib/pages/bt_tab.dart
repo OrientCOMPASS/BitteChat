@@ -164,6 +164,7 @@ class _BtTabState extends State<BtTab> {
                     separatorBuilder: (_, __) => const Divider(height: 1),
                     itemBuilder: (_, i) => _TorrentTile(
                       torrent: _torrents[i],
+                      onTap: () => _openDetail(_torrents[i]),
                       onControl: (op, {bool deleteFiles = false}) {
                         try {
                           _api.btControl(_torrents[i].infohash, op,
@@ -191,6 +192,16 @@ class _BtTabState extends State<BtTab> {
         child: const Icon(Icons.add),
       ),
     );
+  }
+
+  Future<void> _openDetail(TorrentInfo t) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (ctx) => TorrentDetailSheet(infohash: t.infohash, name: t.name),
+    );
+    _reload();
   }
 
   void _showAddSheet() {
@@ -296,9 +307,11 @@ class _TorrentTile extends StatelessWidget {
     required this.torrent,
     required this.onControl,
     required this.onCopyMagnet,
+    this.onTap,
   });
 
   final TorrentInfo torrent;
+  final VoidCallback? onTap;
   final void Function(String op, {bool deleteFiles}) onControl;
   final VoidCallback onCopyMagnet;
 
@@ -341,6 +354,7 @@ class _TorrentTile extends StatelessWidget {
     final t = torrent;
     final pct = (t.progress * 100).clamp(0, 100);
     return ListTile(
+      onTap: onTap,
       leading: CircleAvatar(
         backgroundColor: t.isChatInternal
             ? theme.colorScheme.tertiaryContainer
@@ -432,5 +446,137 @@ class _TorrentTile extends StatelessWidget {
     );
     if (result == 'keep') onControl('remove', deleteFiles: false);
     if (result == 'delete') onControl('remove', deleteFiles: true);
+  }
+}
+
+/// 任务详情：文件进度 + 连接节点 + 元信息
+class TorrentDetailSheet extends StatefulWidget {
+  const TorrentDetailSheet({
+    super.key,
+    required this.infohash,
+    required this.name,
+  });
+
+  final String infohash;
+  final String name;
+
+  @override
+  State<TorrentDetailSheet> createState() => _TorrentDetailSheetState();
+}
+
+class _TorrentDetailSheetState extends State<TorrentDetailSheet> {
+  late final BitteApi _api = BitteApi.instance;
+  List<Map<String, dynamic>> _files = [];
+  List<PeerInfo> _peers = [];
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+    _timer = Timer.periodic(const Duration(seconds: 3), (_) => _load());
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  void _load() {
+    if (!mounted) return;
+    try {
+      final f = _api.call('bt.files', {'infohash': widget.infohash});
+      final peers = _api.btPeers(widget.infohash);
+      setState(() {
+        _files = ((f['files'] as List?) ?? [])
+            .map((e) => Map<String, dynamic>.from(e as Map))
+            .toList();
+        _peers = peers;
+      });
+    } catch (_) {}
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.6,
+      maxChildSize: 0.9,
+      builder: (context, scrollController) => ListView(
+        controller: scrollController,
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        children: [
+          Text(widget.name, style: theme.textTheme.titleMedium),
+          const SizedBox(height: 4),
+          Text('infohash: ${widget.infohash}',
+              style: theme.textTheme.bodySmall
+                  ?.copyWith(color: theme.colorScheme.outline)),
+          const SizedBox(height: 16),
+          Text('文件（${_files.length}）', style: theme.textTheme.titleSmall),
+          if (_files.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Text('元数据尚未获取',
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: theme.colorScheme.outline)),
+            ),
+          ..._files.map((f) {
+            final prog = (f['progress'] as num?)?.toDouble() ?? 0;
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(f['path'] as String? ?? '',
+                            maxLines: 1, overflow: TextOverflow.ellipsis),
+                      ),
+                      Text(formatBytes((f['size'] as num?)?.toInt() ?? 0),
+                          style: theme.textTheme.bodySmall),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(3),
+                    child: LinearProgressIndicator(value: prog, minHeight: 4),
+                  ),
+                ],
+              ),
+            );
+          }),
+          const SizedBox(height: 12),
+          Text('连接节点（${_peers.length}）', style: theme.textTheme.titleSmall),
+          if (_peers.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Text('暂无连接',
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: theme.colorScheme.outline)),
+            ),
+          ..._peers.map((p) => ListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(
+                  p.chatCapable ? Icons.chat : Icons.cloud_outlined,
+                  size: 18,
+                  color: theme.colorScheme.primary,
+                ),
+                title:
+                    Text('${p.ip}:${p.port}', style: theme.textTheme.bodySmall),
+                subtitle: Text(
+                  '${p.client} · ${(p.progress * 100).toStringAsFixed(0)}%'
+                  '${p.chatCapable ? " · 支持聊天" : ""}',
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: theme.colorScheme.outline),
+                ),
+              )),
+          const SizedBox(height: 24),
+        ],
+      ),
+    );
   }
 }
