@@ -59,7 +59,10 @@ fn native_engine_smoke() {
     assert!(created.magnet.starts_with("magnet:?xt=urn:btih:"));
     assert!(!created.torrent_bytes.is_empty());
 
-    // add it back as a seeding torrent; metadata event must arrive
+    // add it back as a seeding torrent. NOTE: metadata_received_alert only
+    // fires for magnets (metadata fetched from peers); a torrent added with
+    // full metadata goes straight to checking/seeding, so we assert via the
+    // state cache instead.
     let ih = engine
         .add_torrent_bytes(
             &created.torrent_bytes,
@@ -67,23 +70,18 @@ fn native_engine_smoke() {
         )
         .expect("add_torrent_bytes");
     assert_eq!(ih, hex::encode(created.infohash));
-    let got_meta = wait_event(
-        &rx,
-        Duration::from_secs(20),
-        |ev| matches!(ev, EngineEvent::MetadataReceived { infohash } if *infohash == ih),
-    );
-    assert!(got_meta.is_some(), "metadata_received alert missing");
 
-    // states expose the torrent
-    let deadline = Instant::now() + Duration::from_secs(20);
+    let deadline = Instant::now() + Duration::from_secs(30);
     loop {
         let states = engine.torrent_states().expect("states");
-        if states.iter().any(|s| s.infohash == ih) {
-            break;
+        if let Some(s) = states.iter().find(|s| s.infohash == ih) {
+            if s.progress >= 0.999 || s.finished {
+                break;
+            }
         }
         assert!(
             Instant::now() < deadline,
-            "torrent never appeared in states"
+            "torrent never completed in states"
         );
         std::thread::sleep(Duration::from_millis(300));
     }
