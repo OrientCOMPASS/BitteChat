@@ -69,9 +69,9 @@ class _AudioRowState extends State<AudioRow> {
               ),
               icon: Icon(playing ? Icons.pause : Icons.play_arrow, size: 20),
             ),
-            const SizedBox(width: 8),
+            SizedBox(width: 8),
             Icon(Icons.audiotrack, size: 18, color: theme.colorScheme.primary),
-            const SizedBox(width: 6),
+            SizedBox(width: 6),
             Flexible(
               child: Text(
                 widget.title,
@@ -82,7 +82,7 @@ class _AudioRowState extends State<AudioRow> {
             ),
           ],
         ),
-        const SizedBox(height: 4),
+        SizedBox(height: 4),
         Row(
           mainAxisSize: MainAxisSize.min,
           children: [

@@ -1,6 +1,7 @@
 // 时间格式化助手（毫秒时间戳 → 中文习惯显示）
 
 import 'package:intl/intl.dart';
+import '../core/l10n.dart';
 
 DateTime _dt(int ms) => DateTime.fromMillisecondsSinceEpoch(ms <= 0 ? 0 : ms);
 
@@ -30,10 +31,18 @@ String formatDayLabel(int ms) {
   final today = DateTime(now.year, now.month, now.day);
   final that = DateTime(d.year, d.month, d.day);
   final diff = today.difference(that).inDays;
-  if (diff == 0) return '今天';
-  if (diff == 1) return '昨天';
+  if (diff == 0) return L.t.today;
+  if (diff == 1) return L.t.yesterday;
   if (diff < 7) {
-    const names = ['星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日'];
+    final names = [
+      L.t.mon,
+      L.t.tue,
+      L.t.wed,
+      L.t.thu,
+      L.t.fri,
+      L.t.sat,
+      L.t.sun
+    ];
     return names[that.weekday - 1];
   }
   if (d.year == now.year) return DateFormat('MM-dd').format(d);

@@ -10,6 +10,7 @@ import 'chat_tab.dart';
 import 'rss_tab.dart';
 import 'settings_page.dart';
 import '../core/prefs.dart';
+import '../core/l10n.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key, required this.prefs});
@@ -36,9 +37,9 @@ class _HomePageState extends State<HomePage> {
       if (!mounted) return;
       String? msg;
       if (e.type == 'torrent_error') {
-        msg = '种子出错：${e.data['error'] ?? ''}';
+        msg = L.t.torrentError('${e.data['error'] ?? ''}');
       } else if (e.type == 'rss.error') {
-        msg = '订阅失败：${e.data['error'] ?? ''}';
+        msg = L.t.rssError('${e.data['error'] ?? ''}');
       }
       if (msg != null && msg.isNotEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -88,17 +89,17 @@ class _HomePageState extends State<HomePage> {
           NavigationDestination(
             icon: _chatBadgeIcon(false),
             selectedIcon: _chatBadgeIcon(true),
-            label: '聊天',
+            label: L.t.chatTab,
           ),
           NavigationDestination(
             icon: Icon(Icons.cloud_download_outlined),
             selectedIcon: Icon(Icons.cloud_download),
-            label: '种子',
+            label: L.t.btTab,
           ),
           NavigationDestination(
             icon: Icon(Icons.rss_feed_outlined),
             selectedIcon: Icon(Icons.rss_feed),
-            label: '订阅',
+            label: L.t.rssTab,
           ),
         ],
       ),
@@ -155,7 +156,7 @@ void showError(BuildContext context, Object e) {
 /// Helper: core available guard for actions.
 bool ensureCore(BuildContext context, BitteApi api) {
   if (!api.available) {
-    showError(context, '原生核心不可用：请安装 CI 构建的 APK');
+    showError(context, L.t.installApkHint);
     return false;
   }
   return true;

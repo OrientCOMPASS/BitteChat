@@ -19,6 +19,7 @@ import 'media_pages.dart';
 import '../widgets/avatar.dart';
 import '../widgets/time_fmt.dart';
 import 'home.dart';
+import '../core/l10n.dart';
 
 class ChatViewPage extends StatefulWidget {
   const ChatViewPage({super.key, required this.group, this.prefs});
@@ -130,9 +131,9 @@ class _ChatViewPageState extends State<ChatViewPage> {
           children: [
             if (!m.own && !_isDm)
               ListTile(
-                leading: const Icon(Icons.lock_outline),
-                title: const Text('发起私聊'),
-                subtitle: Text('与 ${m.authorName} 的端到端加密频道'),
+                leading: Icon(Icons.lock_outline),
+                title: Text(L.t.startDm),
+                subtitle: Text(L.t.startDmHint(m.authorName)),
                 onTap: () async {
                   Navigator.pop(ctx);
                   try {
@@ -166,51 +167,51 @@ class _ChatViewPageState extends State<ChatViewPage> {
               ),
             if (m.payloadKind == MsgPayloadKind.text)
               ListTile(
-                leading: const Icon(Icons.copy),
-                title: const Text('复制消息内容'),
+                leading: Icon(Icons.copy),
+                title: Text(L.t.copyMessage),
                 onTap: () {
                   Navigator.pop(ctx);
                   Clipboard.setData(ClipboardData(text: m.text));
                   ScaffoldMessenger.of(context)
-                      .showSnackBar(const SnackBar(content: Text('已复制')));
+                      .showSnackBar(SnackBar(content: Text(L.t.copied)));
                 },
               ),
             ListTile(
-              leading: const Icon(Icons.fingerprint),
-              title: const Text('复制消息 ID（SHA-1）'),
+              leading: Icon(Icons.fingerprint),
+              title: Text(L.t.copyMessageId),
               subtitle: Text(shortHash(m.id, 16)),
               onTap: () {
                 Navigator.pop(ctx);
                 Clipboard.setData(ClipboardData(text: m.id));
                 ScaffoldMessenger.of(context)
-                    .showSnackBar(const SnackBar(content: Text('已复制消息 ID')));
+                    .showSnackBar(SnackBar(content: Text(L.t.copiedId)));
               },
             ),
             if (!m.own)
               ListTile(
-                leading: const Icon(Icons.block),
-                title: const Text('屏蔽该作者'),
-                subtitle: const Text('加入过滤规则（可在设置中管理）'),
+                leading: Icon(Icons.block),
+                title: Text(L.t.blockAuthor),
+                subtitle: Text(L.t.blockAuthorHint),
                 onTap: () {
                   Navigator.pop(ctx);
                   try {
                     _api.blockAuthor(m.authorPk);
                     _reload();
-                    ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('已屏蔽 ${m.authorName}')));
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                        content: Text(L.t.blockedAuthor(m.authorName))));
                   } catch (e) {
                     showError(context, e);
                   }
                 },
               ),
             ListTile(
-              leading: const Icon(Icons.verified_user),
-              title: const Text('签名信息'),
-              subtitle: Text('作者公钥 ${shortHash(m.authorPk, 16)}\n'
-                  '状态 ${m.state == 1 ? "已确认（DHT 已存储）" : "待确认"}'),
+              leading: Icon(Icons.verified_user),
+              title: Text(L.t.signatureInfo),
+              subtitle: Text(L.t.sigDetail(shortHash(m.authorPk, 16),
+                  m.state == 1 ? L.t.sigConfirmed : L.t.sigPending)),
               onTap: () => Navigator.pop(ctx),
             ),
-            const SizedBox(height: 8),
+            SizedBox(height: 8),
           ],
         ),
       ),
@@ -235,7 +236,7 @@ class _ChatViewPageState extends State<ChatViewPage> {
   Future<void> _pickAndSendFile() async {
     try {
       final files = await FilePicker.pickFiles(
-        dialogTitle: '选择要发送的文件',
+        dialogTitle: L.t.pickFileToSend,
         type: FileType.any,
       );
       if (files.isEmpty) return;
@@ -245,12 +246,12 @@ class _ChatViewPageState extends State<ChatViewPage> {
       if (!mounted) return;
       final messenger = ScaffoldMessenger.of(context);
       messenger.showSnackBar(
-        const SnackBar(content: Text('正在做种并发送……')),
+        SnackBar(content: Text(L.t.sending)),
       );
       final r = _api.sendFile(_gid, path, name: name);
       messenger.hideCurrentSnackBar();
       messenger.showSnackBar(SnackBar(
-        content: Text('已发送，正在做种：${shortHash('${r['infohash'] ?? ''}')}'),
+        content: Text(L.t.sentSeeding(shortHash('${r['infohash'] ?? ''}'))),
       ));
       _reload();
     } catch (e) {
@@ -266,7 +267,7 @@ class _ChatViewPageState extends State<ChatViewPage> {
       _reload();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('已开始下载「${att.name}」（聊天内传输，不占用种子页）')),
+          SnackBar(content: Text(L.t.downloadStarted(att.name))),
         );
       }
     } catch (e) {
@@ -325,7 +326,7 @@ class _ChatViewPageState extends State<ChatViewPage> {
               children: [
                 if (_isDm) ...[
                   Icon(Icons.lock, size: 16, color: theme.colorScheme.primary),
-                  const SizedBox(width: 6),
+                  SizedBox(width: 6),
                 ],
                 Flexible(
                   child: Text(widget.group.name,
@@ -335,19 +336,21 @@ class _ChatViewPageState extends State<ChatViewPage> {
             ),
             if (missing > 0)
               Text(
-                '同步中：缺 $missing 条历史消息',
+                L.t.syncingMissing(missing),
                 style: theme.textTheme.bodySmall
                     ?.copyWith(color: theme.colorScheme.primary),
               )
             else if (_isDm)
               Text(
-                '端到端加密私聊（X25519 + ChaCha20-Poly1305）',
+                L.t.dmEncrypted,
                 style: theme.textTheme.bodySmall
                     ?.copyWith(color: theme.colorScheme.primary),
               )
             else
               Text(
-                '历史已同步 · ${_detail['peers'] is List ? (_detail['peers'] as List).length : 0} 节点在线',
+                L.t.historySynced(_detail['peers'] is List
+                    ? (_detail['peers'] as List).length
+                    : 0),
                 style: theme.textTheme.bodySmall
                     ?.copyWith(color: theme.colorScheme.outline),
               ),
@@ -355,18 +358,18 @@ class _ChatViewPageState extends State<ChatViewPage> {
         ),
         actions: [
           IconButton(
-            tooltip: '重新同步',
-            icon: const Icon(Icons.sync),
+            tooltip: L.t.resync,
+            icon: Icon(Icons.sync),
             onPressed: () {
               _api.syncGroup(_gid);
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('已向 DHT 与相邻节点发起同步')),
+                SnackBar(content: Text(L.t.resyncStarted)),
               );
             },
           ),
           IconButton(
-            tooltip: '群详情',
-            icon: const Icon(Icons.info_outline),
+            tooltip: L.t.groupDetail,
+            icon: Icon(Icons.info_outline),
             onPressed: _openGroupSheet,
           ),
         ],
@@ -381,7 +384,7 @@ class _ChatViewPageState extends State<ChatViewPage> {
                 child: _messages.isEmpty
                     ? Center(
                         child: Text(
-                          '群刚创建，还没有消息\n说点什么吧 👇',
+                          L.t.emptyGroupHint,
                           textAlign: TextAlign.center,
                           style: theme.textTheme.bodyLarge
                               ?.copyWith(color: theme.colorScheme.outline),
@@ -454,7 +457,7 @@ class _ChatViewPageState extends State<ChatViewPage> {
           ? FloatingActionButton.small(
               heroTag: 'jump-bottom',
               onPressed: _scrollToBottom,
-              child: const Icon(Icons.keyboard_double_arrow_down),
+              child: Icon(Icons.keyboard_double_arrow_down),
             )
           : null,
     );
@@ -480,14 +483,14 @@ class _GenesisHeader extends StatelessWidget {
       child: Column(
         children: [
           Icon(Icons.link, color: theme.colorScheme.outlineVariant, size: 32),
-          const SizedBox(height: 8),
+          SizedBox(height: 8),
           Text(
-            '「$groupName」的哈希链从这里开始',
+            L.t.genesisTitle(groupName),
             style: theme.textTheme.bodySmall
                 ?.copyWith(color: theme.colorScheme.outline),
           ),
           Text(
-            '每条消息都经作者签名并链接前序消息，任何篡改都会被网络拒绝',
+            L.t.genesisSub,
             textAlign: TextAlign.center,
             style: theme.textTheme.bodySmall
                 ?.copyWith(color: theme.colorScheme.outlineVariant),
@@ -578,7 +581,7 @@ class MessageBubble extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.only(left: 4, bottom: 2),
                   child: Text(
-                    m.authorName.isEmpty ? '匿名' : m.authorName,
+                    m.authorName.isEmpty ? L.t.anonymous : m.authorName,
                     style: theme.textTheme.labelSmall?.copyWith(
                       color: HSLColor.fromAHSL(
                               1, colorFromKey(m.authorPk).toDouble(), 0.5, 0.4)
@@ -594,7 +597,7 @@ class MessageBubble extends StatelessWidget {
                 children: [
                   if (!own) ...[
                     KeyAvatar(keyHex: m.authorPk, name: m.authorName, size: 30),
-                    const SizedBox(width: 6),
+                    SizedBox(width: 6),
                   ],
                   Flexible(
                     child: Container(
@@ -615,7 +618,7 @@ class MessageBubble extends StatelessWidget {
                     ),
                   ),
                   if (own) ...[
-                    const SizedBox(width: 6),
+                    SizedBox(width: 6),
                     KeyAvatar(keyHex: m.authorPk, name: m.authorName, size: 30),
                   ],
                 ],
@@ -632,7 +635,7 @@ class MessageBubble extends StatelessWidget {
                           color: theme.colorScheme.outline, fontSize: 10),
                     ),
                     if (own) ...[
-                      const SizedBox(width: 4),
+                      SizedBox(width: 4),
                       Icon(
                         m.state == 1 ? Icons.done_all : Icons.schedule,
                         size: 12,
@@ -654,15 +657,15 @@ class MessageBubble extends StatelessWidget {
   String _systemText(ChatMessage m) {
     switch (m.systemCode) {
       case 'create':
-        return '🎉 ${m.authorName} 创建了群聊「${m.systemDetail}」';
+        return L.t.sysCreate(m.authorName, m.systemDetail);
       case 'join':
-        return '👋 ${m.authorName} 加入了群聊';
+        return L.t.sysJoin(m.authorName);
       case 'leave':
-        return '${m.authorName} 退出了群聊';
+        return L.t.sysLeave(m.authorName);
       case 'rename':
-        return '📛 ${m.authorName} 将群名改为「${m.systemDetail}」';
+        return L.t.sysRename(m.authorName, m.systemDetail);
       default:
-        return '[系统] ${m.systemCode} ${m.systemDetail}';
+        return L.t.sysGeneric(m.systemCode, m.systemDetail);
     }
   }
 }
@@ -703,7 +706,7 @@ class _AttachmentBody extends StatelessWidget {
               right: 12,
               child: IconButton.filled(
                 onPressed: () => Navigator.pop(ctx),
-                icon: const Icon(Icons.close),
+                icon: Icon(Icons.close),
               ),
             ),
           ],
@@ -730,7 +733,7 @@ class _AttachmentBody extends StatelessWidget {
         final ok = await openWithExternalApp(path, mimeFromName(att.name));
         if (!ok && context.mounted) {
           ScaffoldMessenger.of(context)
-              .showSnackBar(const SnackBar(content: Text('没有可打开该文件的应用')));
+              .showSnackBar(SnackBar(content: Text(L.t.noAppForFile)));
         }
     }
   }
@@ -759,7 +762,7 @@ class _AttachmentBody extends StatelessWidget {
                   child: CircularProgressIndicator(
                       strokeWidth: 2, value: dl.progress),
                 ),
-                const SizedBox(width: 8),
+                SizedBox(width: 8),
                 Flexible(
                   child: Text(att.name,
                       maxLines: 1,
@@ -768,16 +771,16 @@ class _AttachmentBody extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 6),
+            SizedBox(height: 6),
             ClipRRect(
               borderRadius: BorderRadius.circular(3),
               child: LinearProgressIndicator(value: dl.progress, minHeight: 5),
             ),
-            const SizedBox(height: 2),
+            SizedBox(height: 2),
             Text(
-              '${(dl.progress * 100).toStringAsFixed(0)}% · '
-              '${formatSpeed(dl.rate)} · ${dl.peers} peers'
-              '${dl.paused ? " · 已暂停" : ""}',
+              L.t.dlProgress((dl.progress * 100).toStringAsFixed(0),
+                      formatSpeed(dl.rate), dl.peers) +
+                  (dl.paused ? L.t.pausedMark : ''),
               style: theme.textTheme.labelSmall
                   ?.copyWith(color: theme.colorScheme.outline),
             ),
@@ -797,7 +800,7 @@ class _AttachmentBody extends StatelessWidget {
             children: [
               Icon(_fileIcon(att.name),
                   size: 28, color: theme.colorScheme.primary),
-              const SizedBox(width: 8),
+              SizedBox(width: 8),
               Flexible(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -814,11 +817,11 @@ class _AttachmentBody extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 6),
+          SizedBox(height: 6),
           TextButton.icon(
             onPressed: onDownload,
-            icon: const Icon(Icons.download, size: 18),
-            label: const Text('通过 BT 下载'),
+            icon: Icon(Icons.download, size: 18),
+            label: Text(L.t.downloadViaBt),
             style: TextButton.styleFrom(
               padding: const EdgeInsets.symmetric(horizontal: 8),
               visualDensity: VisualDensity.compact,
@@ -862,8 +865,8 @@ class _AttachmentBody extends StatelessWidget {
               children: [
                 Icon(Icons.smart_display,
                     size: 40, color: theme.colorScheme.primary),
-                const SizedBox(height: 4),
-                const Text('点击播放视频'),
+                SizedBox(height: 4),
+                Text(L.t.tapPlayVideo),
               ],
             ),
           ),
@@ -879,7 +882,8 @@ class _AttachmentBody extends StatelessWidget {
                     ? Icons.article_outlined
                     : Icons.open_in_new,
                 size: 18),
-            label: Text(kind == MediaKind.text ? '预览文本' : '用其他应用打开'),
+            label:
+                Text(kind == MediaKind.text ? L.t.previewText : L.t.openWith),
             style: TextButton.styleFrom(
               padding: const EdgeInsets.symmetric(horizontal: 8),
               visualDensity: VisualDensity.compact,
@@ -893,13 +897,13 @@ class _AttachmentBody extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         media,
-        const SizedBox(height: 6),
+        SizedBox(height: 6),
         Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(_fileIcon(att.name),
                 size: 16, color: theme.colorScheme.outline),
-            const SizedBox(width: 4),
+            SizedBox(width: 4),
             Flexible(
               child: Text(
                 '${att.name} · ${formatBytes(att.size)}',
@@ -918,15 +922,15 @@ class _AttachmentBody extends StatelessWidget {
   String _kindLabel(MediaKind k) {
     switch (k) {
       case MediaKind.image:
-        return '图片';
+        return L.t.kindImage;
       case MediaKind.audio:
-        return '音频';
+        return L.t.kindAudio;
       case MediaKind.video:
-        return '视频';
+        return L.t.kindVideo;
       case MediaKind.text:
-        return '文本';
+        return L.t.kindText;
       case MediaKind.other:
-        return '文件';
+        return L.t.kindFile;
     }
   }
 
@@ -988,8 +992,8 @@ class _InputBar extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             IconButton(
-              tooltip: '发送文件（做种）',
-              icon: const Icon(Icons.attach_file),
+              tooltip: L.t.sendFileTip,
+              icon: Icon(Icons.attach_file),
               onPressed: sending ? null : onAttach,
             ),
             Expanded(
@@ -999,8 +1003,8 @@ class _InputBar extends StatelessWidget {
                 maxLines: 5,
                 textInputAction: TextInputAction.send,
                 onSubmitted: (_) => onSend(),
-                decoration: const InputDecoration(
-                  hintText: '说点什么……（消息将签名并写入哈希链）',
+                decoration: InputDecoration(
+                  hintText: L.t.inputHint,
                   border: OutlineInputBorder(
                       borderRadius: BorderRadius.all(Radius.circular(22))),
                   contentPadding:
@@ -1009,7 +1013,7 @@ class _InputBar extends StatelessWidget {
                 ),
               ),
             ),
-            const SizedBox(width: 6),
+            SizedBox(width: 6),
             SizedBox(
               width: 44,
               height: 44,
@@ -1020,11 +1024,11 @@ class _InputBar extends StatelessWidget {
                   shape: const CircleBorder(),
                 ),
                 child: sending
-                    ? const SizedBox(
+                    ? SizedBox(
                         width: 18,
                         height: 18,
                         child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Icon(Icons.send, size: 20),
+                    : Icon(Icons.send, size: 20),
               ),
             ),
           ],
@@ -1093,16 +1097,16 @@ class _GroupDetailSheetState extends State<GroupDetailSheet> {
                   name: (group['name'] as String?) ?? '?',
                   keyHex: widget.groupId,
                   size: 44),
-              const SizedBox(width: 12),
+              SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text((group['name'] as String?) ?? '群聊',
+                    Text((group['name'] as String?) ?? L.t.groupChat,
                         style: theme.textTheme.titleMedium),
                     Text(
-                      '创建于 ${formatFull((group['created'] as int?) ?? 0)} · '
-                      '创建者 ${(creator['name'] as String?) ?? '?'}',
+                      L.t.createdBy(formatFull((group['created'] as int?) ?? 0),
+                          (creator['name'] as String?) ?? '?'),
                       style: theme.textTheme.bodySmall
                           ?.copyWith(color: theme.colorScheme.outline),
                     ),
@@ -1110,23 +1114,23 @@ class _GroupDetailSheetState extends State<GroupDetailSheet> {
                 ),
               ),
               IconButton(
-                  tooltip: '刷新',
-                  icon: const Icon(Icons.refresh),
+                  tooltip: L.t.refresh,
+                  icon: Icon(Icons.refresh),
                   onPressed: _refresh),
             ],
           ),
-          const SizedBox(height: 16),
-          _StatRow(label: '消息总数', value: '${d['messages'] ?? 0}'),
-          _StatRow(label: '链头 (heads)', value: '${heads.length}'),
-          _StatRow(label: '缺失历史', value: '${d['missing'] ?? 0}'),
-          _StatRow(label: '头指针版本 (seq)', value: '${d['head_seq'] ?? 0}'),
-          _StatRow(label: '在线成员', value: '${peers.length}'),
+          SizedBox(height: 16),
+          _StatRow(label: L.t.msgCount, value: '${d['messages'] ?? 0}'),
+          _StatRow(label: L.t.headsCount, value: '${heads.length}'),
+          _StatRow(label: L.t.missingCount, value: '${d['missing'] ?? 0}'),
+          _StatRow(label: L.t.headSeq, value: '${d['head_seq'] ?? 0}'),
+          _StatRow(label: L.t.members, value: '${peers.length}'),
           _StatRow(
-              label: '清单种子',
+              label: L.t.manifestTorrent,
               value: shortHash('${d['manifest_infohash'] ?? ''}', 16)),
-          const SizedBox(height: 16),
-          Text('邀请链接', style: theme.textTheme.titleSmall),
-          const SizedBox(height: 8),
+          SizedBox(height: 16),
+          Text(L.t.inviteLink, style: theme.textTheme.titleSmall),
+          SizedBox(height: 8),
           if (magnet.isNotEmpty)
             Center(
               child: Container(
@@ -1139,23 +1143,23 @@ class _GroupDetailSheetState extends State<GroupDetailSheet> {
                 ),
               ),
             ),
-          const SizedBox(height: 8),
+          SizedBox(height: 8),
           OutlinedButton.icon(
-            icon: const Icon(Icons.copy, size: 18),
-            label: const Text('复制磁力邀请链接'),
+            icon: Icon(Icons.copy, size: 18),
+            label: Text(L.t.copyInviteLink),
             onPressed: () async {
               await Clipboard.setData(ClipboardData(text: magnet));
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('已复制：对方在聊天页「加入群聊」粘贴即可')),
+                  SnackBar(content: Text(L.t.copiedInvite)),
                 );
               }
             },
           ),
-          const SizedBox(height: 12),
+          SizedBox(height: 12),
           if (peers.isNotEmpty) ...[
-            Text('P2P 节点', style: theme.textTheme.titleSmall),
-            const SizedBox(height: 4),
+            Text(L.t.p2pPeers, style: theme.textTheme.titleSmall),
+            SizedBox(height: 4),
             ...peers.map((p) {
               final pm = _asMap(p);
               return ListTile(
@@ -1171,41 +1175,40 @@ class _GroupDetailSheetState extends State<GroupDetailSheet> {
                 title: Text('${pm['ip']}:${pm['port']}',
                     style: theme.textTheme.bodySmall),
                 subtitle: Text(
-                  '${pm['client'] ?? ''} · ${(pm['chat_capable'] == true) ? "支持聊天" : "普通 BT 客户端"}',
+                  '${pm['client'] ?? ''} · ${(pm['chat_capable'] == true) ? L.t.chatCapable : L.t.plainBtClient}',
                   style: theme.textTheme.bodySmall
                       ?.copyWith(color: theme.colorScheme.outline),
                 ),
               );
             }),
           ],
-          const SizedBox(height: 8),
+          SizedBox(height: 8),
           ListTile(
             contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.edit_outlined),
-            title: const Text('修改群名'),
-            subtitle: const Text('以签名系统消息广播给全群'),
+            leading: Icon(Icons.edit_outlined),
+            title: Text(L.t.renameGroup),
+            subtitle: Text(L.t.renameBroadcast),
             onTap: () async {
               final controller =
                   TextEditingController(text: (group['name'] as String?) ?? '');
               final name = await showDialog<String>(
                 context: context,
                 builder: (ctx) => AlertDialog(
-                  title: const Text('修改群名'),
+                  title: Text(L.t.renameGroup),
                   content: TextField(
                     controller: controller,
                     autofocus: true,
                     maxLength: 32,
-                    decoration:
-                        const InputDecoration(border: OutlineInputBorder()),
+                    decoration: InputDecoration(border: OutlineInputBorder()),
                   ),
                   actions: [
                     TextButton(
                         onPressed: () => Navigator.pop(ctx),
-                        child: const Text('取消')),
+                        child: Text(L.t.cancel)),
                     FilledButton(
                         onPressed: () =>
                             Navigator.pop(ctx, controller.text.trim()),
-                        child: const Text('保存')),
+                        child: Text(L.t.save)),
                   ],
                 ),
               );
@@ -1218,25 +1221,25 @@ class _GroupDetailSheetState extends State<GroupDetailSheet> {
               }
             },
           ),
-          const SizedBox(height: 16),
+          SizedBox(height: 16),
           OutlinedButton.icon(
             style: OutlinedButton.styleFrom(
                 foregroundColor: theme.colorScheme.error),
-            icon: const Icon(Icons.logout),
-            label: const Text('退出群聊（保留本地历史）'),
+            icon: Icon(Icons.logout),
+            label: Text(L.t.leaveGroup),
             onPressed: () async {
               final confirmed = await showDialog<bool>(
                 context: context,
                 builder: (ctx) => AlertDialog(
-                  title: const Text('退出群聊？'),
-                  content: const Text('将停止做种群清单，本地聊天记录默认保留。'),
+                  title: Text(L.t.leaveGroupQ),
+                  content: Text(L.t.leaveGroupHint),
                   actions: [
                     TextButton(
                         onPressed: () => Navigator.pop(ctx, false),
-                        child: const Text('取消')),
+                        child: Text(L.t.cancel)),
                     TextButton(
                         onPressed: () => Navigator.pop(ctx, true),
-                        child: const Text('退出')),
+                        child: Text(L.t.leave)),
                   ],
                 ),
               );
@@ -1250,7 +1253,7 @@ class _GroupDetailSheetState extends State<GroupDetailSheet> {
               }
             },
           ),
-          const SizedBox(height: 24),
+          SizedBox(height: 24),
         ],
       ),
     );
@@ -1297,15 +1300,15 @@ class InviteSheet extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text('群聊已创建 🎉', style: theme.textTheme.titleMedium),
-          const SizedBox(height: 8),
+          Text(L.t.groupCreated, style: theme.textTheme.titleMedium),
+          SizedBox(height: 8),
           Text(
-            '把邀请链接发给朋友（对方需能连上你或任一在线成员的种子网络）',
+            L.t.inviteHint,
             textAlign: TextAlign.center,
             style: theme.textTheme.bodySmall
                 ?.copyWith(color: theme.colorScheme.outline),
           ),
-          const SizedBox(height: 16),
+          SizedBox(height: 16),
           if (magnet.isNotEmpty)
             Container(
               padding: const EdgeInsets.all(10),
@@ -1313,13 +1316,13 @@ class InviteSheet extends StatelessWidget {
               child: QrImageView(
                   data: magnet, size: 200, backgroundColor: Colors.white),
             ),
-          const SizedBox(height: 12),
+          SizedBox(height: 12),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               OutlinedButton.icon(
-                icon: const Icon(Icons.copy, size: 18),
-                label: const Text('复制链接'),
+                icon: Icon(Icons.copy, size: 18),
+                label: Text(L.t.copyLink),
                 onPressed: () async {
                   await Clipboard.setData(ClipboardData(text: magnet));
                   if (context.mounted) {
@@ -1327,14 +1330,14 @@ class InviteSheet extends StatelessWidget {
                   }
                 },
               ),
-              const SizedBox(width: 12),
+              SizedBox(width: 12),
               FilledButton(
                 onPressed: () => Navigator.pop(context),
-                child: const Text('完成'),
+                child: Text(L.t.done),
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          SizedBox(height: 16),
         ],
       ),
     );
@@ -1400,8 +1403,8 @@ class _BlockedGap extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 6),
           child: ActionChip(
-            avatar: const Icon(Icons.shield_outlined, size: 16),
-            label: Text('${messages.length} 条被屏蔽的消息'),
+            avatar: Icon(Icons.shield_outlined, size: 16),
+            label: Text(L.t.blockedCount(messages.length)),
             onPressed: onToggle,
             side: BorderSide(color: theme.colorScheme.outlineVariant),
           ),

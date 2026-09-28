@@ -1,0 +1,497 @@
+{
+ "@@locale": "zh",
+ "chatTab": "聊天",
+ "btTab": "种子",
+ "rssTab": "订阅",
+ "settings": "设置",
+ "identitySettings": "身份设置",
+ "demoMode": "演示模式",
+ "demoHint": "未加载 libbitte_core.so。\n请安装 CI 构建的 Android APK 以启用完整功能。",
+ "coreUnavailable": "原生核心不可用（当前为演示模式）",
+ "coreUnavailableShort": "原生核心不可用（演示模式）",
+ "installApkHint": "原生核心不可用：请安装 CI 构建的 APK",
+ "noGroups": "还没有群聊",
+ "noGroupsHint": "一个 BT 种子就是一个群。\n创建群聊，或粘贴邀请磁力链接加入。",
+ "createGroup": "创建群聊",
+ "joinGroup": "加入群聊",
+ "groupName": "群名称",
+ "groupNameHint": "例如：BT 爱好者",
+ "create": "创建",
+ "join": "加入",
+ "cancel": "取消",
+ "confirm": "确定",
+ "save": "保存",
+ "delete": "删除",
+ "refresh": "刷新",
+ "refreshAll": "全部刷新",
+ "paste": "粘贴",
+ "copyLink": "复制链接",
+ "done": "完成",
+ "inviteMagnet": "邀请磁力链接",
+ "magnetHint": "magnet:?xt=urn:btih:...",
+ "alreadyInGroup": "已经在该群中",
+ "fetchingManifest": "正在从 BT 网络获取群清单……需要群内有成员在线做种",
+ "groupCreated": "群聊已创建 🎉",
+ "inviteHint": "把邀请链接发给朋友（对方需能连上你或任一在线成员的种子网络）",
+ "joinViaPaste": "粘贴或扫描他人分享的邀请链接",
+ "createGroupDesc": "生成邀请磁力链接，分享给朋友",
+ "online": "在线",
+ "noMessages": "暂无消息",
+ "syncingMissing": "同步中：缺 {n} 条历史消息",
+ "historySynced": "历史已同步 · {n} 节点在线",
+ "dmEncrypted": "端到端加密私聊（X25519 + ChaCha20-Poly1305）",
+ "resync": "重新同步",
+ "resyncStarted": "已向 DHT 与相邻节点发起同步",
+ "groupDetail": "群详情",
+ "genesisTitle": "「{name}」的哈希链从这里开始",
+ "genesisSub": "每条消息都经作者签名并链接前序消息，任何篡改都会被网络拒绝",
+ "emptyGroupHint": "群刚创建，还没有消息\n说点什么吧 👇",
+ "inputHint": "说点什么……（消息将签名并写入哈希链）",
+ "sendFileTip": "发送文件（做种）",
+ "sending": "正在做种并发送……",
+ "sentSeeding": "已发送，正在做种：{h}",
+ "downloadViaBt": "通过 BT 下载",
+ "downloadStarted": "已开始下载「{name}」（聊天内传输，不占用种子页）",
+ "anonymous": "匿名",
+ "copyMessage": "复制消息内容",
+ "copyMessageId": "复制消息 ID（SHA-1）",
+ "copied": "已复制",
+ "copiedId": "已复制消息 ID",
+ "copiedInvite": "已复制：对方在聊天页「加入群聊」粘贴即可",
+ "signatureInfo": "签名信息",
+ "sigDetail": "作者公钥 {pk}\n状态 {state}",
+ "sigConfirmed": "已确认（DHT 已存储）",
+ "sigPending": "待确认",
+ "blockAuthor": "屏蔽该作者",
+ "blockAuthorHint": "加入过滤规则（可在设置中管理）",
+ "blockedAuthor": "已屏蔽 {name}",
+ "blockedCount": "{n} 条被屏蔽的消息",
+ "startDm": "发起私聊",
+ "startDmHint": "与 {name} 的端到端加密频道",
+ "sysCreate": "🎉 {name} 创建了群聊「{detail}」",
+ "sysJoin": "👋 {name} 加入了群聊",
+ "sysLeave": "{name} 退出了群聊",
+ "sysRename": "📛 {name} 将群名改为「{detail}」",
+ "sysDmInvite": "发来了私聊邀请（自动加入）",
+ "sysGeneric": "[系统] {code} {detail}",
+ "sysMsg": "系统消息",
+ "chunkSyncing": "〔长消息分块同步中…〕",
+ "renameGroup": "修改群名",
+ "renameBroadcast": "以签名系统消息广播给全群",
+ "leaveGroup": "退出群聊（保留本地历史）",
+ "leaveGroupQ": "退出群聊？",
+ "leaveGroupHint": "将停止做种群清单，本地聊天记录默认保留。",
+ "leave": "退出",
+ "members": "在线成员",
+ "manifestTorrent": "清单种子",
+ "msgCount": "消息总数",
+ "headsCount": "链头 (heads)",
+ "missingCount": "缺失历史",
+ "headSeq": "头指针版本 (seq)",
+ "p2pPeers": "P2P 节点",
+ "chatCapable": "支持聊天",
+ "plainBtClient": "普通 BT 客户端",
+ "createdBy": "创建于 {date} · 创建者 {name}",
+ "noBtTasks": "暂无任务",
+ "noBtTasksHint": "点击右下角按钮添加磁力链接或种子文件",
+ "addMagnet": "添加磁力链接",
+ "importTorrent": "导入种子文件 (.torrent)",
+ "added": "已添加",
+ "addedTorrentFile": "已添加种子文件",
+ "magnetCopied": "磁力链接已复制",
+ "copyMagnet": "复制磁力链接",
+ "pause": "暂停",
+ "resume": "继续",
+ "recheck": "重新校验",
+ "deleteTaskQ": "删除「{name}」？",
+ "deleteTaskHint": "选择是否同时删除已下载的文件。",
+ "deleteTaskOnly": "仅删除任务",
+ "deleteTaskFiles": "删除任务+文件",
+ "stateSeeding": "做种中",
+ "stateDownloading": "下载中",
+ "stateMetadata": "获取元数据…",
+ "stateChecking": "校验中",
+ "stateFinished": "已完成",
+ "stateQueued": "排队中",
+ "statePaused": "已暂停",
+ "showChatTorrents": "显示聊天内部种子",
+ "hideChatTorrents": "隐藏聊天内部种子",
+ "rateLimits": "传输限速",
+ "rateLimitsHint": "传输限速（KB/s，留空或 0 为不限速）",
+ "upload": "上传",
+ "download": "下载",
+ "limitsApplied": "限速已应用",
+ "filesCount": "文件（{n}）",
+ "peersCount": "连接节点（{n}）",
+ "noPeers": "暂无连接",
+ "noMetadata": "元数据尚未获取",
+ "savePath": "保存目录: {p}",
+ "noFeeds": "还没有订阅",
+ "noFeedsHint": "支持 RSS 2.0 与 Atom；含磁力/种子的条目可一键转 BT 下载",
+ "addFeed": "添加订阅",
+ "feedAdded": "已添加，正在后台抓取……",
+ "refreshingAll": "正在刷新全部订阅",
+ "markAllRead": "全部标记已读",
+ "unreadOnly": "只看未读",
+ "showAll": "显示全部",
+ "noItems": "暂无条目（可能仍在抓取）",
+ "noUnread": "没有未读条目",
+ "untitled": "(无标题)",
+ "downloadToBt": "转 BT 下载",
+ "queuedBt": "已开始后台处理，稍后见种子页",
+ "addedQueue": "已加入下载队列",
+ "article": "正文",
+ "openBrowser": "浏览器打开",
+ "hasBtResource": "此条目附带 BT 资源",
+ "noContent": "（无正文）",
+ "lastFetch": "上次更新 {t}",
+ "notFetched": "尚未抓取",
+ "deleteFeedQ": "删除「{name}」？",
+ "deleteFeedHint": "将同时删除该源的全部已缓存条目。",
+ "coreVersion": "核心版本",
+ "dataDir": "数据目录",
+ "msgSecurity": "消息安全",
+ "msgSecurityDesc": "每条消息使用你的 Ed25519 密钥签名并链接父消息（git 式哈希链）。",
+ "privKeyLocal": "私钥仅保存在本机，永不外传。",
+ "aboutDesc": "去中心化 BitTorrent 群聊：一个种子就是一个群，",
+ "aboutDesc2": "消息以哈希链方式在 BT/DHT 网络中保存与传播，无法被单点篡改。\n\n",
+ "appearance": "外观",
+ "themeSystem": "跟随系统",
+ "themeLight": "浅色",
+ "themeDark": "深色",
+ "seedSource": "主题色来源",
+ "seedBrand": "品牌蓝",
+ "seedWallpaper": "壁纸自动取色",
+ "seedCustom": "自定义颜色",
+ "pickColor": "选择主题色",
+ "wallpaper": "聊天背景图",
+ "wallpaperNone": "未设置",
+ "wallpaperSet": "不透明度 {p}%",
+ "wallpaperBlur": "背景模糊",
+ "opacity": "不透明度",
+ "pickWallpaper": "选择聊天背景图",
+ "wallpaperApplied": "背景已应用；若主题色来源为\"壁纸取色\"将同时更新",
+ "filterRules": "消息过滤规则",
+ "addRule": "添加过滤规则",
+ "editRule": "编辑过滤规则",
+ "add": "添加",
+ "noRules": "无规则。可按昵称/公钥/内容屏蔽恶意消息；",
+ "noRules2": "被屏蔽消息在聊天中折叠显示。",
+ "fieldText": "消息内容",
+ "fieldName": "作者昵称",
+ "fieldPk": "作者公钥",
+ "modeContains": "包含",
+ "modeEquals": "等于",
+ "modeRegex": "正则表达式",
+ "matchValue": "匹配值",
+ "caseSensitive": "区分大小写",
+ "caseSensitiveMark": " · 区分大小写",
+ "clear": "清除",
+ "today": "今天",
+ "yesterday": "昨天",
+ "mon": "星期一",
+ "tue": "星期二",
+ "wed": "星期三",
+ "thu": "星期四",
+ "fri": "星期五",
+ "sat": "星期六",
+ "sun": "星期日",
+ "videoFail": "无法播放该视频",
+ "tapPlayVideo": "点击播放视频",
+ "previewText": "预览文本",
+ "openWith": "用其他应用打开",
+ "noAppForFile": "没有可打开该文件的应用",
+ "fileTooBig": "文件超过 2MB，请使用“其他应用打开”",
+ "notPlainText": "该文件不是纯文本",
+ "kindImage": "图片",
+ "kindAudio": "音频",
+ "kindVideo": "视频",
+ "kindText": "文本",
+ "kindFile": "文件",
+ "pickFileToSend": "选择要发送的文件",
+ "pausedMark": " · 已暂停",
+ "blurredMark": " · 已模糊",
+ "tasksCount": "{n} 任务",
+ "editName": "昵称",
+ "pubkeyLabel": "公钥 {pk}",
+ "identity": "身份",
+ "@syncingMissing": {
+  "placeholders": {
+   "n": {
+    "type": "Object"
+   }
+  }
+ },
+ "@historySynced": {
+  "placeholders": {
+   "n": {
+    "type": "Object"
+   }
+  }
+ },
+ "@genesisTitle": {
+  "placeholders": {
+   "name": {
+    "type": "Object"
+   }
+  }
+ },
+ "@sentSeeding": {
+  "placeholders": {
+   "h": {
+    "type": "Object"
+   }
+  }
+ },
+ "@downloadStarted": {
+  "placeholders": {
+   "name": {
+    "type": "Object"
+   }
+  }
+ },
+ "@sigDetail": {
+  "placeholders": {
+   "pk": {
+    "type": "Object"
+   },
+   "state": {
+    "type": "Object"
+   }
+  }
+ },
+ "@blockedAuthor": {
+  "placeholders": {
+   "name": {
+    "type": "Object"
+   }
+  }
+ },
+ "@blockedCount": {
+  "placeholders": {
+   "n": {
+    "type": "Object"
+   }
+  }
+ },
+ "@startDmHint": {
+  "placeholders": {
+   "name": {
+    "type": "Object"
+   }
+  }
+ },
+ "@sysCreate": {
+  "placeholders": {
+   "name": {
+    "type": "Object"
+   },
+   "detail": {
+    "type": "Object"
+   }
+  }
+ },
+ "@sysJoin": {
+  "placeholders": {
+   "name": {
+    "type": "Object"
+   }
+  }
+ },
+ "@sysLeave": {
+  "placeholders": {
+   "name": {
+    "type": "Object"
+   }
+  }
+ },
+ "@sysRename": {
+  "placeholders": {
+   "name": {
+    "type": "Object"
+   },
+   "detail": {
+    "type": "Object"
+   }
+  }
+ },
+ "@sysGeneric": {
+  "placeholders": {
+   "code": {
+    "type": "Object"
+   },
+   "detail": {
+    "type": "Object"
+   }
+  }
+ },
+ "@createdBy": {
+  "placeholders": {
+   "date": {
+    "type": "Object"
+   },
+   "name": {
+    "type": "Object"
+   }
+  }
+ },
+ "@deleteTaskQ": {
+  "placeholders": {
+   "name": {
+    "type": "Object"
+   }
+  }
+ },
+ "@filesCount": {
+  "placeholders": {
+   "n": {
+    "type": "Object"
+   }
+  }
+ },
+ "@peersCount": {
+  "placeholders": {
+   "n": {
+    "type": "Object"
+   }
+  }
+ },
+ "@savePath": {
+  "placeholders": {
+   "p": {
+    "type": "Object"
+   }
+  }
+ },
+ "@lastFetch": {
+  "placeholders": {
+   "t": {
+    "type": "Object"
+   }
+  }
+ },
+ "@deleteFeedQ": {
+  "placeholders": {
+   "name": {
+    "type": "Object"
+   }
+  }
+ },
+ "@wallpaperSet": {
+  "placeholders": {
+   "p": {
+    "type": "Object"
+   }
+  }
+ },
+ "@tasksCount": {
+  "placeholders": {
+   "n": {
+    "type": "Object"
+   }
+  }
+ },
+ "@pubkeyLabel": {
+  "placeholders": {
+   "pk": {
+    "type": "Object"
+   }
+  }
+ },
+ "onlinePeers": "{n} 在线",
+ "@onlinePeers": {
+  "placeholders": {
+   "n": {
+    "type": "Object"
+   }
+  }
+ },
+ "chatCapableMark": " · 支持聊天",
+ "coreVersionValue": "{v} · 引擎: {e}",
+ "@coreVersionValue": {
+  "placeholders": {
+   "v": {
+    "type": "Object"
+   },
+   "e": {
+    "type": "Object"
+   }
+  }
+ },
+ "torrentError": "种子出错：{e}",
+ "@torrentError": {
+  "placeholders": {
+   "e": {
+    "type": "Object"
+   }
+  }
+ },
+ "rssError": "订阅失败：{e}",
+ "@rssError": {
+  "placeholders": {
+   "e": {
+    "type": "Object"
+   }
+  }
+ },
+ "downloaded": "已下载",
+ "attMeta": "{size} · {tail}",
+ "@attMeta": {
+  "placeholders": {
+   "size": {
+    "type": "Object"
+   },
+   "tail": {
+    "type": "Object"
+   }
+  }
+ },
+ "dlProgress": "{pct}% · {rate} · {peers} peers",
+ "@dlProgress": {
+  "placeholders": {
+   "pct": {
+    "type": "Object"
+   },
+   "rate": {
+    "type": "Object"
+   },
+   "peers": {
+    "type": "Object"
+   }
+  }
+ },
+ "sigState": "状态 {s}",
+ "@sigState": {
+  "placeholders": {
+   "s": {
+    "type": "Object"
+   }
+  }
+ },
+ "filterRuleDesc": "{field} {mode} “{value}”",
+ "@filterRuleDesc": {
+  "placeholders": {
+   "field": {
+    "type": "Object"
+   },
+   "mode": {
+    "type": "Object"
+   },
+   "value": {
+    "type": "Object"
+   }
+  }
+ },
+ "errDmSelf": "不能和自己私聊",
+ "errNoKeyInfo": "还没有对方的密钥信息：先在同群聊里收到 TA 至少一条消息",
+ "errNameLen": "昵称长度需在 1..32 字符",
+ "errGroupNameLen": "群名长度需在 1..96 字节",
+ "errUrlScheme": "URL 必须以 http(s):// 开头",
+ "errManifestProtected": "这是群聊清单种子，请通过聊天页退群来移除",
+ "errNoResource": "该条目没有可下载的资源",
+ "errTextEmpty": "空消息或过长（≤32KB）",
+ "fabGroup": "群聊",
+ "inviteLink": "邀请链接",
+ "copyInviteLink": "复制磁力邀请链接",
+ "groupChat": "群聊"
+}

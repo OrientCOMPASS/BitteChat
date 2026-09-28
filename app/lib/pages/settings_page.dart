@@ -11,6 +11,7 @@ import '../core/prefs.dart';
 import '../models.dart';
 import '../widgets/avatar.dart';
 import 'home.dart';
+import '../core/l10n.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key, required this.prefs});
@@ -68,36 +69,40 @@ class _SettingsPageState extends State<SettingsPage> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setSheet) => AlertDialog(
-          title: Text(existing == null ? '添加过滤规则' : '编辑过滤规则'),
+          title: Text(existing == null ? L.t.addRule : L.t.editRule),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               DropdownButtonFormField<String>(
                 initialValue: field,
-                items: const [
-                  DropdownMenuItem(value: 'text', child: Text('消息内容')),
-                  DropdownMenuItem(value: 'author_name', child: Text('作者昵称')),
-                  DropdownMenuItem(value: 'author_pk', child: Text('作者公钥')),
+                items: [
+                  DropdownMenuItem(value: 'text', child: Text(L.t.fieldText)),
+                  DropdownMenuItem(
+                      value: 'author_name', child: Text(L.t.fieldName)),
+                  DropdownMenuItem(
+                      value: 'author_pk', child: Text(L.t.fieldPk)),
                 ],
                 onChanged: (v) => setSheet(() => field = v!),
               ),
               DropdownButtonFormField<String>(
                 initialValue: mode,
-                items: const [
-                  DropdownMenuItem(value: 'contains', child: Text('包含')),
-                  DropdownMenuItem(value: 'equals', child: Text('等于')),
-                  DropdownMenuItem(value: 'regex', child: Text('正则表达式')),
+                items: [
+                  DropdownMenuItem(
+                      value: 'contains', child: Text(L.t.modeContains)),
+                  DropdownMenuItem(
+                      value: 'equals', child: Text(L.t.modeEquals)),
+                  DropdownMenuItem(value: 'regex', child: Text(L.t.modeRegex)),
                 ],
                 onChanged: (v) => setSheet(() => mode = v!),
               ),
               TextField(
                 controller: valueCtrl,
-                decoration: const InputDecoration(
-                    labelText: '匹配值', border: OutlineInputBorder()),
+                decoration: InputDecoration(
+                    labelText: L.t.matchValue, border: OutlineInputBorder()),
               ),
               SwitchListTile(
                 value: caseSensitive,
-                title: const Text('区分大小写'),
+                title: Text(L.t.caseSensitive),
                 onChanged: (v) => setSheet(() => caseSensitive = v),
               ),
             ],
@@ -105,10 +110,10 @@ class _SettingsPageState extends State<SettingsPage> {
           actions: [
             TextButton(
                 onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('取消')),
+                child: Text(L.t.cancel)),
             FilledButton(
                 onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('保存')),
+                child: Text(L.t.save)),
           ],
         ),
       ),
@@ -123,10 +128,10 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _pickSeedSource(BuildContext context) async {
-    final labels = const {
-      SeedSource.brand: ('品牌蓝', Icons.branding_watermark_outlined),
-      SeedSource.wallpaper: ('壁纸自动取色', Icons.wallpaper),
-      SeedSource.custom: ('自定义颜色', Icons.palette_outlined),
+    final labels = {
+      SeedSource.brand: (L.t.seedBrand, Icons.branding_watermark_outlined),
+      SeedSource.wallpaper: (L.t.seedWallpaper, Icons.wallpaper),
+      SeedSource.custom: (L.t.seedCustom, Icons.palette_outlined),
     };
     await showModalBottomSheet<void>(
       context: context,
@@ -153,7 +158,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   await widget.prefs.save();
                 },
               ),
-            const SizedBox(height: 8),
+            SizedBox(height: 8),
           ],
         ),
       ),
@@ -161,7 +166,7 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _pickCustomColor(BuildContext context) async {
-    const swatches = [
+    final swatches = [
       0xFF2E7CF6,
       0xFFE5484D,
       0xFF30A46C,
@@ -176,7 +181,7 @@ class _SettingsPageState extends State<SettingsPage> {
     final picked = await showDialog<int>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('选择主题色'),
+        title: Text(L.t.pickColor),
         content: Wrap(
           spacing: 10,
           runSpacing: 10,
@@ -208,7 +213,7 @@ class _SettingsPageState extends State<SettingsPage> {
     try {
       final files = await FilePicker.pickFiles(
         type: FileType.image,
-        dialogTitle: '选择聊天背景图',
+        dialogTitle: L.t.pickWallpaper,
       );
       if (files.isEmpty) return;
       final srcPath = files.single.path;
@@ -218,8 +223,7 @@ class _SettingsPageState extends State<SettingsPage> {
       widget.prefs.wallpaperPath = dest;
       await widget.prefs.refreshWallpaperSeed();
       await widget.prefs.save();
-      messenger.showSnackBar(
-          const SnackBar(content: Text('背景已应用；若主题色来源为"壁纸取色"将同时更新')));
+      messenger.showSnackBar(SnackBar(content: Text(L.t.wallpaperApplied)));
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text('$e')));
     }
@@ -230,19 +234,19 @@ class _SettingsPageState extends State<SettingsPage> {
     final name = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('昵称'),
+        title: Text(L.t.editName),
         content: TextField(
           controller: controller,
           autofocus: true,
           maxLength: 32,
-          decoration: const InputDecoration(border: OutlineInputBorder()),
+          decoration: InputDecoration(border: OutlineInputBorder()),
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+              onPressed: () => Navigator.pop(ctx), child: Text(L.t.cancel)),
           FilledButton(
               onPressed: () => Navigator.pop(ctx, controller.text),
-              child: const Text('保存')),
+              child: Text(L.t.save)),
         ],
       ),
     );
@@ -260,24 +264,24 @@ class _SettingsPageState extends State<SettingsPage> {
     final theme = Theme.of(context);
     final id = _identity;
     return Scaffold(
-      appBar: AppBar(title: const Text('设置')),
+      appBar: AppBar(title: Text(L.t.settings)),
       body: ListView(
         children: [
-          const SizedBox(height: 8),
+          SizedBox(height: 8),
           if (id != null)
             ListTile(
               leading: KeyAvatar(keyHex: id.pk, name: id.name, size: 48),
               title: Text(id.name,
                   style: const TextStyle(fontWeight: FontWeight.w600)),
-              subtitle: Text(
-                  '公钥 ${id.pk.length > 16 ? '${id.pk.substring(0, 16)}…' : id.pk}'),
-              trailing: const Icon(Icons.edit),
+              subtitle: Text(L.t.pubkeyLabel(
+                  id.pk.length > 16 ? '${id.pk.substring(0, 16)}…' : id.pk)),
+              trailing: Icon(Icons.edit),
               onTap: _editName,
             )
           else
-            const ListTile(
+            ListTile(
               leading: Icon(Icons.person_off),
-              title: Text('原生核心不可用（演示模式）'),
+              title: Text(L.t.coreUnavailableShort),
             ),
           const Divider(),
           Padding(
@@ -285,20 +289,20 @@ class _SettingsPageState extends State<SettingsPage> {
             child: Row(
               children: [
                 Expanded(
-                    child: Text('消息过滤规则', style: theme.textTheme.titleSmall)),
+                    child: Text(L.t.filterRules,
+                        style: theme.textTheme.titleSmall)),
                 TextButton.icon(
-                  icon: const Icon(Icons.add, size: 18),
-                  label: const Text('添加'),
+                  icon: Icon(Icons.add, size: 18),
+                  label: Text(L.t.add),
                   onPressed: () => _editRule(null),
                 ),
               ],
             ),
           ),
           if (_rules.isEmpty)
-            const Padding(
+            Padding(
               padding: EdgeInsets.symmetric(horizontal: 16),
-              child: Text('无规则。可按昵称/公钥/内容屏蔽恶意消息；'
-                  '被屏蔽消息在聊天中折叠显示。'),
+              child: Text(L.t.noRules + L.t.noRules2),
             ),
           for (final r in _rules)
             ListTile(
@@ -311,17 +315,17 @@ class _SettingsPageState extends State<SettingsPage> {
                 },
               ),
               title: Text(r.describe()),
-              subtitle: Text('#${r.id}'
-                  '${r.caseSensitive ? " · 区分大小写" : ""}'),
+              subtitle: Text(
+                  '#${r.id}${r.caseSensitive ? L.t.caseSensitiveMark : ''}'),
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   IconButton(
-                    icon: const Icon(Icons.edit_outlined, size: 18),
+                    icon: Icon(Icons.edit_outlined, size: 18),
                     onPressed: () => _editRule(r),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.delete_outline, size: 18),
+                    icon: Icon(Icons.delete_outline, size: 18),
                     onPressed: () {
                       _rules.remove(r);
                       _saveRules();
@@ -333,23 +337,23 @@ class _SettingsPageState extends State<SettingsPage> {
           const Divider(),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Text('外观', style: theme.textTheme.titleSmall),
+            child: Text(L.t.appearance, style: theme.textTheme.titleSmall),
           ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: SegmentedButton<ThemeModePref>(
-              segments: const [
+              segments: [
                 ButtonSegment(
                     value: ThemeModePref.system,
-                    label: Text('跟随系统'),
+                    label: Text(L.t.themeSystem),
                     icon: Icon(Icons.brightness_auto, size: 18)),
                 ButtonSegment(
                     value: ThemeModePref.light,
-                    label: Text('浅色'),
+                    label: Text(L.t.themeLight),
                     icon: Icon(Icons.light_mode, size: 18)),
                 ButtonSegment(
                     value: ThemeModePref.dark,
-                    label: Text('深色'),
+                    label: Text(L.t.themeDark),
                     icon: Icon(Icons.dark_mode, size: 18)),
               ],
               selected: {widget.prefs.themeMode},
@@ -359,14 +363,14 @@ class _SettingsPageState extends State<SettingsPage> {
               },
             ),
           ),
-          const SizedBox(height: 4),
+          SizedBox(height: 4),
           ListTile(
-            leading: const Icon(Icons.palette_outlined),
-            title: const Text('主题色来源'),
-            subtitle: Text(const {
-              SeedSource.brand: '品牌蓝',
-              SeedSource.wallpaper: '壁纸自动取色',
-              SeedSource.custom: '自定义颜色',
+            leading: Icon(Icons.palette_outlined),
+            title: Text(L.t.seedSource),
+            subtitle: Text({
+              SeedSource.brand: L.t.seedBrand,
+              SeedSource.wallpaper: L.t.seedWallpaper,
+              SeedSource.custom: L.t.seedCustom,
             }[widget.prefs.seedSource]!),
             trailing: Container(
               width: 22,
@@ -379,16 +383,17 @@ class _SettingsPageState extends State<SettingsPage> {
             onTap: () => _pickSeedSource(context),
           ),
           ListTile(
-            leading: const Icon(Icons.image_outlined),
-            title: const Text('聊天背景图'),
+            leading: Icon(Icons.image_outlined),
+            title: Text(L.t.wallpaper),
             subtitle: Text(widget.prefs.wallpaperPath == null
-                ? '未设置'
-                : '不透明度 ${(widget.prefs.wallpaperOpacity * 100).round()}%'
-                    '${widget.prefs.wallpaperBlur ? " · 已模糊" : ""}'),
+                ? L.t.wallpaperNone
+                : L.t.wallpaperSet(
+                        (widget.prefs.wallpaperOpacity * 100).round()) +
+                    (widget.prefs.wallpaperBlur ? L.t.blurredMark : '')),
             trailing: widget.prefs.wallpaperPath != null
                 ? IconButton(
-                    tooltip: '清除',
-                    icon: const Icon(Icons.delete_outline),
+                    tooltip: L.t.clear,
+                    icon: Icon(Icons.delete_outline),
                     onPressed: () async {
                       widget.prefs.wallpaperPath = null;
                       await widget.prefs.refreshWallpaperSeed();
@@ -400,8 +405,8 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
           if (widget.prefs.wallpaperPath != null)
             ListTile(
-              leading: const Icon(Icons.blur_on),
-              title: const Text('背景模糊'),
+              leading: Icon(Icons.blur_on),
+              title: Text(L.t.wallpaperBlur),
               trailing: Switch(
                 value: widget.prefs.wallpaperBlur,
                 onChanged: (v) {
@@ -415,7 +420,7 @@ class _SettingsPageState extends State<SettingsPage> {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Row(
                 children: [
-                  const Text('不透明度'),
+                  Text(L.t.opacity),
                   Expanded(
                     child: Slider(
                       value: widget.prefs.wallpaperOpacity,
@@ -432,38 +437,36 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
           const Divider(),
           ListTile(
-            leading: const Icon(Icons.info_outline),
-            title: const Text('核心版本'),
-            subtitle: Text(
-                '${_info['version'] ?? '?'} · 引擎: ${_info['engine'] ?? '?'}'),
+            leading: Icon(Icons.info_outline),
+            title: Text(L.t.coreVersion),
+            subtitle: Text(L.t.coreVersionValue(
+                '${_info['version'] ?? '?'}', '${_info['engine'] ?? '?'}')),
           ),
           ListTile(
-            leading: const Icon(Icons.folder_outlined),
-            title: const Text('数据目录'),
+            leading: Icon(Icons.folder_outlined),
+            title: Text(L.t.dataDir),
             subtitle: Text(_info['data_dir'] ?? _api.dataDir,
                 style: theme.textTheme.bodySmall),
           ),
           ListTile(
-            leading: const Icon(Icons.shield_outlined),
-            title: const Text('消息安全'),
+            leading: Icon(Icons.shield_outlined),
+            title: Text(L.t.msgSecurity),
             subtitle: Text(
-              '每条消息使用你的 Ed25519 密钥签名并链接父消息（git 式哈希链）。'
-              '私钥仅保存在本机，永不外传。',
+              L.t.msgSecurityDesc + L.t.privKeyLocal,
               style: theme.textTheme.bodySmall
                   ?.copyWith(color: theme.colorScheme.outline),
             ),
           ),
           const Divider(),
-          const SizedBox(height: 8),
+          SizedBox(height: 8),
           const Divider(),
-          const AboutListTile(
+          AboutListTile(
             icon: Icon(Icons.favorite_outline),
             applicationName: 'BitteChat',
             applicationVersion: '0.4.0',
             aboutBoxChildren: [
               Text(
-                '去中心化 BitTorrent 群聊：一个种子就是一个群，'
-                '消息以哈希链方式在 BT/DHT 网络中保存与传播，无法被单点篡改。\n\n'
+                '${L.t.aboutDesc}${L.t.aboutDesc2}'
                 'Flutter + Rust + libtorrent · Unlicense',
               ),
             ],

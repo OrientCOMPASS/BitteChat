@@ -1,0 +1,497 @@
+{
+ "@@locale": "en",
+ "chatTab": "Chats",
+ "btTab": "Torrents",
+ "rssTab": "Feeds",
+ "settings": "Settings",
+ "identitySettings": "Identity",
+ "demoMode": "Demo mode",
+ "demoHint": "libbitte_core.so not loaded.\nInstall a CI-built Android APK for full functionality.",
+ "coreUnavailable": "Native core unavailable (demo mode)",
+ "coreUnavailableShort": "Native core unavailable (demo mode)",
+ "installApkHint": "Native core unavailable: install the CI-built APK",
+ "noGroups": "No groups yet",
+ "noGroupsHint": "One torrent = one group.\nCreate a group or join with an invite magnet.",
+ "createGroup": "Create group",
+ "joinGroup": "Join group",
+ "groupName": "Group name",
+ "groupNameHint": "e.g. BT enthusiasts",
+ "create": "Create",
+ "join": "Join",
+ "cancel": "Cancel",
+ "confirm": "OK",
+ "save": "Save",
+ "delete": "Delete",
+ "refresh": "Refresh",
+ "refreshAll": "Refresh all",
+ "paste": "Paste",
+ "copyLink": "Copy link",
+ "done": "Done",
+ "inviteMagnet": "Invite magnet link",
+ "magnetHint": "magnet:?xt=urn:btih:...",
+ "alreadyInGroup": "Already in this group",
+ "fetchingManifest": "Fetching group manifest from the BT network… a member must be online seeding",
+ "groupCreated": "Group created 🎉",
+ "inviteHint": "Share the invite link (the peer must reach you or any online member's swarm)",
+ "joinViaPaste": "Paste or scan someone's invite link",
+ "createGroupDesc": "Generate an invite magnet to share",
+ "online": "online",
+ "noMessages": "No messages",
+ "syncingMissing": "Syncing: {n} messages missing",
+ "historySynced": "History synced · {n} peers online",
+ "dmEncrypted": "End-to-end encrypted DM (X25519 + ChaCha20-Poly1305)",
+ "resync": "Resync",
+ "resyncStarted": "Sync requested from DHT and neighbours",
+ "groupDetail": "Group details",
+ "genesisTitle": "The hash chain of \"{name}\" starts here",
+ "genesisSub": "Every message is signed and links its parents; tampering is rejected by the network",
+ "emptyGroupHint": "The group is new and empty\nSay something 👇",
+ "inputHint": "Say something… (messages are signed into the hash chain)",
+ "sendFileTip": "Send file (seed)",
+ "sending": "Seeding and sending…",
+ "sentSeeding": "Sent, seeding: {h}",
+ "downloadViaBt": "Download via BT",
+ "downloadStarted": "Downloading \"{name}\" (chat transfer, hidden from the BT page)",
+ "anonymous": "anon",
+ "copyMessage": "Copy message text",
+ "copyMessageId": "Copy message ID (SHA-1)",
+ "copied": "Copied",
+ "copiedId": "Message ID copied",
+ "copiedInvite": "Copied: peer can paste it via Join group",
+ "signatureInfo": "Signature info",
+ "sigDetail": "Author key {pk}\nState {state}",
+ "sigConfirmed": "confirmed (stored in DHT)",
+ "sigPending": "pending",
+ "blockAuthor": "Block this author",
+ "blockAuthorHint": "Adds a filter rule (manage in Settings)",
+ "blockedAuthor": "Blocked {name}",
+ "blockedCount": "{n} blocked messages",
+ "startDm": "Start private chat",
+ "startDmHint": "End-to-end encrypted channel with {name}",
+ "sysCreate": "🎉 {name} created group \"{detail}\"",
+ "sysJoin": "👋 {name} joined the group",
+ "sysLeave": "{name} left the group",
+ "sysRename": "📛 {name} renamed the group to \"{detail}\"",
+ "sysDmInvite": "sent a DM invite (auto-join)",
+ "sysGeneric": "[system] {code} {detail}",
+ "sysMsg": "System message",
+ "chunkSyncing": "〔long message chunks syncing…〕",
+ "renameGroup": "Rename group",
+ "renameBroadcast": "Broadcast as a signed system message",
+ "leaveGroup": "Leave group (keep local history)",
+ "leaveGroupQ": "Leave group?",
+ "leaveGroupHint": "Stops seeding the manifest; local history is kept.",
+ "leave": "Leave",
+ "members": "Online members",
+ "manifestTorrent": "Manifest torrent",
+ "msgCount": "Messages",
+ "headsCount": "Heads",
+ "missingCount": "Missing",
+ "headSeq": "Head seq",
+ "p2pPeers": "P2P peers",
+ "chatCapable": "chat-capable",
+ "plainBtClient": "plain BT client",
+ "createdBy": "Created {date} · by {name}",
+ "noBtTasks": "No tasks",
+ "noBtTasksHint": "Use the + button to add magnets or .torrent files",
+ "addMagnet": "Add magnet link",
+ "importTorrent": "Import .torrent file",
+ "added": "Added",
+ "addedTorrentFile": "Torrent file added",
+ "magnetCopied": "Magnet link copied",
+ "copyMagnet": "Copy magnet link",
+ "pause": "Pause",
+ "resume": "Resume",
+ "recheck": "Recheck",
+ "deleteTaskQ": "Delete \"{name}\"?",
+ "deleteTaskHint": "Choose whether downloaded files are deleted too.",
+ "deleteTaskOnly": "Remove task only",
+ "deleteTaskFiles": "Remove task + files",
+ "stateSeeding": "Seeding",
+ "stateDownloading": "Downloading",
+ "stateMetadata": "Fetching metadata…",
+ "stateChecking": "Checking",
+ "stateFinished": "Finished",
+ "stateQueued": "Queued",
+ "statePaused": "Paused",
+ "showChatTorrents": "Show chat-internal torrents",
+ "hideChatTorrents": "Hide chat-internal torrents",
+ "rateLimits": "Rate limits",
+ "rateLimitsHint": "Rate limits (KB/s, empty or 0 = unlimited)",
+ "upload": "Upload",
+ "download": "Download",
+ "limitsApplied": "Limits applied",
+ "filesCount": "Files ({n})",
+ "peersCount": "Connected peers ({n})",
+ "noPeers": "No peers",
+ "noMetadata": "Metadata not available yet",
+ "savePath": "Save path: {p}",
+ "noFeeds": "No feeds yet",
+ "noFeedsHint": "RSS 2.0 & Atom supported; entries with magnets/torrents can go straight to BT",
+ "addFeed": "Add feed",
+ "feedAdded": "Added, fetching in background…",
+ "refreshingAll": "Refreshing all feeds",
+ "markAllRead": "Mark all read",
+ "unreadOnly": "Unread only",
+ "showAll": "Show all",
+ "noItems": "No items (fetch may still be running)",
+ "noUnread": "No unread items",
+ "untitled": "(untitled)",
+ "downloadToBt": "Send to BT",
+ "queuedBt": "Queued; see the Torrents tab shortly",
+ "addedQueue": "Added to download queue",
+ "article": "Article",
+ "openBrowser": "Open in browser",
+ "hasBtResource": "This entry ships a BT resource",
+ "noContent": "(no content)",
+ "lastFetch": "Last fetch {t}",
+ "notFetched": "Not fetched yet",
+ "deleteFeedQ": "Delete \"{name}\"?",
+ "deleteFeedHint": "All cached items of this feed are deleted too.",
+ "coreVersion": "Core version",
+ "dataDir": "Data directory",
+ "msgSecurity": "Message security",
+ "msgSecurityDesc": "Every message is signed with your Ed25519 key and links its parents (git-style hash chain).",
+ "privKeyLocal": "Private keys never leave this device.",
+ "aboutDesc": "Decentralized BitTorrent group chat: one torrent = one group;",
+ "aboutDesc2": "messages are stored and spread as hash chains over BT/DHT — no single point can tamper.\n\n",
+ "appearance": "Appearance",
+ "themeSystem": "System",
+ "themeLight": "Light",
+ "themeDark": "Dark",
+ "seedSource": "Theme seed source",
+ "seedBrand": "Brand blue",
+ "seedWallpaper": "Wallpaper auto-extract",
+ "seedCustom": "Custom color",
+ "pickColor": "Pick a theme color",
+ "wallpaper": "Chat wallpaper",
+ "wallpaperNone": "Not set",
+ "wallpaperSet": "Opacity {p}%",
+ "wallpaperBlur": "Blur wallpaper",
+ "opacity": "Opacity",
+ "pickWallpaper": "Pick a wallpaper",
+ "wallpaperApplied": "Wallpaper applied; theme seed updates if set to wallpaper",
+ "filterRules": "Message filter rules",
+ "addRule": "Add rule",
+ "editRule": "Edit rule",
+ "add": "Add",
+ "noRules": "No rules. Block malicious messages by name/key/content;",
+ "noRules2": "blocked messages collapse in chat.",
+ "fieldText": "Message text",
+ "fieldName": "Author name",
+ "fieldPk": "Author key",
+ "modeContains": "contains",
+ "modeEquals": "equals",
+ "modeRegex": "regex",
+ "matchValue": "Match value",
+ "caseSensitive": "Case sensitive",
+ "caseSensitiveMark": " · case-sensitive",
+ "clear": "Clear",
+ "today": "Today",
+ "yesterday": "Yesterday",
+ "mon": "Monday",
+ "tue": "Tuesday",
+ "wed": "Wednesday",
+ "thu": "Thursday",
+ "fri": "Friday",
+ "sat": "Saturday",
+ "sun": "Sunday",
+ "videoFail": "Cannot play this video",
+ "tapPlayVideo": "Tap to play video",
+ "previewText": "Preview text",
+ "openWith": "Open with another app",
+ "noAppForFile": "No app can open this file",
+ "fileTooBig": "File > 2MB; use \"open with another app\"",
+ "notPlainText": "Not a plain-text file",
+ "kindImage": "Image",
+ "kindAudio": "Audio",
+ "kindVideo": "Video",
+ "kindText": "Text",
+ "kindFile": "File",
+ "pickFileToSend": "Pick a file to send",
+ "pausedMark": " · paused",
+ "blurredMark": " · blurred",
+ "tasksCount": "{n} tasks",
+ "editName": "Nickname",
+ "pubkeyLabel": "Key {pk}",
+ "identity": "Identity",
+ "@syncingMissing": {
+  "placeholders": {
+   "n": {
+    "type": "Object"
+   }
+  }
+ },
+ "@historySynced": {
+  "placeholders": {
+   "n": {
+    "type": "Object"
+   }
+  }
+ },
+ "@genesisTitle": {
+  "placeholders": {
+   "name": {
+    "type": "Object"
+   }
+  }
+ },
+ "@sentSeeding": {
+  "placeholders": {
+   "h": {
+    "type": "Object"
+   }
+  }
+ },
+ "@downloadStarted": {
+  "placeholders": {
+   "name": {
+    "type": "Object"
+   }
+  }
+ },
+ "@sigDetail": {
+  "placeholders": {
+   "pk": {
+    "type": "Object"
+   },
+   "state": {
+    "type": "Object"
+   }
+  }
+ },
+ "@blockedAuthor": {
+  "placeholders": {
+   "name": {
+    "type": "Object"
+   }
+  }
+ },
+ "@blockedCount": {
+  "placeholders": {
+   "n": {
+    "type": "Object"
+   }
+  }
+ },
+ "@startDmHint": {
+  "placeholders": {
+   "name": {
+    "type": "Object"
+   }
+  }
+ },
+ "@sysCreate": {
+  "placeholders": {
+   "name": {
+    "type": "Object"
+   },
+   "detail": {
+    "type": "Object"
+   }
+  }
+ },
+ "@sysJoin": {
+  "placeholders": {
+   "name": {
+    "type": "Object"
+   }
+  }
+ },
+ "@sysLeave": {
+  "placeholders": {
+   "name": {
+    "type": "Object"
+   }
+  }
+ },
+ "@sysRename": {
+  "placeholders": {
+   "name": {
+    "type": "Object"
+   },
+   "detail": {
+    "type": "Object"
+   }
+  }
+ },
+ "@sysGeneric": {
+  "placeholders": {
+   "code": {
+    "type": "Object"
+   },
+   "detail": {
+    "type": "Object"
+   }
+  }
+ },
+ "@createdBy": {
+  "placeholders": {
+   "date": {
+    "type": "Object"
+   },
+   "name": {
+    "type": "Object"
+   }
+  }
+ },
+ "@deleteTaskQ": {
+  "placeholders": {
+   "name": {
+    "type": "Object"
+   }
+  }
+ },
+ "@filesCount": {
+  "placeholders": {
+   "n": {
+    "type": "Object"
+   }
+  }
+ },
+ "@peersCount": {
+  "placeholders": {
+   "n": {
+    "type": "Object"
+   }
+  }
+ },
+ "@savePath": {
+  "placeholders": {
+   "p": {
+    "type": "Object"
+   }
+  }
+ },
+ "@lastFetch": {
+  "placeholders": {
+   "t": {
+    "type": "Object"
+   }
+  }
+ },
+ "@deleteFeedQ": {
+  "placeholders": {
+   "name": {
+    "type": "Object"
+   }
+  }
+ },
+ "@wallpaperSet": {
+  "placeholders": {
+   "p": {
+    "type": "Object"
+   }
+  }
+ },
+ "@tasksCount": {
+  "placeholders": {
+   "n": {
+    "type": "Object"
+   }
+  }
+ },
+ "@pubkeyLabel": {
+  "placeholders": {
+   "pk": {
+    "type": "Object"
+   }
+  }
+ },
+ "onlinePeers": "{n} online",
+ "@onlinePeers": {
+  "placeholders": {
+   "n": {
+    "type": "Object"
+   }
+  }
+ },
+ "chatCapableMark": " · chat-capable",
+ "coreVersionValue": "{v} · engine: {e}",
+ "@coreVersionValue": {
+  "placeholders": {
+   "v": {
+    "type": "Object"
+   },
+   "e": {
+    "type": "Object"
+   }
+  }
+ },
+ "torrentError": "Torrent error: {e}",
+ "@torrentError": {
+  "placeholders": {
+   "e": {
+    "type": "Object"
+   }
+  }
+ },
+ "rssError": "Feed error: {e}",
+ "@rssError": {
+  "placeholders": {
+   "e": {
+    "type": "Object"
+   }
+  }
+ },
+ "downloaded": "downloaded",
+ "attMeta": "{size} · {tail}",
+ "@attMeta": {
+  "placeholders": {
+   "size": {
+    "type": "Object"
+   },
+   "tail": {
+    "type": "Object"
+   }
+  }
+ },
+ "dlProgress": "{pct}% · {rate} · {peers} peers",
+ "@dlProgress": {
+  "placeholders": {
+   "pct": {
+    "type": "Object"
+   },
+   "rate": {
+    "type": "Object"
+   },
+   "peers": {
+    "type": "Object"
+   }
+  }
+ },
+ "sigState": "State: {s}",
+ "@sigState": {
+  "placeholders": {
+   "s": {
+    "type": "Object"
+   }
+  }
+ },
+ "filterRuleDesc": "{field} {mode} “{value}”",
+ "@filterRuleDesc": {
+  "placeholders": {
+   "field": {
+    "type": "Object"
+   },
+   "mode": {
+    "type": "Object"
+   },
+   "value": {
+    "type": "Object"
+   }
+  }
+ },
+ "errDmSelf": "You cannot DM yourself",
+ "errNoKeyInfo": "No key material for this peer yet: receive at least one message from them in a shared group first",
+ "errNameLen": "Nickname must be 1..32 characters",
+ "errGroupNameLen": "Group name must be 1..96 bytes",
+ "errUrlScheme": "URL must start with http(s)://",
+ "errManifestProtected": "This is a group manifest; leave the group from the Chats tab instead",
+ "errNoResource": "This entry has no downloadable resource",
+ "errTextEmpty": "Empty or too long (≤32KB)",
+ "fabGroup": "Groups",
+ "inviteLink": "Invite link",
+ "copyInviteLink": "Copy invite magnet",
+ "groupChat": "Group chat"
+}

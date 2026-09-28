@@ -1,3 +1,4 @@
+import 'core/l10n.dart';
 // Data models mirroring the Rust core's JSON schemas. Parsing is defensive:
 // unknown/missing fields fall back to safe defaults so a core upgrade never
 // hard-crashes the UI.
@@ -490,15 +491,15 @@ class FilterRule {
       );
 
   String describe() {
-    const fields = {
-      'author_name': '昵称',
-      'author_pk': '公钥',
-      'text': '内容',
+    final fields = {
+      'author_name': L.t.fieldName,
+      'author_pk': L.t.fieldPk,
+      'text': L.t.fieldText,
     };
-    const modes = {
-      'contains': '包含',
-      'equals': '等于',
-      'regex': '正则',
+    final modes = {
+      'contains': L.t.modeContains,
+      'equals': L.t.modeEquals,
+      'regex': L.t.modeRegex,
     };
     return '${fields[field] ?? field} ${modes[mode] ?? mode} "$value"';
   }

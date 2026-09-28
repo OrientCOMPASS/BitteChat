@@ -1,6 +1,9 @@
 // Widget tests runnable without the native core (demo mode).
 
 import 'package:bittechat/core/api.dart';
+import 'package:bittechat/core/l10n.dart';
+import 'package:bittechat/l10n/app_localizations_en.dart';
+import 'package:bittechat/l10n/app_localizations_zh.dart';
 import 'package:bittechat/main.dart';
 import 'package:bittechat/core/prefs.dart';
 import 'package:bittechat/models.dart';
@@ -18,11 +21,13 @@ void main() {
     final prefs = UiPrefs(File('${api.dataDir}/ui_prefs_test.json'));
     await tester.pumpWidget(BitteChatApp(prefs: prefs));
     await tester.pumpAndSettle();
-    expect(find.widgetWithText(NavigationDestination, '聊天'), findsOneWidget);
-    expect(find.widgetWithText(NavigationDestination, '种子'), findsOneWidget);
-    expect(find.widgetWithText(NavigationDestination, '订阅'), findsOneWidget);
+    // test platform locale is en_US -> English UI
+    expect(find.widgetWithText(NavigationDestination, 'Chats'), findsOneWidget);
+    expect(
+        find.widgetWithText(NavigationDestination, 'Torrents'), findsOneWidget);
+    expect(find.widgetWithText(NavigationDestination, 'Feeds'), findsOneWidget);
     // demo hint on the chat tab
-    expect(find.text('演示模式'), findsOneWidget);
+    expect(find.text('Demo mode'), findsOneWidget);
   });
 
   testWidgets('avatar renders initial with stable color', (tester) async {
@@ -74,16 +79,21 @@ void main() {
     await tester.pumpWidget(MaterialApp(
       home: Scaffold(body: MessageBubble(message: m, showAuthor: false)),
     ));
-    expect(find.textContaining('创建了群聊'), findsOneWidget);
+    expect(find.textContaining('created group'), findsOneWidget);
   });
 
-  test('time formatting labels', () {
+  test('time formatting labels follow locale', () {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day, 9, 5);
-    expect(formatDayLabel(today.millisecondsSinceEpoch), '今天');
     final yesterday = today.subtract(const Duration(days: 1));
+    L.debugSet(AppLocalizationsZh());
+    expect(formatDayLabel(today.millisecondsSinceEpoch), '今天');
     expect(formatDayLabel(yesterday.millisecondsSinceEpoch), '昨天');
+    L.debugSet(AppLocalizationsEn());
+    expect(formatDayLabel(today.millisecondsSinceEpoch), 'Today');
+    expect(formatDayLabel(yesterday.millisecondsSinceEpoch), 'Yesterday');
     expect(formatClock(today.millisecondsSinceEpoch), '09:05');
     expect(formatListTime(0), '');
+    L.debugSet(null);
   });
 }

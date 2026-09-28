@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
+import '../core/l10n.dart';
 
 class VideoPlayerPage extends StatefulWidget {
   const VideoPlayerPage({super.key, required this.path, required this.title});
@@ -57,10 +58,11 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
         title: Text(widget.title, maxLines: 1, overflow: TextOverflow.ellipsis),
       ),
       body: _failed
-          ? const Center(
-              child: Text('无法播放该视频', style: TextStyle(color: Colors.white70)))
+          ? Center(
+              child:
+                  Text(L.t.videoFail, style: TextStyle(color: Colors.white70)))
           : c == null
-              ? const Center(child: CircularProgressIndicator())
+              ? Center(child: CircularProgressIndicator())
               : Center(
                   child: AspectRatio(
                     aspectRatio: c.value.aspectRatio,
@@ -139,13 +141,13 @@ class _TextPreviewPageState extends State<TextPreviewPage> {
       final f = File(widget.path);
       final size = await f.length();
       if (size > 2 * 1024 * 1024) {
-        setState(() => _error = '文件超过 2MB，请使用“其他应用打开”');
+        setState(() => _error = L.t.fileTooBig);
         return;
       }
       final bytes = await f.readAsBytes();
       // naive binary sniff: NUL byte means not text
       if (bytes.take(4096).contains(0)) {
-        setState(() => _error = '该文件不是纯文本');
+        setState(() => _error = L.t.notPlainText);
         return;
       }
       setState(() => _content = String.fromCharCodes(bytes));
@@ -167,7 +169,7 @@ class _TextPreviewPageState extends State<TextPreviewPage> {
               child: Text(_error!),
             ))
           : _content == null
-              ? const Center(child: CircularProgressIndicator())
+              ? Center(child: CircularProgressIndicator())
               : SingleChildScrollView(
                   padding: const EdgeInsets.all(16),
                   child: SelectableText(

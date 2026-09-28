@@ -9,6 +9,7 @@ import 'package:flutter/services.dart';
 import '../core/api.dart';
 import '../models.dart';
 import 'home.dart';
+import '../core/l10n.dart';
 
 class BtTab extends StatefulWidget {
   const BtTab({super.key});
@@ -58,20 +59,20 @@ class _BtTabState extends State<BtTab> {
     final magnet = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('添加磁力链接'),
+        title: Text(L.t.addMagnet),
         content: TextField(
           controller: controller,
           autofocus: true,
           maxLines: 4,
-          decoration: const InputDecoration(
-            hintText: 'magnet:?xt=urn:btih:...',
+          decoration: InputDecoration(
+            hintText: L.t.magnetHint,
             border: OutlineInputBorder(),
           ),
         ),
         actions: [
           TextButton.icon(
-            icon: const Icon(Icons.content_paste, size: 16),
-            label: const Text('粘贴'),
+            icon: Icon(Icons.content_paste, size: 16),
+            label: Text(L.t.paste),
             onPressed: () async {
               final data = await Clipboard.getData(Clipboard.kTextPlain);
               if (data?.text != null) controller.text = data!.text!;
@@ -79,11 +80,11 @@ class _BtTabState extends State<BtTab> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('取消'),
+            child: Text(L.t.cancel),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, controller.text),
-            child: const Text('添加'),
+            child: Text(L.t.add),
           ),
         ],
       ),
@@ -94,7 +95,7 @@ class _BtTabState extends State<BtTab> {
     try {
       _api.btAdd(magnet.trim());
       _reload();
-      messenger.showSnackBar(const SnackBar(content: Text('已添加')));
+      messenger.showSnackBar(SnackBar(content: Text(L.t.added)));
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text('$e')));
     }
@@ -114,7 +115,7 @@ class _BtTabState extends State<BtTab> {
       try {
         _api.btAddFile(bytes, name: file.name);
         _reload();
-        messenger.showSnackBar(const SnackBar(content: Text('已添加种子文件')));
+        messenger.showSnackBar(SnackBar(content: Text(L.t.addedTorrentFile)));
       } catch (e) {
         messenger.showSnackBar(SnackBar(content: Text('$e')));
       }
@@ -128,10 +129,10 @@ class _BtTabState extends State<BtTab> {
     final theme = Theme.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('种子'),
+        title: Text(L.t.btTab),
         actions: [
           IconButton(
-            tooltip: _includeChat ? '隐藏聊天内部种子' : '显示聊天内部种子',
+            tooltip: _includeChat ? L.t.hideChatTorrents : L.t.showChatTorrents,
             icon: Icon(_includeChat
                 ? Icons.visibility
                 : Icons.visibility_off_outlined),
@@ -141,13 +142,13 @@ class _BtTabState extends State<BtTab> {
             },
           ),
           IconButton(
-            tooltip: '传输限速',
-            icon: const Icon(Icons.speed),
+            tooltip: L.t.rateLimits,
+            icon: Icon(Icons.speed),
             onPressed: _openLimitsSheet,
           ),
           IconButton(
-            tooltip: '刷新',
-            icon: const Icon(Icons.refresh),
+            tooltip: L.t.refresh,
+            icon: Icon(Icons.refresh),
             onPressed: _reload,
           ),
         ],
@@ -167,12 +168,12 @@ class _BtTabState extends State<BtTab> {
                       children: [
                         Icon(Icons.cloud_download_outlined,
                             size: 64, color: theme.colorScheme.outlineVariant),
-                        const SizedBox(height: 12),
-                        Text('暂无任务',
+                        SizedBox(height: 12),
+                        Text(L.t.noBtTasks,
                             style: theme.textTheme.bodyLarge
                                 ?.copyWith(color: theme.colorScheme.outline)),
-                        const SizedBox(height: 4),
-                        Text('点击右下角按钮添加磁力链接或种子文件',
+                        SizedBox(height: 4),
+                        Text(L.t.noBtTasksHint,
                             style: theme.textTheme.bodySmall
                                 ?.copyWith(color: theme.colorScheme.outline)),
                       ],
@@ -198,7 +199,7 @@ class _BtTabState extends State<BtTab> {
                             ClipboardData(text: _torrents[i].magnet));
                         if (context.mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('磁力链接已复制')));
+                              SnackBar(content: Text(L.t.magnetCopied)));
                         }
                       },
                     ),
@@ -208,7 +209,7 @@ class _BtTabState extends State<BtTab> {
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _showAddSheet(),
-        child: const Icon(Icons.add),
+        child: Icon(Icons.add),
       ),
     );
   }
@@ -243,31 +244,30 @@ class _BtTabState extends State<BtTab> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('传输限速（KB/s，留空或 0 为不限速）',
-                style: Theme.of(ctx).textTheme.titleSmall),
-            const SizedBox(height: 12),
+            Text(L.t.rateLimitsHint, style: Theme.of(ctx).textTheme.titleSmall),
+            SizedBox(height: 12),
             Row(
               children: [
                 Expanded(
                   child: TextField(
                     controller: upCtrl,
                     keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                        labelText: '上传', border: OutlineInputBorder()),
+                    decoration: InputDecoration(
+                        labelText: L.t.upload, border: OutlineInputBorder()),
                   ),
                 ),
-                const SizedBox(width: 12),
+                SizedBox(width: 12),
                 Expanded(
                   child: TextField(
                     controller: downCtrl,
                     keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                        labelText: '下载', border: OutlineInputBorder()),
+                    decoration: InputDecoration(
+                        labelText: L.t.download, border: OutlineInputBorder()),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 16),
+            SizedBox(height: 16),
             FilledButton(
               onPressed: () {
                 int parse(TextEditingController c) {
@@ -279,12 +279,12 @@ class _BtTabState extends State<BtTab> {
                   _api.btSetLimits(up: parse(upCtrl), down: parse(downCtrl));
                   Navigator.pop(ctx);
                   ScaffoldMessenger.of(context)
-                      .showSnackBar(const SnackBar(content: Text('限速已应用')));
+                      .showSnackBar(SnackBar(content: Text(L.t.limitsApplied)));
                 } catch (e) {
                   showError(context, e);
                 }
               },
-              child: const Text('保存'),
+              child: Text(L.t.save),
             ),
           ],
         ),
@@ -303,22 +303,22 @@ class _BtTabState extends State<BtTab> {
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              leading: const Icon(Icons.add_link),
-              title: const Text('添加磁力链接'),
+              leading: Icon(Icons.add_link),
+              title: Text(L.t.addMagnet),
               onTap: () {
                 Navigator.pop(ctx);
                 _addMagnet();
               },
             ),
             ListTile(
-              leading: const Icon(Icons.upload_file),
-              title: const Text('导入种子文件 (.torrent)'),
+              leading: Icon(Icons.upload_file),
+              title: Text(L.t.importTorrent),
               onTap: () {
                 Navigator.pop(ctx);
                 _addTorrentFile();
               },
             ),
-            const SizedBox(height: 8),
+            SizedBox(height: 8),
           ],
         ),
       ),
@@ -343,7 +343,7 @@ class _StatsBar extends StatelessWidget {
             label: formatSpeed(stats.downloadRate),
             color: theme.colorScheme.primary,
           ),
-          const SizedBox(width: 16),
+          SizedBox(width: 16),
           _StatChip(
             icon: Icons.arrow_upward,
             label: formatSpeed(stats.uploadRate),
@@ -355,10 +355,10 @@ class _StatsBar extends StatelessWidget {
             label: stats.dhtNodes >= 0 ? 'DHT ${stats.dhtNodes}' : 'DHT …',
             color: theme.colorScheme.outline,
           ),
-          const SizedBox(width: 12),
+          SizedBox(width: 12),
           _StatChip(
             icon: Icons.layers,
-            label: '${stats.numTorrents} 任务',
+            label: L.t.tasksCount(stats.numTorrents),
             color: theme.colorScheme.outline,
           ),
         ],
@@ -383,7 +383,7 @@ class _StatChip extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Icon(icon, size: 14, color: color),
-        const SizedBox(width: 3),
+        SizedBox(width: 3),
         Text(label,
             style:
                 Theme.of(context).textTheme.labelSmall?.copyWith(color: color)),
@@ -419,20 +419,20 @@ class _TorrentTile extends StatelessWidget {
   }
 
   String get _stateLabel {
-    if (torrent.paused) return '已暂停';
+    if (torrent.paused) return L.t.statePaused;
     switch (torrent.state) {
       case 'seeding':
-        return '做种中';
+        return L.t.stateSeeding;
       case 'downloading':
-        return '下载中';
+        return L.t.stateDownloading;
       case 'metadata':
-        return '获取元数据…';
+        return L.t.stateMetadata;
       case 'checking':
-        return '校验中';
+        return L.t.stateChecking;
       case 'finished':
-        return '已完成';
+        return L.t.stateFinished;
       case 'queued':
-        return '排队中';
+        return L.t.stateQueued;
       default:
         return torrent.state;
     }
@@ -462,7 +462,7 @@ class _TorrentTile extends StatelessWidget {
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const SizedBox(height: 3),
+          SizedBox(height: 3),
           ClipRRect(
             borderRadius: BorderRadius.circular(3),
             child: LinearProgressIndicator(
@@ -471,7 +471,7 @@ class _TorrentTile extends StatelessWidget {
               backgroundColor: theme.colorScheme.surfaceContainerHighest,
             ),
           ),
-          const SizedBox(height: 3),
+          SizedBox(height: 3),
           Text(
             '$_stateLabel  ${pct.toStringAsFixed(0)}%'
             '  ↑${formatSpeed(t.uploadRate)}'
@@ -495,15 +495,16 @@ class _TorrentTile extends StatelessWidget {
         },
         itemBuilder: (ctx) => [
           if (t.paused)
-            const PopupMenuItem(value: 'resume', child: Text('继续'))
+            PopupMenuItem(value: 'resume', child: Text(L.t.resume))
           else
-            const PopupMenuItem(value: 'pause', child: Text('暂停')),
-          const PopupMenuItem(value: 'copy', child: Text('复制磁力链接')),
-          const PopupMenuItem(value: 'recheck', child: Text('重新校验')),
-          const PopupMenuDivider(),
+            PopupMenuItem(value: 'pause', child: Text(L.t.pause)),
+          PopupMenuItem(value: 'copy', child: Text(L.t.copyMagnet)),
+          PopupMenuItem(value: 'recheck', child: Text(L.t.recheck)),
+          PopupMenuDivider(),
           PopupMenuItem(
             value: 'delete',
-            child: Text('删除', style: TextStyle(color: theme.colorScheme.error)),
+            child: Text(L.t.delete,
+                style: TextStyle(color: theme.colorScheme.error)),
           ),
         ],
       ),
@@ -514,22 +515,22 @@ class _TorrentTile extends StatelessWidget {
     final result = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('删除「${torrent.name}」？'),
-        content: const Text('选择是否同时删除已下载的文件。'),
+        title: Text(L.t.deleteTaskQ(torrent.name)),
+        content: Text(L.t.deleteTaskHint),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('取消'),
+            child: Text(L.t.cancel),
           ),
           OutlinedButton(
             onPressed: () => Navigator.pop(ctx, 'keep'),
-            child: const Text('仅删除任务'),
+            child: Text(L.t.deleteTaskOnly),
           ),
           FilledButton(
             style: FilledButton.styleFrom(
                 backgroundColor: Theme.of(ctx).colorScheme.error),
             onPressed: () => Navigator.pop(ctx, 'delete'),
-            child: const Text('删除任务+文件'),
+            child: Text(L.t.deleteTaskFiles),
           ),
         ],
       ),
@@ -603,22 +604,23 @@ class _TorrentDetailSheetState extends State<TorrentDetailSheet> {
         padding: const EdgeInsets.symmetric(horizontal: 20),
         children: [
           Text(widget.name, style: theme.textTheme.titleMedium),
-          const SizedBox(height: 4),
+          SizedBox(height: 4),
           Text('infohash: ${widget.infohash}',
               style: theme.textTheme.bodySmall
                   ?.copyWith(color: theme.colorScheme.outline)),
           if (widget.savePath.isNotEmpty) ...[
-            const SizedBox(height: 4),
-            Text('保存目录: ${widget.savePath}',
+            SizedBox(height: 4),
+            Text(L.t.savePath(widget.savePath),
                 style: theme.textTheme.bodySmall
                     ?.copyWith(color: theme.colorScheme.outline)),
           ],
-          const SizedBox(height: 16),
-          Text('文件（${_files.length}）', style: theme.textTheme.titleSmall),
+          SizedBox(height: 16),
+          Text(L.t.filesCount(_files.length),
+              style: theme.textTheme.titleSmall),
           if (_files.isEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Text('元数据尚未获取',
+              child: Text(L.t.noMetadata,
                   style: theme.textTheme.bodySmall
                       ?.copyWith(color: theme.colorScheme.outline)),
             ),
@@ -639,7 +641,7 @@ class _TorrentDetailSheetState extends State<TorrentDetailSheet> {
                           style: theme.textTheme.bodySmall),
                     ],
                   ),
-                  const SizedBox(height: 4),
+                  SizedBox(height: 4),
                   ClipRRect(
                     borderRadius: BorderRadius.circular(3),
                     child: LinearProgressIndicator(value: prog, minHeight: 4),
@@ -648,12 +650,13 @@ class _TorrentDetailSheetState extends State<TorrentDetailSheet> {
               ),
             );
           }),
-          const SizedBox(height: 12),
-          Text('连接节点（${_peers.length}）', style: theme.textTheme.titleSmall),
+          SizedBox(height: 12),
+          Text(L.t.peersCount(_peers.length),
+              style: theme.textTheme.titleSmall),
           if (_peers.isEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Text('暂无连接',
+              child: Text(L.t.noPeers,
                   style: theme.textTheme.bodySmall
                       ?.copyWith(color: theme.colorScheme.outline)),
             ),
@@ -669,12 +672,12 @@ class _TorrentDetailSheetState extends State<TorrentDetailSheet> {
                     Text('${p.ip}:${p.port}', style: theme.textTheme.bodySmall),
                 subtitle: Text(
                   '${p.client} · ${(p.progress * 100).toStringAsFixed(0)}%'
-                  '${p.chatCapable ? " · 支持聊天" : ""}',
+                  '${p.chatCapable ? L.t.chatCapableMark : ""}',
                   style: theme.textTheme.bodySmall
                       ?.copyWith(color: theme.colorScheme.outline),
                 ),
               )),
-          const SizedBox(height: 24),
+          SizedBox(height: 24),
         ],
       ),
     );

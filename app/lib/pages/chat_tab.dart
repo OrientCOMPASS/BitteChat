@@ -14,6 +14,7 @@ import '../widgets/avatar.dart';
 import '../widgets/time_fmt.dart';
 import 'chat_view.dart';
 import 'home.dart';
+import '../core/l10n.dart';
 
 class ChatTab extends StatefulWidget {
   const ChatTab({super.key, this.onOpenSettings, required this.prefs});
@@ -80,10 +81,10 @@ class _ChatTabState extends State<ChatTab> {
   Future<void> _createGroup() async {
     final name = await _promptText(
       context,
-      title: '创建群聊',
-      label: '群名称',
-      hint: '例如：BT 爱好者',
-      confirm: '创建',
+      title: L.t.createGroup,
+      label: L.t.groupName,
+      hint: L.t.groupNameHint,
+      confirm: L.t.create,
     );
     if (name == null || name.trim().isEmpty) return;
     if (!mounted) return;
@@ -99,10 +100,10 @@ class _ChatTabState extends State<ChatTab> {
   Future<void> _joinGroup({String initial = ''}) async {
     final magnet = await _promptText(
       context,
-      title: '加入群聊',
-      label: '邀请磁力链接',
-      hint: 'magnet:?xt=urn:btih:...',
-      confirm: '加入',
+      title: L.t.joinGroup,
+      label: L.t.inviteMagnet,
+      hint: L.t.magnetHint,
+      confirm: L.t.join,
       multiline: true,
       pasteButton: true,
       initial: initial,
@@ -113,10 +114,10 @@ class _ChatTabState extends State<ChatTab> {
       if (!mounted) return;
       if (r['already'] == true) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('已经在该群中')));
+            .showSnackBar(SnackBar(content: Text(L.t.alreadyInGroup)));
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('正在从 BT 网络获取群清单……需要群内有成员在线做种'),
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(L.t.fetchingManifest),
           duration: Duration(seconds: 4),
         ));
       }
@@ -139,11 +140,11 @@ class _ChatTabState extends State<ChatTab> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('聊天'),
+        title: Text(L.t.chatTab),
         actions: [
           IconButton(
-            tooltip: '身份设置',
-            icon: const Icon(Icons.person_outline),
+            tooltip: L.t.identitySettings,
+            icon: Icon(Icons.person_outline),
             onPressed: widget.onOpenSettings,
           ),
         ],
@@ -153,18 +154,18 @@ class _ChatTabState extends State<ChatTab> {
           : _groups.isEmpty
               ? _EmptyState(
                   icon: Icons.forum_outlined,
-                  title: '还没有群聊',
-                  subtitle: '一个 BT 种子就是一个群。\n创建群聊，或粘贴邀请磁力链接加入。',
+                  title: L.t.noGroups,
+                  subtitle: L.t.noGroupsHint,
                   actions: [
                     FilledButton.icon(
                       onPressed: _createGroup,
-                      icon: const Icon(Icons.add),
-                      label: const Text('创建群聊'),
+                      icon: Icon(Icons.add),
+                      label: Text(L.t.createGroup),
                     ),
                     OutlinedButton.icon(
                       onPressed: _joinGroup,
-                      icon: const Icon(Icons.link),
-                      label: const Text('加入群聊'),
+                      icon: Icon(Icons.link),
+                      label: Text(L.t.joinGroup),
                     ),
                   ],
                 )
@@ -187,8 +188,8 @@ class _ChatTabState extends State<ChatTab> {
           ? null
           : FloatingActionButton.extended(
               onPressed: () => _showAddMenu(context),
-              icon: const Icon(Icons.add_comment),
-              label: const Text('群聊'),
+              icon: Icon(Icons.add_comment),
+              label: Text(L.t.fabGroup),
             ),
     );
   }
@@ -202,24 +203,24 @@ class _ChatTabState extends State<ChatTab> {
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              leading: const Icon(Icons.group_add),
-              title: const Text('创建群聊'),
-              subtitle: const Text('生成邀请磁力链接，分享给朋友'),
+              leading: Icon(Icons.group_add),
+              title: Text(L.t.createGroup),
+              subtitle: Text(L.t.createGroupDesc),
               onTap: () {
                 Navigator.pop(ctx);
                 _createGroup();
               },
             ),
             ListTile(
-              leading: const Icon(Icons.add_link),
-              title: const Text('加入群聊'),
-              subtitle: const Text('粘贴或扫描他人分享的邀请链接'),
+              leading: Icon(Icons.add_link),
+              title: Text(L.t.joinGroup),
+              subtitle: Text(L.t.joinViaPaste),
               onTap: () {
                 Navigator.pop(ctx);
                 _joinGroup();
               },
             ),
-            const SizedBox(height: 8),
+            SizedBox(height: 8),
           ],
         ),
       ),
@@ -237,7 +238,7 @@ class _GroupTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final preview = group.previewText.isEmpty
-        ? (group.messages == 0 ? '暂无消息' : '…')
+        ? (group.messages == 0 ? L.t.noMessages : '…')
         : '${group.previewOwn ? '我' : group.previewAuthor}: ${group.previewText}';
     return ListTile(
       onTap: onTap,
@@ -265,7 +266,7 @@ class _GroupTile extends StatelessWidget {
           if (group.dm) ...[
             Icon(Icons.lock_outline,
                 size: 14, color: theme.colorScheme.primary),
-            const SizedBox(width: 4),
+            SizedBox(width: 4),
           ],
           Flexible(
             child: Text(
@@ -276,7 +277,7 @@ class _GroupTile extends StatelessWidget {
             ),
           ),
           if (group.syncing) ...[
-            const SizedBox(width: 6),
+            SizedBox(width: 6),
             SizedBox(
               width: 12,
               height: 12,
@@ -302,7 +303,7 @@ class _GroupTile extends StatelessWidget {
                 group.previewTs > 0 ? group.previewTs : group.lastTs),
             style: theme.textTheme.bodySmall,
           ),
-          const SizedBox(height: 4),
+          SizedBox(height: 4),
           if (group.unread > 0)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
@@ -319,7 +320,7 @@ class _GroupTile extends StatelessWidget {
               ),
             )
           else if (group.online > 0)
-            Text('${group.online} 在线',
+            Text(L.t.onlinePeers(group.online),
                 style: theme.textTheme.bodySmall
                     ?.copyWith(color: theme.colorScheme.outline)),
         ],
@@ -333,7 +334,7 @@ extension on GroupSummary {
     if (previewKind == 3) {
       switch (previewText) {
         case '':
-          return '系统消息';
+          return L.t.sysMsg;
         default:
           return fallback;
       }
@@ -365,16 +366,16 @@ class _EmptyState extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(icon, size: 64, color: theme.colorScheme.outlineVariant),
-            const SizedBox(height: 16),
+            SizedBox(height: 16),
             Text(title, style: theme.textTheme.titleMedium),
-            const SizedBox(height: 8),
+            SizedBox(height: 8),
             Text(
               subtitle,
               textAlign: TextAlign.center,
               style: theme.textTheme.bodyMedium
                   ?.copyWith(color: theme.colorScheme.outline),
             ),
-            const SizedBox(height: 24),
+            SizedBox(height: 24),
             Wrap(
                 spacing: 12,
                 runSpacing: 12,
@@ -403,17 +404,17 @@ class _DemoModeHint extends StatelessWidget {
           children: [
             Icon(Icons.memory,
                 size: 56, color: theme.colorScheme.outlineVariant),
-            const SizedBox(height: 16),
-            Text('演示模式', style: theme.textTheme.titleMedium),
-            const SizedBox(height: 8),
+            SizedBox(height: 16),
+            Text(L.t.demoMode, style: theme.textTheme.titleMedium),
+            SizedBox(height: 8),
             Text(
-              '未加载 libbitte_core.so。\n请安装 CI 构建的 Android APK 以启用完整功能。',
+              L.t.demoHint,
               textAlign: TextAlign.center,
               style: theme.textTheme.bodyMedium
                   ?.copyWith(color: theme.colorScheme.outline),
             ),
             if (error != null) ...[
-              const SizedBox(height: 8),
+              SizedBox(height: 8),
               Text(error!,
                   textAlign: TextAlign.center,
                   style: theme.textTheme.bodySmall
@@ -432,7 +433,7 @@ Future<String?> _promptText(
   required String title,
   required String label,
   String hint = '',
-  String confirm = '确定',
+  String? confirm,
   bool multiline = false,
   bool pasteButton = false,
   String initial = '',
@@ -455,8 +456,8 @@ Future<String?> _promptText(
             Align(
               alignment: Alignment.centerLeft,
               child: TextButton.icon(
-                icon: const Icon(Icons.content_paste, size: 18),
-                label: const Text('粘贴'),
+                icon: Icon(Icons.content_paste, size: 18),
+                label: Text(L.t.paste),
                 onPressed: () async {
                   final data = await Clipboard.getData(Clipboard.kTextPlain);
                   if (data?.text != null) controller.text = data!.text!;
@@ -468,11 +469,11 @@ Future<String?> _promptText(
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(ctx),
-          child: const Text('取消'),
+          child: Text(L.t.cancel),
         ),
         FilledButton(
           onPressed: () => Navigator.pop(ctx, controller.text),
-          child: Text(confirm),
+          child: Text(confirm ?? L.t.confirm),
         ),
       ],
     ),

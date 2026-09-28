@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:bittechat/l10n/app_localizations.dart';
 
 import 'core/api.dart';
+import 'core/l10n.dart';
 import 'core/intent.dart';
 import 'core/prefs.dart';
 import 'pages/home.dart';
@@ -63,7 +65,14 @@ class _BitteChatAppState extends State<BitteChatApp> {
       theme: _theme(Brightness.light),
       darkTheme: _theme(Brightness.dark),
       themeMode: widget.prefs.materialThemeMode(),
-      home: HomePage(prefs: widget.prefs),
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      home: Builder(
+        builder: (ctx) {
+          L.update(ctx);
+          return HomePage(prefs: widget.prefs);
+        },
+      ),
     );
   }
 }

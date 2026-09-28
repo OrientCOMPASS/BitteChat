@@ -10,6 +10,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../models.dart';
 import 'bridge.dart';
+import 'l10n.dart';
 
 class CoreEvent {
   CoreEvent(this.type, this.data);
@@ -80,7 +81,7 @@ class BitteApi extends ChangeNotifier {
   Map<String, dynamic> call(String method,
       [Map<String, dynamic> params = const {}]) {
     final b = bridge;
-    if (b == null) throw BridgeException('原生核心不可用（当前为演示模式）');
+    if (b == null) throw BridgeException(L.t.coreUnavailable);
     return b.call(method, params);
   }
 
