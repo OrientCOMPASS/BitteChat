@@ -1280,7 +1280,21 @@ impl Api {
                 if let Payload::Attachment(a) = &m.payload {
                     let path = downloads.join(&a.infohash).join(&a.name);
                     j["local_path"] = json!(path.to_string_lossy());
-                    j["have_file"] = json!(path.exists());
+                    // "have the file" must mean COMPLETE, not merely present:
+                    // libtorrent preallocates the full-size (sparse) file when
+                    // a download starts, and opening a partial mp4 fails at
+                    // format probing (moov may live at EOF). Gate on the
+                    // engine's verified state + exact size.
+                    let size_ok = std::fs::metadata(&path)
+                        .map(|md| md.len() == a.size.max(0) as u64)
+                        .unwrap_or(false);
+                    let complete = match states.get(&a.infohash) {
+                        Some(s) => s.finished || s.progress >= 0.9999,
+                        // not in the session (e.g. task removed, file kept):
+                        // trust the exact-size check alone
+                        None => size_ok,
+                    };
+                    j["have_file"] = json!(size_ok && complete);
                     if let Some(s) = states.get(&a.infohash) {
                         j["dl"] = json!({
                             "progress": s.progress,

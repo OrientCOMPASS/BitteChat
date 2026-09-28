@@ -88,6 +88,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
           if (mounted) setState(() => _duration = v);
         }),
       ]);
+      await _logFileIntegrity();
       final vc = await VideoController.create(
         player,
         configuration: const VideoControllerConfiguration(
@@ -117,6 +118,56 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
     }
   }
 
+  /// Forensic snapshot of the file on disk — distinguishes "player broken"
+  /// from "file is not a complete mp4" in exported logs: size, ftyp magic
+  /// at offset 4, and whether a moov box appears in the head or tail of the
+  /// file (a partial BT download typically lacks the trailing moov).
+  Future<void> _logFileIntegrity() async {
+    try {
+      final f = File(widget.path);
+      final len = await f.length();
+      final raf = await f.open();
+      try {
+        final head = await raf.read(16);
+        String where = 'none';
+        if (head.length >= 12 &&
+            head[4] == 0x66 &&
+            head[5] == 0x74 &&
+            head[6] == 0x79 &&
+            head[7] == 0x70) {
+          where = 'ftyp-ok';
+        }
+        bool moovHead = false, moovTail = false;
+        moovHead = _contains(head, 'moov');
+        if (len > 16) {
+          final tailStart = len > 262144 ? len - 262144 : 0;
+          await raf.setPosition(tailStart);
+          final tail = await raf.read(len - tailStart);
+          moovTail = _contains(tail, 'moov');
+        }
+        appLog('video file: len=$len magic=$where '
+            'moov(head)=$moovHead moov(tail256k)=$moovTail '
+            'zeroHead=${head.every((b) => b == 0)}');
+      } finally {
+        await raf.close();
+      }
+    } catch (e) {
+      appLog('video file introspection failed: $e');
+    }
+  }
+
+  static bool _contains(List<int> bytes, String tag) {
+    final pat = tag.codeUnits;
+    outer:
+    for (var i = 0; i + pat.length <= bytes.length; i++) {
+      for (var j = 0; j < pat.length; j++) {
+        if (bytes[i + j] != pat[j]) continue outer;
+      }
+      return true;
+    }
+    return false;
+  }
+
   Future<void> _playPause() async {
     final p = _player;
     if (p == null) return;
@@ -140,7 +191,14 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
     for (final s in _subs) {
       s.cancel();
     }
-    _player?.dispose();
+    final p = _player;
+    _player = null;
+    if (p != null) {
+      // pause first so the render pipeline quiesces before teardown —
+      // disposing mid-frame during activity recreation races the native
+      // surface cleanup
+      p.pause().catchError((_) {}).whenComplete(() => p.dispose());
+    }
     super.dispose();
   }
 

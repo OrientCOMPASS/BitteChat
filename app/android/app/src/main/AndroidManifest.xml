@@ -11,6 +11,14 @@
         android:label="BitteChat"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
+        <!-- Render with Skia/OpenGL instead of Impeller. On some Adreno
+             devices Impeller's external-texture consumption stalls video
+             producers (mpv vo/gpu aimagereader: "Waiting for frame timed
+             out" / acquireLatestImage -30001 => black picture while audio
+             underruns). PiliPala-class apps ship the same opt-out. -->
+        <meta-data
+            android:name="io.flutter.embedding.android.EnableImpeller"
+            android:value="false" />
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

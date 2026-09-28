@@ -79,6 +79,7 @@ cd app && flutter build apk --release --split-per-abi
 - [x] v0.4.5 国际化（zh/en）+ 身份档案管理
 - [x] v0.5.0 **种子即群聊**（移除"凭空建群"，房间 ID = infohash，头密钥确定性派生）+ Tracker 设置（全局默认列表/单任务增删/DHT 引导可配置）+ info hash 直连输入 + fvp 视频软解兜底 + 全局壁纸
 - [x] v0.5.2 **私聊重构**（对方同意制、定向传输、无种子/无 DHT、在线状态）+ 群名改本地备注 + 头像不广播 + 壁纸裁剪预览页（预解码零延迟）+ **音视频栈切换 media_kit/libmpv**（视频纯硬解，修复实机"有声无画"；语音条共享单实例）+ resume data 进度持久化（重启进度不归零）+ 附件后台线程化（大文件不卡 UI）+ DHT 就绪队列（冷启动不丢 BEP44 操作）+ 日志导出到 Download + 做种端保持聊天连接
+- [x] v0.5.3 实机视频黑屏根治：**关闭 Impeller**（Skia/GL 渲染——Impeller 外部纹理在部分 Adreno 机型卡死 mpv 的 SurfaceTexture 生产者：aimagereader 帧堆积 -30001、音频 underrun；PiliPala 系同款规避）+ 附件"已下载"判定改为**引擎校验完成态**（修复稀疏预分配文件被当成完整文件打开：接收端"Failed to recognize file format"）+ 播放页文件取证日志（ftyp/moov/零填充）+ 播放器销毁竞态加固
 - [ ] v0.5+：前台服务保活、消息搜索、armeabi-v7a、目录做种、分 ABI 发布包瘦身
 
 ## 许可与第三方组件
