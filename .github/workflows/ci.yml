@@ -261,6 +261,9 @@ jobs:
           ls -la /dev/kvm
       - name: Generate real test video (H.264 + AAC, 6s)
         run: |
+          if ! command -v ffmpeg >/dev/null 2>&1; then
+            sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+          fi
           ffmpeg -y -f lavfi -i testsrc2=size=640x360:rate=25 \
             -f lavfi -i sine=frequency=440:sample_rate=44100 \
             -t 6 -c:v libx264 -pix_fmt yuv420p -profile:v high -level 3.1 \
