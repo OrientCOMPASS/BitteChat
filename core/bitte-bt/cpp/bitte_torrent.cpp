@@ -980,8 +980,10 @@ static json::value cmd_trackers(bc_session* s, json::object const& o)
             to["url"] = ae.url;
             to["tier"] = ae.tier;
             to["verified"] = ae.verified;
-            to["fails"] = ae.fails;
-            to["message"] = ae.message;
+            // libtorrent 2.x dropped the public fails/message counters;
+            // surface last_error instead (empty when healthy)
+            to["fails"] = ae.last_error ? 1 : 0;
+            to["message"] = ae.last_error ? ae.last_error.message() : std::string();
             arr.push_back(std::move(to));
         }
     }
@@ -1004,7 +1006,9 @@ static json::value cmd_add_tracker(bc_session* s, json::object const& o)
     int const tier = static_cast<int>(jint(o, "tier", 0));
     try
     {
-        th.add_tracker(url, tier);
+        announce_entry ae(url);
+        ae.tier = tier;
+        th.add_tracker(ae);
     }
     catch (std::exception const& e)
     {
@@ -1021,7 +1025,13 @@ static json::value cmd_remove_tracker(bc_session* s, json::object const& o)
     if (url.empty()) return json_err("missing url");
     try
     {
-        th.remove_tracker(url);
+        // libtorrent 2.x has no remove_tracker; filter + replace
+        std::vector<announce_entry> aes = th.trackers();
+        auto const it = std::remove_if(aes.begin(), aes.end(),
+            [&url](announce_entry const& e) { return e.url == url; });
+        if (it == aes.end()) return json_err("tracker not found");
+        aes.erase(it, aes.end());
+        th.replace_trackers(std::move(aes));
     }
     catch (std::exception const& e)
     {

@@ -785,7 +785,7 @@ class _TorrentDetailSheetState extends State<TorrentDetailSheet> {
                 leading: Icon(
                   tr.verified ? Icons.verified_outlined : Icons.hub_outlined,
                   size: 18,
-                  color: tr.fails > 2
+                  color: tr.message.isNotEmpty
                       ? theme.colorScheme.error
                       : theme.colorScheme.primary,
                 ),
