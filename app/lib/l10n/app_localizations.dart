@@ -1883,7 +1883,7 @@ abstract class AppLocalizations {
   /// No description provided for @videoDecoderTip.
   ///
   /// In zh, this message translates to:
-  /// **'黑屏有声？可在 设置 → 视频解码 切换解码方式'**
+  /// **'无法播放？可点「外部打开」，并到 设置 → 导出日志 反馈'**
   String get videoDecoderTip;
 
   /// No description provided for @avatarLocalOnly.
@@ -1993,6 +1993,12 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'附件发送失败'**
   String get attachFailed;
+
+  /// No description provided for @videoDecoderHardwareOnly.
+  ///
+  /// In zh, this message translates to:
+  /// **'硬件解码（MediaCodec）· 解码失败将明确报错'**
+  String get videoDecoderHardwareOnly;
 }
 
 class _AppLocalizationsDelegate

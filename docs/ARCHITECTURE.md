@@ -75,7 +75,7 @@ Dart↔Rust 只走两条通道：`bc_call(method, json) -> json`（同步，命�
 ### 7. 数据目录布局 (app 私有外部存储)
 ```
 <data>/bitte.db                     SQLite (WAL)
-<data>/groups/<manifest_ih>/bitte-group.benc   仅遗留清单频道（v0.6 起 DM 无种子）
+<data>/groups/<manifest_ih>/bitte-group.benc   仅遗留清单频道（v0.5.2 起 DM 无种子）
 <data>/downloads/<ih>/<文件名>       BT 下载与聊天附件（种子群聊即普通任务）
 <data>/resume/<ih>.fastresume        libtorrent 断点快照（120s/完成/退出时刷新，添加任务时自动回挂——重启不重新校验、进度不清零）
 <data>/logs/core.log(.1/.2)          核心滚动日志（2MB×3，逐行落盘）；Dart 侧 logs/app.log；设置页可导出到 Download

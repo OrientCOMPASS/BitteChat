@@ -345,7 +345,7 @@ impl Api {
         format!("种子 {}", &ih_hex[..8])
     }
 
-    /// v0.6: manifest-torrent DM channels are gone — DMs are established by
+    /// v0.5.2: manifest-torrent DM channels are gone — DMs are established by
     /// a signed request/accept exchange over a shared room's swarm and live
     /// purely in local storage (see [`Api::chat_start_dm`]).
     pub fn chat_join_dm(&self, p: Json) -> Result<Json> {
@@ -359,7 +359,7 @@ impl Api {
     /// message we have seen (their X25519 key travels in the `x` field of
     /// their messages).
     ///
-    /// v0.6 flow — NO manifest torrent, NO broadcast:
+    /// v0.5.2 flow — NO manifest torrent, NO broadcast:
     ///   1. derive the deterministic channel gid from both identity pubkeys
     ///   2. send a signed DmReq DIRECTLY to the peer over a shared room's
     ///      swarm connection (bc_chat ext frame, addressed by pubkey)
@@ -1172,7 +1172,7 @@ impl Api {
             }
         };
         if is_dm {
-            // v0.6 DM channels are purely local — silent removal, no
+            // v0.5.2 DM channels are purely local — silent removal, no
             // farewell, no torrent (legacy manifest torrents, if any, are
             // already gone from the session since restore stopped re-adding)
             let mut st = self.inner.state.lock().unwrap();
@@ -1589,7 +1589,7 @@ impl Api {
         Ok(())
     }
 
-    /// Set the LOCAL display note of a room. v0.6: names are private —
+    /// Set the LOCAL display note of a room. v0.5.2: names are private —
     /// nothing is broadcast; without a note the room shows the torrent name.
     pub fn chat_rename_group(&self, p: Json) -> Result<Json> {
         let gid_hex = jstr(&p, "group_id")?.to_string();

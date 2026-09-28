@@ -1,12 +1,23 @@
 // 视频播放页 与 文本文件预览页
+//
+// 视频栈 = media_kit（libmpv，PiliPala/PiliPlus 同源方案）：
+//   * 解码：hwdec=mediacodec,auto-safe —— 纯硬件解码链，不启用 FFmpeg 软解；
+//     解码失败通过 mpv 错误事件明确告知用户（外部播放器兜底）。
+//   * 渲染：mpv 经 EGL 渲染进 SurfaceTexture，与 PiliPlus 完全一致的成熟路径
+//     （fvp/mdk 在部分机型上"有声无画"，见 flutter#159503 / fvp#235 一类
+//     外部纹理合成问题；本项目实机测试确认后整体切换到该方案）。
+//   * 诊断：mpv 日志（warn 级）+ 视频参数 + 错误全量写入 app.log，可随
+//     「设置 → 导出日志」反馈。
 
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:media_kit/media_kit.dart';
+import 'package:media_kit_video/media_kit_video.dart';
 
 import '../core/applog.dart';
 import '../core/files.dart';
-import 'package:video_player/video_player.dart';
 import '../core/l10n.dart';
 
 class VideoPlayerPage extends StatefulWidget {
@@ -20,9 +31,15 @@ class VideoPlayerPage extends StatefulWidget {
 }
 
 class _VideoPlayerPageState extends State<VideoPlayerPage> {
-  VideoPlayerController? _controller;
+  Player? _player;
+  VideoController? _videoController;
   bool _failed = false;
   String? _error;
+  bool _playing = false;
+  bool _completed = false;
+  Duration _position = Duration.zero;
+  Duration _duration = Duration.zero;
+  final List<StreamSubscription<dynamic>> _subs = [];
 
   @override
   void initState() {
@@ -32,17 +49,63 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
 
   Future<void> _init() async {
     try {
-      final c = VideoPlayerController.file(File(widget.path));
-      await c.initialize();
+      final player = await Player.create(
+        configuration: PlayerConfiguration(
+          logLevel: MPVLogLevel.warn,
+          options: {
+            // strict hardware chain: no silent ffmpeg software fallback —
+            // an undecodable track must surface as an explicit error
+            'vd-lavc-software-fallback': 'no',
+          },
+        ),
+      );
+      _player = player;
+      _subs.addAll([
+        player.stream.error.listen((e) {
+          if (e.isEmpty) return;
+          appLog('mpv error: ${widget.path} -> $e');
+          if (mounted) {
+            setState(() {
+              _failed = true;
+              _error = e;
+            });
+          }
+        }),
+        player.stream.log
+            .listen((l) => appLog('mpv[${l.prefix}/${l.level}] ${l.text}')),
+        player.stream.videoParams.listen((v) =>
+            appLog('mpv video params: ${widget.path} -> ${v.toString()}')),
+        player.stream.playing.listen((v) {
+          if (mounted) setState(() => _playing = v);
+        }),
+        player.stream.completed.listen((v) {
+          if (mounted) setState(() => _completed = v);
+        }),
+        player.stream.position.listen((v) {
+          if (mounted) setState(() => _position = v);
+        }),
+        player.stream.duration.listen((v) {
+          if (mounted) setState(() => _duration = v);
+        }),
+      ]);
+      final vc = await VideoController.create(
+        player,
+        configuration: const VideoControllerConfiguration(
+          enableHardwareAcceleration: true,
+          hwdec: 'mediacodec,auto-safe',
+          androidAttachSurfaceAfterVideoParameters: false,
+        ),
+      );
       if (!mounted) {
-        await c.dispose();
+        await player.dispose();
         return;
       }
-      c.addListener(_onValue);
-      setState(() => _controller = c);
-      appLog('video init ok: ${widget.path} '
-          'size=${c.value.size} duration=${c.value.duration}');
-      await c.play();
+      setState(() => _videoController = vc);
+      appLog('video open: ${widget.path} (media_kit/mpv hwdec=mediacodec)');
+      await player.open(
+        Media(widget.path, extras: {'cache': 'no'}),
+        play: true,
+      );
     } catch (e) {
       appLog('video init FAILED: ${widget.path} err=$e');
       if (mounted) {
@@ -54,81 +117,96 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
     }
   }
 
-  void _onValue() {
-    final c = _controller;
-    if (c == null || !mounted) return;
-    final err = c.value.errorDescription;
-    if (err != null && err.isNotEmpty && !_failed) {
-      appLog('video error: ${widget.path} err=$err pos=${c.value.position}');
-      setState(() {
-        _failed = true;
-        _error = err;
-      });
-    } else if (!_failed) {
-      setState(() {});
+  Future<void> _playPause() async {
+    final p = _player;
+    if (p == null) return;
+    if (_completed) {
+      await p.seek(Duration.zero);
+      await p.play();
+      return;
     }
+    await p.playOrPause();
+  }
+
+  String _fmt(Duration d) {
+    final h = d.inHours;
+    final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return h > 0 ? '$h:$m:$s' : '$m:$s';
   }
 
   @override
   void dispose() {
-    _controller?.removeListener(_onValue);
-    _controller?.dispose();
+    for (final s in _subs) {
+      s.cancel();
+    }
+    _player?.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final c = _controller;
+    final vc = _videoController;
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
+        title: Text(widget.title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(color: Colors.white)),
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
-        title: Text(widget.title, maxLines: 1, overflow: TextOverflow.ellipsis),
       ),
       body: _failed
           ? Center(
               child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(L.t.videoFail, style: TextStyle(color: Colors.white70)),
-                  if (_error != null) ...[
-                    SizedBox(height: 8),
-                    Text(_error!,
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(L.t.videoFail,
+                        style: const TextStyle(color: Colors.white70)),
+                    if (_error != null) ...[
+                      const SizedBox(height: 8),
+                      Text(_error!,
+                          textAlign: TextAlign.center,
+                          maxLines: 6,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              color: Colors.white38, fontSize: 12)),
+                    ],
+                    const SizedBox(height: 16),
+                    OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.white70),
+                      icon: const Icon(Icons.open_in_new, size: 18),
+                      label: Text(L.t.openWith),
+                      onPressed: () =>
+                          openWithExternalApp(widget.path, 'video/*'),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(L.t.videoDecoderTip,
                         textAlign: TextAlign.center,
-                        maxLines: 4,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(color: Colors.white38, fontSize: 12)),
+                        style: const TextStyle(
+                            color: Colors.white38, fontSize: 12)),
+                    const SizedBox(height: 4),
+                    Text(L.t.videoDecoderHardwareOnly,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                            color: Colors.white38, fontSize: 11)),
                   ],
-                  SizedBox(height: 16),
-                  OutlinedButton.icon(
-                    style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.white70),
-                    icon: Icon(Icons.open_in_new, size: 18),
-                    label: Text(L.t.openWith),
-                    onPressed: () =>
-                        openWithExternalApp(widget.path, 'video/*'),
-                  ),
-                  SizedBox(height: 8),
-                  Text(L.t.videoDecoderTip,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.white38, fontSize: 12)),
-                ],
-              ),
-            ))
-          : c == null
-              ? Center(child: CircularProgressIndicator())
-              : Center(
-                  child: AspectRatio(
-                    aspectRatio: c.value.aspectRatio,
-                    child: c.value.isInitialized
-                        ? VideoPlayer(c)
-                        : const SizedBox.shrink(),
-                  ),
                 ),
-      bottomNavigationBar: c == null
+              ),
+            )
+          : vc == null
+              ? const Center(child: CircularProgressIndicator())
+              : Video(
+                  controller: vc,
+                  controls: NoVideoControls,
+                  fit: BoxFit.contain,
+                  fill: Colors.black,
+                ),
+      bottomNavigationBar: vc == null || _failed
           ? null
           : SafeArea(
               child: Padding(
@@ -137,33 +215,35 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
                   children: [
                     IconButton(
                       color: Colors.white,
-                      icon: Icon(
-                          c.value.isPlaying ? Icons.pause : Icons.play_arrow),
-                      onPressed: () async {
-                        if (c.value.isPlaying) {
-                          await c.pause();
-                        } else {
-                          await c.play();
-                        }
-                        setState(() {});
-                      },
+                      icon: Icon(_playing ? Icons.pause : Icons.play_arrow),
+                      onPressed: _playPause,
                     ),
+                    Text(_fmt(_position),
+                        style: const TextStyle(
+                            color: Colors.white70, fontSize: 12)),
                     Expanded(
-                      child: ValueListenableBuilder<VideoPlayerValue>(
-                        valueListenable: c,
-                        builder: (_, v, __) => Slider(
-                          value: v.duration.inMilliseconds > 0
-                              ? v.position.inMilliseconds
-                                  .clamp(0, v.duration.inMilliseconds)
-                                  .toDouble()
-                              : 0,
-                          max: v.duration.inMilliseconds > 0
-                              ? v.duration.inMilliseconds.toDouble()
-                              : 1,
-                          onChanged: (x) =>
-                              c.seekTo(Duration(milliseconds: x.round())),
-                        ),
+                      child: Slider(
+                        value: _duration > Duration.zero
+                            ? _position.inMilliseconds
+                                .clamp(0, _duration.inMilliseconds)
+                                .toDouble()
+                            : 0,
+                        max: _duration > Duration.zero
+                            ? _duration.inMilliseconds.toDouble()
+                            : 1,
+                        onChanged: (v) =>
+                            _player?.seek(Duration(milliseconds: v.toInt())),
                       ),
+                    ),
+                    Text(_fmt(_duration),
+                        style: const TextStyle(
+                            color: Colors.white70, fontSize: 12)),
+                    IconButton(
+                      color: Colors.white,
+                      tooltip: L.t.openWith,
+                      icon: const Icon(Icons.open_in_new, size: 20),
+                      onPressed: () =>
+                          openWithExternalApp(widget.path, 'video/*'),
                     ),
                   ],
                 ),

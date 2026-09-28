@@ -1022,7 +1022,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get videoDecoderTip =>
-      'Black screen with audio? Switch the decoder under Settings → Video decoding';
+      'Playback failed? Use "Open with" and report it via Settings → Export logs';
 
   @override
   String get avatarLocalOnly =>
@@ -1083,4 +1083,8 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get attachFailed => 'Attachment failed';
+
+  @override
+  String get videoDecoderHardwareOnly =>
+      'Hardware decoding (MediaCodec) · failures are reported explicitly';
 }

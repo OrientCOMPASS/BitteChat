@@ -991,7 +991,7 @@ class AppLocalizationsZh extends AppLocalizations {
       '遇到视频"有声无画"请保持软件解码；硬件解码更省电，但部分机型/编码会黑屏。切换后对新打开的视频生效';
 
   @override
-  String get videoDecoderTip => '黑屏有声？可在 设置 → 视频解码 切换解码方式';
+  String get videoDecoderTip => '无法播放？可点「外部打开」，并到 设置 → 导出日志 反馈';
 
   @override
   String get avatarLocalOnly => '头像与昵称仅保存在本机，不会广播给其他用户';
@@ -1048,4 +1048,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get attachFailed => '附件发送失败';
+
+  @override
+  String get videoDecoderHardwareOnly => '硬件解码（MediaCodec）· 解码失败将明确报错';
 }

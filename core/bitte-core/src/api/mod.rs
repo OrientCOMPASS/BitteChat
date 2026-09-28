@@ -483,7 +483,7 @@ impl Api {
             let gid_hex = hex::encode(row.gid);
             let is_dm = row.manifest.is_dm();
             let swarm_ih = if is_dm {
-                // v0.6 DM channels have NO torrent of their own — frames
+                // v0.5.2 DM channels have NO torrent of their own — frames
                 // ride the swarms of shared rooms. Legacy manifest torrents
                 // are deliberately not re-added (history stays local).
                 String::new()

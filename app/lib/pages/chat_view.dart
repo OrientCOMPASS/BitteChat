@@ -271,7 +271,7 @@ class _ChatViewPageState extends State<ChatViewPage> {
       final name = files.single.name;
       if (path == null) return;
       if (!mounted) return;
-      // v0.6: the core hashes+copies on a worker thread (big videos must
+      // v0.5.2: the core hashes+copies on a worker thread (big videos must
       // not block the UI); we track the job via attachment_progress events
       final r = _api.sendFile(_gid, path, name: name);
       final job = '${r['job_id'] ?? ''}';
@@ -1224,7 +1224,7 @@ class _GroupDetailSheetState extends State<GroupDetailSheet> {
                 value: shortHash('${d['infohash'] ?? ''}', 16)),
           SizedBox(height: 16),
           if (isDm) ...[
-            // v0.6 DM: purely local channel — no invite link/QR (the channel
+            // v0.5.2 DM: purely local channel — no invite link/QR (the channel
             // was established by a signed request, not a shared secret)
             Row(
               children: [

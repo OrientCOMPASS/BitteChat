@@ -4,7 +4,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:bittechat/l10n/app_localizations.dart';
-import 'package:fvp/fvp.dart' as fvp;
+import 'package:media_kit/media_kit.dart';
 
 import 'core/api.dart';
 import 'core/applog.dart';
@@ -13,20 +13,13 @@ import 'core/intent.dart';
 import 'core/prefs.dart';
 import 'pages/home.dart';
 
-/// Register the video stack: video_player is routed through libmdk (fvp).
-/// Software decode (FFmpeg) is the default — some devices' MediaCodec
-/// silently produces black frames for Hi10P/HEVC10/AV1/VP9 while audio
-/// keeps playing; FFmpeg decodes everything correctly at a CPU cost. The
-/// settings page can switch to hardware-first (AMediaCodec with FFmpeg
-/// fallback) for battery savings on well-behaved devices.
-void registerVideoStack({required bool softwareDecode}) {
-  final decoders = softwareDecode ? ['FFmpeg'] : ['AMediaCodec', 'FFmpeg'];
-  appLog(
-      'registerVideoStack: softwareDecode=$softwareDecode decoders=$decoders');
-  fvp.registerWith(options: {
-    'platforms': ['android'],
-    'video.decoders': decoders,
-  });
+/// Video stack = media_kit (libmpv), the same architecture PiliPala/PiliPlus
+/// use — hardware decode chain (mediacodec,auto-safe; no ffmpeg software
+/// fallback) rendered through mpv's EGL surface. Initialized once here;
+/// the video page creates Player/VideoController per playback.
+void initVideoStack() {
+  MediaKit.ensureInitialized();
+  appLog('media_kit initialized');
 }
 
 Future<void> main() async {
@@ -38,7 +31,7 @@ Future<void> main() async {
     appLog('=== app start ===');
     bindIntentChannel();
     final prefs = await UiPrefs.load(api.dataDir);
-    registerVideoStack(softwareDecode: prefs.videoSoftwareDecode);
+    initVideoStack();
     runApp(BitteChatApp(prefs: prefs));
   }, (e, st) {
     appLog('ZONE ERROR: $e\n$st');

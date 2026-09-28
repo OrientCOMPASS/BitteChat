@@ -631,7 +631,7 @@
  "videoDecoderSoftware": "Software (compatibility first)",
  "videoDecoderHardware": "Hardware first (battery saver)",
  "videoDecoderHint": "Keep software decoding if videos play audio with a black picture; hardware decoding saves battery but renders black on some device/codec combinations. Applies to newly opened videos",
- "videoDecoderTip": "Black screen with audio? Switch the decoder under Settings → Video decoding",
+ "videoDecoderTip": "Playback failed? Use \"Open with\" and report it via Settings → Export logs",
  "avatarLocalOnly": "Avatar and nickname stay on this device and are never broadcast",
  "renameLocalNote": "Local note — only visible to you",
  "dmRequestTitle": "Private chat request",
@@ -656,5 +656,6 @@
  "attPhaseHash": "Hashing file…",
  "attPhaseCopy": "Copying into the seed folder…",
  "attPhaseSeed": "Seeding and sending…",
- "attachFailed": "Attachment failed"
+ "attachFailed": "Attachment failed",
+ "videoDecoderHardwareOnly": "Hardware decoding (MediaCodec) · failures are reported explicitly"
 }

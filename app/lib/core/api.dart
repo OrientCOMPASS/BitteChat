@@ -191,7 +191,7 @@ class BitteApi extends ChangeNotifier {
   void renameGroup(String groupId, String name) =>
       call('chat.rename_group', {'group_id': groupId, 'name': name});
 
-  // ---- v0.6 DM flow (request/accept over shared swarms, no torrents) ----
+  // ---- v0.5.2 DM flow (request/accept over shared swarms, no torrents) ----
 
   /// Pending incoming DM requests (also delivered live via the
   /// `chat.dm_request` event).

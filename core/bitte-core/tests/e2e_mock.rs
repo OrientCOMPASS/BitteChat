@@ -422,7 +422,7 @@ fn e2e_attachment_transfer() {
             "name": "hello.txt",
         }),
     );
-    // v0.6: heavy work (hash + copy) runs on a worker thread — the call
+    // v0.5.2: heavy work (hash + copy) runs on a worker thread — the call
     // returns a job id immediately and the message arrives via events
     assert!(sent["job_id"].as_str().is_some(), "send_file must be async");
 
@@ -578,7 +578,7 @@ fn e2e_group_rename_is_local_only() {
         .clone();
     assert_eq!(ga["name"].as_str(), Some("A 的本地备注"));
 
-    // v0.6: names are LOCAL — B keeps the torrent-derived name and no
+    // v0.5.2: names are LOCAL — B keeps the torrent-derived name and no
     // rename system message is broadcast
     std::thread::sleep(std::time::Duration::from_secs(2));
     let groups = call(&b, "chat.groups", json!({}));
@@ -744,7 +744,7 @@ fn e2e_dm_encrypted_end_to_end() {
     // and A's own view decrypts too
     assert!(texts(&a, &dgid).contains(&"secret hello".to_string()));
 
-    // v0.6 privacy: the sealed DM message must NEVER reach the DHT and the
+    // v0.5.2 privacy: the sealed DM message must NEVER reach the DHT and the
     // channel must not have created a torrent anywhere
     let r = call(&b, "chat.messages", json!({"group_id": dgid}));
     let mid = r["messages"]

@@ -1,7 +1,7 @@
 name: bittechat
 description: "BitteChat — 去中心化 BitTorrent 群聊客户端（种子即群聊，消息哈希链防篡改）"
 publish_to: "none"
-version: 0.6.0+8
+version: 0.5.2+7
 
 environment:
   sdk: ">=3.5.0 <4.0.0"
@@ -18,11 +18,30 @@ dependencies:
   url_launcher: ">=6.2.0 <7.0.0"
   intl: ">=0.19.0 <1.0.0"
   audioplayers: ">=5.0.0 <7.0.0"
-  video_player: ">=2.8.0 <3.0.0"
-  # libmdk backend for video_player: hardware decode with FFmpeg software
-  # fallback (fixes "audio ok / video undecodable" for Hi10P/HEVC/AV1/VP9
-  # content the platform decoder cannot handle)
-  fvp: ">=0.29.0 <1.0.0"
+  # media_kit (libmpv) — the video stack proven by PiliPala/PiliPlus on the
+  # same Flutter 3.47.x + mainstream Android hardware. Pinned to the
+  # maintained fork (MIT) that ships up-to-date libmpv binaries (16KB-page
+  # aligned) and current-Flutter build fixes; hardware decode only.
+  media_kit:
+    git:
+      url: https://github.com/My-Responsitories/media-kit.git
+      path: media_kit
+      ref: 73771ec38176be2d984a3049c28177bce23b54a0
+  media_kit_video:
+    git:
+      url: https://github.com/My-Responsitories/media-kit.git
+      path: media_kit_video
+      ref: 73771ec38176be2d984a3049c28177bce23b54a0
+  media_kit_libs_android_video:
+    git:
+      url: https://github.com/My-Responsitories/media-kit.git
+      path: libs/android/media_kit_libs_android_video
+      ref: 73771ec38176be2d984a3049c28177bce23b54a0
+  media_kit_native_event_loop:
+    git:
+      url: https://github.com/My-Responsitories/media-kit.git
+      path: media_kit_native_event_loop
+      ref: 73771ec38176be2d984a3049c28177bce23b54a0
 
 dev_dependencies:
   flutter_test:

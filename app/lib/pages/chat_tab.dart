@@ -90,7 +90,7 @@ class _ChatTabState extends State<ChatTab> {
   }
 
   /// Consent dialog for an incoming DM request — nothing is stored on this
-  /// device until the user accepts (v0.6 DM design).
+  /// device until the user accepts (v0.5.2 DM design).
   Future<void> _promptDmRequest(Map<String, dynamic> data) async {
     if (!mounted) return;
     final gid = '${data['group_id'] ?? ''}';

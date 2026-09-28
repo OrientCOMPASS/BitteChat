@@ -504,7 +504,7 @@ impl GroupSync {
         }
         match self.dag.insert(id, sm.msg.clone(), sm.bytes.clone())? {
             crate::chat::dag::InsertOutcome::New => {
-                // v0.6: group names are LOCAL notes — a "rename" system
+                // v0.5.2: group names are LOCAL notes — a "rename" system
                 // message from a peer (legacy chain) is stored but no longer
                 // applied to our display name
                 let _ = store.missing_replace(&self.gid, &self.dag.missing());

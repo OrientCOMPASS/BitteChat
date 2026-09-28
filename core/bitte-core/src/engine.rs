@@ -38,7 +38,7 @@ pub struct PeerInfo {
 }
 
 /// A connected `bc_chat` peer: advertised identity pubkey (hex, may be empty
-/// for pre-v0.6 clients) + socket endpoint.
+/// for pre-v0.5.2 clients) + socket endpoint.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ExtPeerInfo {
     pub pk: String,

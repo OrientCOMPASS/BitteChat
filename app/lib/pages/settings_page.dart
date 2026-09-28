@@ -10,7 +10,6 @@ import 'package:file_picker/file_picker.dart';
 import '../core/api.dart';
 import '../core/applog.dart';
 import '../core/prefs.dart';
-import '../main.dart' show registerVideoStack;
 import 'wallpaper_edit.dart';
 import '../models.dart';
 import '../widgets/avatar.dart';
@@ -752,24 +751,7 @@ class _SettingsPageState extends State<SettingsPage> {
           ListTile(
             leading: Icon(Icons.smart_display_outlined),
             title: Text(L.t.videoDecoder),
-            subtitle: Text(widget.prefs.videoSoftwareDecode
-                ? L.t.videoDecoderSoftware
-                : L.t.videoDecoderHardware),
-            trailing: Switch(
-              value: widget.prefs.videoSoftwareDecode,
-              onChanged: (v) {
-                widget.prefs.videoSoftwareDecode = v;
-                widget.prefs.save();
-                registerVideoStack(softwareDecode: v);
-                setState(() {});
-              },
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Text(L.t.videoDecoderHint,
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: theme.colorScheme.outline)),
+            subtitle: Text(L.t.videoDecoderHardwareOnly),
           ),
           ListTile(
             leading: Icon(Icons.bug_report_outlined),
@@ -805,7 +787,7 @@ class _SettingsPageState extends State<SettingsPage> {
           AboutListTile(
             icon: Icon(Icons.favorite_outline),
             applicationName: 'BitteChat',
-            applicationVersion: '${_info['version'] ?? '0.5.0'}',
+            applicationVersion: '${_info['version'] ?? '0.5.2'}',
             aboutBoxChildren: [
               Text(
                 '${L.t.aboutDesc}${L.t.aboutDesc2}'

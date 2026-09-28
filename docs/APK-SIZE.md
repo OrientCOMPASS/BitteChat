@@ -69,6 +69,10 @@ v0.5 引入 `fvp`（libmdk 播放内核 + FFmpeg 软解兜底）。universal 包
 v0.5.0 按架构切分：**arm64-v8a ≈ 49.9 MB，x86_64 ≈ 53.8 MB，架构无关 ≈ 2.2 MB**
 → 分 ABI 后真机（arm64）APK ≈ **52.2 MB**。
 
+> **v0.5.2 起视频栈由 fvp(libmdk) 更换为 media_kit(libmpv)**（实机"有声无画"
+> 兼容性修复）：`libmdk.so/libffmpeg.so/libass.so/libfvp.so` 被 `libmpv.so` 等
+> media_kit 原生库取代，体积构成将随 v0.5.2 Release 实测后更新本节。
+
 ## 4. 瘦身选项（待确认，暂未实施）
 
 | 方案 | 效果（实测口径） | 代价 |
