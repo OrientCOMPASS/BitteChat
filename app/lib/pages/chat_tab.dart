@@ -42,7 +42,7 @@ class _ChatTabState extends State<ChatTab> {
     _sub = _api.events.listen((e) {
       if (e.isChatGroupUpdated || e.isChatMessage) _reload();
       if (e.type == 'chat.dm_request') _promptDmRequest(e.data);
-      if (e.type == 'chat.dm_rejected') {
+      if (e.type == 'chat.dm_rejected' && mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text(L.t.dmRejectedByPeer)));
       }

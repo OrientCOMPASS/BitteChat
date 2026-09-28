@@ -30,7 +30,7 @@ class AppLog {
       final log = AppLog._(dataDir);
       _instance = log;
       await log._rotateIfNeeded();
-      log.write('app log started (pid=${pid})');
+      log.write('app log started (pid=$pid)');
     } catch (_) {
       // logging must never break startup
     }

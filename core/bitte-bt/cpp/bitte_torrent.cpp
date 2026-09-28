@@ -248,15 +248,7 @@ struct chat_peer_plugin final : peer_plugin
 
     string_view type() const override { return "bc_chat"; }
 
-    void add_handshake(entry& h) override
-    {
-        h["m"]["bc_chat"] = BC_EXT_ID;
-        h["bc_cap"] = 1;
-        // advertise our identity pubkey so peers can address us directly
-        // (DM transport + presence); empty before an identity is set
-        std::string const pk = m_ctx->chat_pk();
-        if (!pk.empty()) h["bc_pk"] = pk;
-    }
+    void add_handshake(entry& h) override;
 
     bool on_extension_handshake(bdecode_node const& h) override;
     bool on_extended(int length, int msg, span<char const> body) override;
@@ -319,7 +311,7 @@ private:
     bc_ctx* m_ctx;
     std::atomic<int> m_peer_ext_id{0};
     std::string m_peer_pk;
-    std::mutex m_mx;
+    mutable std::mutex m_mx;
     std::vector<std::string> m_out;
 };
 
@@ -532,6 +524,16 @@ struct bc_ctx
         return false;
     }
 };
+
+void chat_peer_plugin::add_handshake(entry& h)
+{
+    h["m"]["bc_chat"] = BC_EXT_ID;
+    h["bc_cap"] = 1;
+    // advertise our identity pubkey so peers can address us directly
+    // (DM transport + presence); empty before an identity is set
+    std::string const pk = m_ctx->chat_pk();
+    if (!pk.empty()) h["bc_pk"] = pk;
+}
 
 bool chat_peer_plugin::on_extension_handshake(bdecode_node const& h)
 {
@@ -964,12 +966,14 @@ static void alert_loop(bc_session* s)
             }
             case torrent_deleted_alert::alert_type:
             {
+                // NOTE: storage-category alert — only seen if the alert mask
+                // includes it; cmd_remove also deletes the file synchronously
                 auto* da = alert_cast<torrent_deleted_alert>(a);
-                if (!s->resume_dir.empty())
+                if (!s->resume_dir.empty() && da->info_hashes.has_v1())
                 {
                     error_code rec;
                     std::filesystem::remove(s->resume_dir + "/"
-                        + hex_encode(da->info_hash.v1.data(), 20)
+                        + hex_encode(da->info_hashes.v1.data(), 20)
                         + ".fastresume", rec);
                 }
                 break;
@@ -996,20 +1000,37 @@ static void alert_loop(bc_session* s)
 
 // ---- commands ----------------------------------------------------------------
 
-/// Attach <resume_dir>/<ih>.fastresume (if present) so the torrent restores
-/// with its verified pieces + metadata instead of re-checking/re-fetching.
+/// Restore <resume_dir>/<ih>.fastresume (if present) into `atp` so the
+/// torrent comes back with its verified pieces + cached metadata instead of
+/// re-checking every byte / re-fetching magnet metadata. libtorrent 2.x
+/// removed add_torrent_params::resume_data — read_resume_data() parses the
+/// snapshot into a params object whose fields we merge (the caller's
+/// save_path/name/flags win).
 static void attach_resume(bc_session* s, add_torrent_params& atp, std::string const& ih)
 {
     if (s->resume_dir.empty() || ih.empty()) return;
     std::string const path = s->resume_dir + "/" + ih + ".fastresume";
-    std::error_code ec;
-    if (!std::filesystem::exists(path, ec)) return;
+    std::error_code fec;
+    if (!std::filesystem::exists(path, fec)) return;
     std::ifstream f(path, std::ios::binary);
     if (!f) return;
     std::vector<char> buf((std::istreambuf_iterator<char>(f)),
         std::istreambuf_iterator<char>());
     if (buf.empty()) return;
-    atp.resume_data = std::move(buf);
+    error_code ec;
+    add_torrent_params const rd = read_resume_data(
+        span<char const>(buf.data(), static_cast<std::ptrdiff_t>(buf.size())), ec);
+    if (ec) return;
+    if (rd.ti && !atp.ti) atp.ti = rd.ti;
+    if (!atp.info_hashes.has_v1() && rd.info_hashes.has_v1())
+        atp.info_hashes = rd.info_hashes;
+    atp.have_pieces = rd.have_pieces;
+    atp.verified_pieces = rd.verified_pieces;
+    atp.unfinished_pieces = rd.unfinished_pieces;
+    atp.added_time = rd.added_time;
+    atp.completed_time = rd.completed_time;
+    atp.last_upload = rd.last_upload;
+    atp.last_download = rd.last_download;
 }
 
 static json::value cmd_add_magnet(bc_session* s, json::object const& o)
@@ -1079,10 +1100,22 @@ static json::value cmd_add_torrent(bc_session* s, json::object const& o)
 
 static json::value cmd_remove(bc_session* s, json::object const& o)
 {
-    torrent_handle const th = find_handle(s, jstr(o, "infohash"));
+    std::string const ih = jstr(o, "infohash");
+    torrent_handle const th = find_handle(s, ih);
     if (!th.is_valid()) return json_err("unknown torrent");
     s->ses->remove_torrent(th,
         jbool(o, "delete_files") ? session_handle::delete_files : remove_flags_t{});
+    // drop the resume snapshot synchronously (torrent_deleted_alert is in the
+    // storage category, which our alert mask does not subscribe to)
+    if (!s->resume_dir.empty() && !ih.empty())
+    {
+        error_code ec;
+        std::filesystem::remove(s->resume_dir + "/" + ih + ".fastresume", ec);
+    }
+    {
+        std::lock_guard<std::mutex> l(s->st_mx);
+        s->handles.erase(ih);
+    }
     return json_ok();
 }
 
