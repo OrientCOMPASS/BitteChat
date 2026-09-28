@@ -217,6 +217,7 @@ class GroupSummary {
       syncing: _b(j, 'syncing'),
       messages: _i(j, 'messages'),
       missing: _i(j, 'missing'),
+      dm: _b(j, 'dm'),
       previewAuthor: _s(pv, 'author_name'),
       previewText: _s(pv, 'text', ''),
       previewTs: _i(pv, 'ts'),
