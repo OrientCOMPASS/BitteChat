@@ -78,5 +78,24 @@ cd app && flutter build apk --release --split-per-abi
 - [x] v0.4.3 消息过滤规则引擎（折叠显示，不破坏链完整性）
 - [x] v0.4.5 国际化（zh/en）+ 身份档案管理
 - [x] v0.5.0 **种子即群聊**（移除"凭空建群"，房间 ID = infohash，头密钥确定性派生）+ Tracker 设置（全局默认列表/单任务增删/DHT 引导可配置）+ info hash 直连输入 + fvp 视频软解兜底 + 全局壁纸
-- [x] v0.5.2 **私聊重构**（对方同意制、定向传输、无种子/无 DHT、在线状态）+ 群名改本地备注 + 头像不广播 + 壁纸裁剪预览页（预解码零延迟）+ **视频栈切换 media_kit/libmpv 纯硬解**（修复实机"有声无画"）+ resume data 进度持久化（重启进度不归零）+ 附件后台线程化（大文件不卡 UI）+ DHT 就绪队列（冷启动不丢 BEP44 操作）+ 日志导出到 Download + 做种端保持聊天连接
+- [x] v0.5.2 **私聊重构**（对方同意制、定向传输、无种子/无 DHT、在线状态）+ 群名改本地备注 + 头像不广播 + 壁纸裁剪预览页（预解码零延迟）+ **音视频栈切换 media_kit/libmpv**（视频纯硬解，修复实机"有声无画"；语音条共享单实例）+ resume data 进度持久化（重启进度不归零）+ 附件后台线程化（大文件不卡 UI）+ DHT 就绪队列（冷启动不丢 BEP44 操作）+ 日志导出到 Download + 做种端保持聊天连接
 - [ ] v0.5+：前台服务保活、消息搜索、armeabi-v7a、目录做种、分 ABI 发布包瘦身
+
+## 许可与第三方组件
+
+本仓库代码为 **Unlicense**（公共领域）。分发的 APK 动态链接以下第三方运行时组件，
+各按其原许可证授权（LGPL 组件以动态库形式链接，用户可替换）：
+
+| 组件 | 许可证 | 用途 |
+|------|--------|------|
+| Flutter / Dart | BSD-3-Clause | UI 框架 |
+| libtorrent | BSD-3-Clause | BT/DHT 引擎（静态链入 libbitte_core.so） |
+| OpenSSL | Apache-2.0 | TLS/加密（静态链入 libbitte_core.so） |
+| Boost | BSL-1.0 | C++ JSON/工具（静态链入 libbitte_core.so） |
+| media_kit / media_kit_video | MIT | 播放器 Dart 层 |
+| mpv / libmpv、FFmpeg | LGPL-2.1+ | 音视频解码渲染（libmpv.so 动态链接；源码见上游 mpv-player/mpv、FFmpeg/FFmpeg） |
+| Rust crates（ed25519-dalek、rusqlite 等） | MIT / Apache-2.0 | 核心加密与存储 |
+
+视频栈架构参考了开源社区在同类硬件上的成熟实践（PiliPala 系应用，其自身为
+GPL-3.0，本项目未复制其代码，仅使用同为 MIT 的 media_kit 上游/fork 包与
+公开的功能性配置）。

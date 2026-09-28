@@ -791,7 +791,10 @@ class _SettingsPageState extends State<SettingsPage> {
             aboutBoxChildren: [
               Text(
                 '${L.t.aboutDesc}${L.t.aboutDesc2}'
-                'Flutter + Rust + libtorrent · Unlicense',
+                'App code: Unlicense\n'
+                'Flutter (BSD-3-Clause) · Rust core & libtorrent (BSD-3-Clause)\n'
+                'media_kit (MIT) · mpv/libmpv + FFmpeg (LGPL-2.1+, 动态链接)\n'
+                'OpenSSL (Apache-2.0)',
               ),
             ],
           ),

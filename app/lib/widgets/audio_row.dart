@@ -1,7 +1,51 @@
-// 气泡内紧凑音频播放器（audioplayers 本地文件）
+// 气泡内紧凑音频播放器（media_kit/libmpv 本地文件）。
+//
+// 所有音频气泡共享一个全局 Player：同一时刻只播一条（新播放自动停止上一条），
+// 避免为每条语音消息各建一个 mpv 实例的内存开销（旧 audioplayers 实现为
+// 每行一个 AudioPlayer）。未播放过的行不触碰原生资源。
 
-import 'package:audioplayers/audioplayers.dart';
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:media_kit/media_kit.dart';
+
+import '../core/applog.dart';
+
+/// Process-wide audio player shared by all [AudioRow]s.
+class _SharedAudio {
+  _SharedAudio._();
+
+  static final _SharedAudio instance = _SharedAudio._();
+
+  Player? _player;
+  String? currentPath;
+  bool broken = false;
+
+  Future<Player?> player() async {
+    if (broken) return null;
+    final p = _player;
+    if (p != null) return p;
+    try {
+      return _player = await Player.create(
+        configuration: PlayerConfiguration(logLevel: MPVLogLevel.warn),
+      );
+    } catch (e) {
+      // host/demo mode without libmpv: degrade to a disabled row
+      broken = true;
+      appLog('audio player unavailable: $e');
+      return null;
+    }
+  }
+
+  Future<void> stop() async {
+    final p = _player;
+    if (p == null) return;
+    try {
+      await p.stop();
+    } catch (_) {}
+    currentPath = null;
+  }
+}
 
 class AudioRow extends StatefulWidget {
   const AudioRow({super.key, required this.path, required this.title});
@@ -14,36 +58,87 @@ class AudioRow extends StatefulWidget {
 }
 
 class _AudioRowState extends State<AudioRow> {
-  final AudioPlayer _player = AudioPlayer();
-  PlayerState _state = PlayerState.stopped;
+  final List<StreamSubscription<dynamic>> _subs = [];
+  bool _active = false; // this row owns the shared player
+  bool _playing = false;
+  bool _completed = false;
   Duration _pos = Duration.zero;
   Duration _dur = Duration.zero;
 
-  @override
-  void initState() {
-    super.initState();
-    _player.onPlayerStateChanged.listen((s) {
-      if (mounted) setState(() => _state = s);
-    });
-    _player.onPositionChanged.listen((p) {
-      if (mounted) setState(() => _pos = p);
-    });
-    _player.onDurationChanged.listen((d) {
-      if (mounted) setState(() => _dur = d);
-    });
+  bool get _mine => _SharedAudio.instance.currentPath == widget.path;
+
+  void _bind(Player p) {
+    for (final s in _subs) {
+      s.cancel();
+    }
+    _subs.clear();
+    _subs.addAll([
+      p.stream.playing.listen((v) {
+        if (mounted && _mine) setState(() => _playing = v);
+      }),
+      p.stream.completed.listen((v) {
+        if (mounted && _mine) {
+          setState(() {
+            _completed = v;
+            if (v) _playing = false;
+          });
+        }
+      }),
+      p.stream.position.listen((v) {
+        if (mounted && _mine) setState(() => _pos = v);
+      }),
+      p.stream.duration.listen((v) {
+        if (mounted && _mine) setState(() => _dur = v);
+      }),
+      p.stream.error.listen((e) {
+        if (e.isNotEmpty) appLog('audio error: ${widget.path} -> $e');
+      }),
+    ]);
   }
 
   @override
   void dispose() {
-    _player.dispose();
+    for (final s in _subs) {
+      s.cancel();
+    }
+    // leaving the list stops playback of this row's message
+    if (_mine) _SharedAudio.instance.stop();
     super.dispose();
   }
 
   Future<void> _toggle() async {
-    if (_state == PlayerState.playing) {
-      await _player.pause();
-    } else {
-      await _player.play(DeviceFileSource(widget.path));
+    final shared = _SharedAudio.instance;
+    final p = await shared.player();
+    if (p == null || !mounted) return;
+    if (_mine && _playing) {
+      await p.pause();
+      return;
+    }
+    if (_mine && _completed) {
+      setState(() => _completed = false);
+      await p.seek(Duration.zero);
+      await p.play();
+      return;
+    }
+    if (_mine) {
+      await p.play();
+      return;
+    }
+    // switching rows: (re)bind streams and open this file
+    setState(() {
+      _active = true;
+      _playing = true;
+      _completed = false;
+      _pos = Duration.zero;
+      _dur = Duration.zero;
+    });
+    shared.currentPath = widget.path;
+    _bind(p);
+    try {
+      await p.open(Media(widget.path, extras: {'cache': 'no'}), play: true);
+    } catch (e) {
+      appLog('audio open failed: ${widget.path} -> $e');
+      if (mounted) setState(() => _playing = false);
     }
   }
 
@@ -53,7 +148,7 @@ class _AudioRowState extends State<AudioRow> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final playing = _state == PlayerState.playing;
+    final playing = _playing && _mine;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
@@ -69,9 +164,9 @@ class _AudioRowState extends State<AudioRow> {
               ),
               icon: Icon(playing ? Icons.pause : Icons.play_arrow, size: 20),
             ),
-            SizedBox(width: 8),
+            const SizedBox(width: 8),
             Icon(Icons.audiotrack, size: 18, color: theme.colorScheme.primary),
-            SizedBox(width: 6),
+            const SizedBox(width: 6),
             Flexible(
               child: Text(
                 widget.title,
@@ -82,29 +177,32 @@ class _AudioRowState extends State<AudioRow> {
             ),
           ],
         ),
-        SizedBox(height: 4),
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(_fmt(_pos), style: theme.textTheme.labelSmall),
-            Expanded(
-              child: Slider(
-                value: _dur.inMilliseconds > 0
-                    ? _pos.inMilliseconds
-                        .clamp(0, _dur.inMilliseconds)
-                        .toDouble()
-                    : 0,
-                max: _dur.inMilliseconds > 0
-                    ? _dur.inMilliseconds.toDouble()
-                    : 1,
-                onChanged: (v) async {
-                  await _player.seek(Duration(milliseconds: v.round()));
-                },
+        if (_active || playing)
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(_fmt(_pos), style: theme.textTheme.bodySmall),
+              SizedBox(
+                width: 120,
+                child: Slider(
+                  value: _dur > Duration.zero
+                      ? _pos.inMilliseconds
+                          .clamp(0, _dur.inMilliseconds)
+                          .toDouble()
+                      : 0,
+                  max:
+                      _dur > Duration.zero ? _dur.inMilliseconds.toDouble() : 1,
+                  onChanged: (v) async {
+                    final p = _SharedAudio.instance._player;
+                    if (p != null && _mine) {
+                      await p.seek(Duration(milliseconds: v.toInt()));
+                    }
+                  },
+                ),
               ),
-            ),
-            Text(_fmt(_dur), style: theme.textTheme.labelSmall),
-          ],
-        ),
+              Text(_fmt(_dur), style: theme.textTheme.bodySmall),
+            ],
+          ),
       ],
     );
   }

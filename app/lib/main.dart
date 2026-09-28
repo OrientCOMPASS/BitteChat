@@ -13,13 +13,19 @@ import 'core/intent.dart';
 import 'core/prefs.dart';
 import 'pages/home.dart';
 
-/// Video stack = media_kit (libmpv), the same architecture PiliPala/PiliPlus
-/// use — hardware decode chain (mediacodec,auto-safe; no ffmpeg software
-/// fallback) rendered through mpv's EGL surface. Initialized once here;
-/// the video page creates Player/VideoController per playback.
-void initVideoStack() {
-  MediaKit.ensureInitialized();
-  appLog('media_kit initialized');
+/// Media stack = media_kit (libmpv) for BOTH video and voice messages.
+/// Video: hardware decode chain (hwdec=mediacodec,auto-safe, no ffmpeg
+/// software fallback) rendered through mpv's EGL surface — the architecture
+/// proven at scale by PiliPala-class apps on mainstream Android hardware.
+/// Initialized once here; pages create Player instances on demand.
+void initMediaStack() {
+  try {
+    MediaKit.ensureInitialized();
+    appLog('media_kit initialized');
+  } catch (e) {
+    // e.g. host/desktop run without libmpv — playback degrades to disabled
+    appLog('media_kit init FAILED: $e');
+  }
 }
 
 Future<void> main() async {
@@ -31,7 +37,7 @@ Future<void> main() async {
     appLog('=== app start ===');
     bindIntentChannel();
     final prefs = await UiPrefs.load(api.dataDir);
-    initVideoStack();
+    initMediaStack();
     runApp(BitteChatApp(prefs: prefs));
   }, (e, st) {
     appLog('ZONE ERROR: $e\n$st');
