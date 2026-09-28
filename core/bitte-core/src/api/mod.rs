@@ -40,9 +40,23 @@ pub struct ActiveIdentity {
 pub struct GroupRuntime {
     pub sync: GroupSync,
     pub row: GroupRow,
+    /// DM only: the signed DmReq frame awaiting a chance to be delivered
+    /// (peer was offline at chat_start_dm time)
+    pub pending_dm_req: Option<Vec<u8>>,
     /// next sequence number for our own messages in this group
     pub own_seq: i64,
     pub last_publish: i64,
+}
+
+/// An incoming DM request awaiting the user's accept/decline.
+#[derive(Debug, Clone)]
+pub struct DmPendingReq {
+    pub from_pk: String,
+    pub from_name: String,
+    pub from_x: String,
+    /// swarm the request arrived on (preferred reply route)
+    pub ih: String,
+    pub ts: i64,
 }
 
 pub struct CoreState {
@@ -52,6 +66,14 @@ pub struct CoreState {
     pub by_ih: HashMap<String, String>,
     /// pending joins: manifest infohash -> save dir
     pub pending_joins: HashMap<String, PathBuf>,
+    /// chat peer presence: identity pk (hex) -> swarms (infohash) where the
+    /// peer currently holds a bc_chat connection to us
+    pub presence: HashMap<String, std::collections::HashSet<String>>,
+    /// gid (hex) -> incoming DM request awaiting the user's response
+    pub dm_pending: HashMap<String, DmPendingReq>,
+    /// gid (hex) of DM channels WE initiated but the peer hasn't accepted
+    /// yet (DmReq is re-sent when the peer shows up)
+    pub dm_awaiting_accept: std::collections::HashSet<String>,
 }
 
 pub struct Inner {
@@ -135,6 +157,9 @@ impl Api {
                 groups: HashMap::new(),
                 by_ih: HashMap::new(),
                 pending_joins: HashMap::new(),
+                presence: HashMap::new(),
+                dm_pending: HashMap::new(),
+                dm_awaiting_accept: std::collections::HashSet::new(),
             }),
             active: RwLock::new(active),
             emit,
@@ -143,6 +168,11 @@ impl Api {
         });
         let api = Api { inner };
         api.apply_persisted_limits();
+        // advertise our identity pubkey in bc_chat handshakes (presence +
+        // DM addressing); re-issued on every identity switch
+        if let Err(e) = api.inner.engine.set_chat_pk(&api.own_pk_hex()) {
+            log::warn!("set_chat_pk failed: {e}");
+        }
         api.restore_state()?;
         api.spawn_event_loop(engine_events);
         api.spawn_scheduler();
@@ -231,6 +261,9 @@ impl Api {
             "chat.rename_group" => self.chat_rename_group(p),
             "chat.sync" => self.chat_sync(p),
             "chat.start_dm" => self.chat_start_dm(p),
+            "chat.dm_respond" => self.chat_dm_respond(p),
+            "chat.dm_requests" => self.chat_dm_requests(),
+            "chat.members" => self.chat_members(p),
             "filter.rules" => self.filter_rules(),
             "filter.set_rules" => self.filter_set_rules(p),
             "chat.group_detail" => self.chat_group_detail(p),
@@ -338,7 +371,13 @@ impl Api {
         a.identity = Identity::from_seed(seed);
         a.name = row.name;
         a.avatar_b64 = row.avatar;
-        Ok(json!({"ok": true, "pk": hex::encode(a.identity.public_key())}))
+        let pk = hex::encode(a.identity.public_key());
+        drop(a);
+        // bc_chat handshakes must advertise the NEW identity from now on
+        if let Err(e) = self.inner.engine.set_chat_pk(&pk) {
+            log::warn!("set_chat_pk failed: {e}");
+        }
+        Ok(json!({"ok": true, "pk": pk}))
     }
 
     fn identity_delete(&self, p: Json) -> Result<Json> {
@@ -442,14 +481,19 @@ impl Api {
                 continue;
             }
             let gid_hex = hex::encode(row.gid);
-            let swarm_ih = if row.manifest.is_torrent_room() {
+            let is_dm = row.manifest.is_dm();
+            let swarm_ih = if is_dm {
+                // v0.6 DM channels have NO torrent of their own — frames
+                // ride the swarms of shared rooms. Legacy manifest torrents
+                // are deliberately not re-added (history stays local).
+                String::new()
+            } else if row.manifest.is_torrent_room() {
                 // torrent room: the swarm IS the content torrent; the
                 // torrents loop below re-adds it (kind=0) with its stored
                 // magnet (trackers included)
                 gid_hex.clone()
             } else {
-                // DM / legacy manifest channel: re-add the internal
-                // manifest torrent
+                // legacy manifest channel: re-add the internal manifest torrent
                 let ih = crate::mock::parse_magnet(&row.magnet)
                     .map(|(ih, _)| ih)
                     .unwrap_or_default();
@@ -465,7 +509,7 @@ impl Api {
                 }
                 ih
             };
-            if swarm_ih.is_empty() {
+            if !is_dm && swarm_ih.is_empty() {
                 continue;
             }
             if row.manifest.is_torrent_room() && !torrents.contains_key(&swarm_ih) {
@@ -477,7 +521,9 @@ impl Api {
                     Some(&row.name),
                 );
             }
-            st.by_ih.insert(swarm_ih.clone(), gid_hex.clone());
+            if !swarm_ih.is_empty() {
+                st.by_ih.insert(swarm_ih.clone(), gid_hex.clone());
+            }
             let dag = crate::chat::sync::rebuild_dag(&st.store, &row.gid, &own_pk)?;
             let own_seq = dag.author_seq(&own_pk);
             let mut sync = GroupSync::new(row.gid, row.manifest.clone(), row.head_seq, swarm_ih);
@@ -489,6 +535,7 @@ impl Api {
                     row: row.clone(),
                     own_seq,
                     last_publish: 0,
+                    pending_dm_req: None,
                 },
             );
         }
@@ -633,6 +680,7 @@ impl Api {
                         row: row.clone(),
                         own_seq,
                         last_publish: 0,
+                        pending_dm_req: None,
                     },
                 );
                 st.by_ih.insert(ih_hex.to_string(), gid_hex.clone());
@@ -740,12 +788,14 @@ impl Api {
             (id, pn)
         };
         let now = crate::now_ms();
-        let sm = {
+        let (sm, is_dm, dm_peer) = {
             let mut guard = self.inner.state.lock().unwrap();
             let st = &mut *guard;
             let Some(rt) = st.groups.get_mut(gid_hex) else {
                 return;
             };
+            let is_dm = rt.sync.manifest.is_dm();
+            let dm_peer = self.dm_peer_pk_hex(&rt.sync.manifest);
             let parents = rt.sync.dag.heads();
             let channel_key = self.dm_channel_key(&rt.sync.manifest);
             rt.own_seq += 1;
@@ -776,10 +826,19 @@ impl Api {
             }
             st.store.outbox_add(&gid, &sm.id).ok();
             rt.sync.dirty_heads = true;
-            sm
+            (sm, is_dm, dm_peer)
         };
-        let _ = self.inner.engine.dht_put_immutable(&sm.bytes, &sm.id);
-        {
+        if is_dm {
+            if let Some(pk) = dm_peer {
+                let frame = crate::chat::sync::ExtPayload::DmMsg {
+                    gid,
+                    msg: sm.bytes.clone(),
+                }
+                .encode();
+                let _ = self.dm_deliver_frame(&pk, &frame);
+            }
+        } else {
+            let _ = self.inner.engine.dht_put_immutable(&sm.bytes, &sm.id);
             let mut guard = self.inner.state.lock().unwrap();
             let st = &mut *guard;
             if let Some(rt) = st.groups.get_mut(gid_hex) {
@@ -799,6 +858,11 @@ impl Api {
     pub fn kick_group_sync(&self, gid_hex: &str) {
         let mut st = self.inner.state.lock().unwrap();
         if let Some(rt) = st.groups.get_mut(gid_hex) {
+            if rt.sync.manifest.is_dm() {
+                // DM channels sync over addressed ext frames only (the
+                // reconnect handler gap-fills); no DHT heads/objects
+                return;
+            }
             let now = crate::now_ms();
             rt.sync.poll_heads(&*self.inner.engine, now);
             let backoff = rt.sync.fetch_backoff_table().clone();

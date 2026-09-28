@@ -422,21 +422,18 @@ fn e2e_attachment_transfer() {
             "name": "hello.txt",
         }),
     );
-    let ih = sent["infohash"].as_str().unwrap().to_string();
+    // v0.6: heavy work (hash + copy) runs on a worker thread — the call
+    // returns a job id immediately and the message arrives via events
+    assert!(sent["job_id"].as_str().is_some(), "send_file must be async");
 
-    // B sees the attachment message
-    wait_until(&[&a, &b], T, || {
+    // B sees the attachment message; the infohash comes from the message
+    let ih = wait_until(&[&a, &b], T, || {
         let r = call(&b, "chat.messages", json!({"group_id": gid}));
-        let has = r["messages"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|m| m["payload"]["Attachment"]["infohash"].as_str() == Some(ih.as_str()));
-        if has {
-            Some(())
-        } else {
-            None
-        }
+        r["messages"].as_array()?.iter().find_map(|m| {
+            m["payload"]["Attachment"]["infohash"]
+                .as_str()
+                .map(|s| s.to_string())
+        })
     });
 
     // chat-internal torrents must NOT pollute the default BT list (sender
@@ -557,7 +554,7 @@ fn e2e_tampered_item_rejected() {
 }
 
 #[test]
-fn e2e_group_rename_propagates() {
+fn e2e_group_rename_is_local_only() {
     let bus = MockBus::new();
     let (a, _ta) = spawn_node(&bus);
     let (b, _tb) = spawn_node(&bus);
@@ -567,26 +564,33 @@ fn e2e_group_rename_propagates() {
     call(
         &a,
         "chat.rename_group",
-        json!({"group_id": gid, "name": "新群名"}),
+        json!({"group_id": gid, "name": "A 的本地备注"}),
     );
 
-    // B must converge on the renamed display name through the signed
-    // rename system message
-    wait_until(&[&a, &b], T, || {
-        let groups = call(&b, "chat.groups", json!({}));
-        let g = groups["groups"]
-            .as_array()?
-            .iter()
-            .find(|g| g["group_id"].as_str() == Some(gid.as_str()))?
-            .clone();
-        if g["name"].as_str() == Some("新群名") {
-            Some(())
-        } else {
-            None
-        }
-    });
+    // A sees its local note immediately
+    let groups = call(&a, "chat.groups", json!({}));
+    let ga = groups["groups"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|g| g["group_id"].as_str() == Some(gid.as_str()))
+        .unwrap()
+        .clone();
+    assert_eq!(ga["name"].as_str(), Some("A 的本地备注"));
 
-    // rename message is visible in history as a system entry
+    // v0.6: names are LOCAL — B keeps the torrent-derived name and no
+    // rename system message is broadcast
+    std::thread::sleep(std::time::Duration::from_secs(2));
+    let groups = call(&b, "chat.groups", json!({}));
+    let gb = groups["groups"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|g| g["group_id"].as_str() == Some(gid.as_str()))
+        .unwrap()
+        .clone();
+    assert_ne!(gb["name"].as_str(), Some("A 的本地备注"));
+    assert_eq!(gb["name"].as_str(), Some("room-rename.bin"));
     let r = call(&b, "chat.messages", json!({"group_id": gid}));
     let has_rename = r["messages"].as_array().unwrap().iter().any(|m| {
         m["payload"]
@@ -596,7 +600,7 @@ fn e2e_group_rename_propagates() {
             .and_then(|c| c.as_str())
             == Some("rename")
     });
-    assert!(has_rename);
+    assert!(!has_rename, "rename must not be broadcast anymore");
 }
 
 #[test]
@@ -635,59 +639,74 @@ fn e2e_dm_encrypted_end_to_end() {
         },
     );
 
-    // A learns B's identity from the shared group and opens a DM
+    // A learns B's identity from the shared group and requests a DM
     let r = call(&a, "chat.messages", json!({"group_id": gid}));
+    let a_pk = call(&a, "sys.identity.get", json!({}));
+    let a_pk = a_pk["pk"].as_str().unwrap().to_string();
     let b_pk = r["messages"]
         .as_array()
         .unwrap()
         .iter()
-        .find(|m| m["author_name"].as_str() != Some("旅人-ignore"))
-        .map(|m| m["author_pk"].as_str().unwrap().to_string())
-        .unwrap();
-    let a_pk = call(&a, "sys.identity.get", json!({}))["pk"]
+        .find(|m| m["author_pk"].as_str().unwrap() != a_pk.as_str())
+        .unwrap()["author_pk"]
         .as_str()
         .unwrap()
         .to_string();
-    let b_pk = if b_pk == a_pk {
-        // pick the other author explicitly
-        r["messages"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|m| m["author_pk"].as_str().unwrap() != a_pk.as_str())
-            .unwrap()["author_pk"]
-            .as_str()
-            .unwrap()
-            .to_string()
-    } else {
-        b_pk
-    };
     let dm = call(&a, "chat.start_dm", json!({"author_pk": b_pk}));
     let dgid = dm["group_id"].as_str().unwrap().to_string();
     assert_eq!(dm["dm"], json!(true));
+    assert_eq!(dm["pending"], json!(true));
+    assert_eq!(dm["sent"], json!(true), "B is connected — req must deliver");
 
-    // B auto-joins through the dm_invite system message
+    // B sees the request in its pending list (UI prompts from here)
     wait_dbg(
         &[&a, &b],
         T,
-        "B must auto-join the DM channel via dm_invite",
+        "B must receive the DM request",
+        || format!("{}{}", dump_node(&a, "A"), dump_node(&b, "B")),
         || {
-            format!(
-                "{}{}\nA room texts={:?}\nA dm texts={:?}",
-                dump_node(&a, "A"),
-                dump_node(&b, "B"),
-                texts(&a, &gid),
-                texts(&a, &dgid)
-            )
+            let reqs = call(&b, "chat.dm_requests", json!({}));
+            reqs["requests"]
+                .as_array()?
+                .iter()
+                .find(|q| q["group_id"].as_str() == Some(dgid.as_str()))
+                .cloned()
         },
+    );
+    // the request must NOT have created any group on B before consent
+    let groups = call(&b, "chat.groups", json!({}));
+    assert!(
+        !groups["groups"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|g| g["group_id"].as_str() == Some(dgid.as_str())),
+        "DM must not exist before acceptance"
+    );
+
+    // B accepts
+    let resp = call(
+        &b,
+        "chat.dm_respond",
+        json!({"group_id": dgid, "accept": true}),
+    );
+    assert_eq!(resp["accepted"], json!(true));
+
+    // A learns the channel is established (awaiting_accept clears when the
+    // signed DmAccept arrives)
+    wait_dbg(
+        &[&a, &b],
+        T,
+        "A must see the DM accepted",
+        || format!("{}{}", dump_node(&a, "A"), dump_node(&b, "B")),
         || {
-            let groups = call(&b, "chat.groups", json!({}));
+            let groups = call(&a, "chat.groups", json!({}));
             let g = groups["groups"]
                 .as_array()?
                 .iter()
                 .find(|g| g["group_id"].as_str() == Some(dgid.as_str()))?
                 .clone();
-            if g["dm"] == json!(true) {
+            if g["awaiting_accept"] == json!(false) {
                 Some(())
             } else {
                 None
@@ -725,7 +744,8 @@ fn e2e_dm_encrypted_end_to_end() {
     // and A's own view decrypts too
     assert!(texts(&a, &dgid).contains(&"secret hello".to_string()));
 
-    // on the wire / in the DHT the payload must be sealed
+    // v0.6 privacy: the sealed DM message must NEVER reach the DHT and the
+    // channel must not have created a torrent anywhere
     let r = call(&b, "chat.messages", json!({"group_id": dgid}));
     let mid = r["messages"]
         .as_array()
@@ -738,15 +758,68 @@ fn e2e_dm_encrypted_end_to_end() {
         .to_string();
     let mut target = [0u8; 20];
     target.copy_from_slice(&hex::decode(&mid).unwrap());
-    let raw = bus.immutable(&target).expect("sealed item in DHT");
-    assert!(!raw.windows(12).any(|w| w == b"secret hello"));
-    let raw_str = String::from_utf8_lossy(&raw);
-    assert!(raw_str.contains("1:ei1e"), "message must carry e=1 flag");
+    assert!(
+        bus.immutable(&target).is_none(),
+        "DM messages must not be stored in the DHT"
+    );
+    for node in [&a, &b] {
+        let list = call(node, "bt.list", json!({"include_chat": true}));
+        assert!(
+            !list["torrents"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|t| t["group_id"].as_str() == Some(dgid.as_str())),
+            "DM must not create a torrent"
+        );
+    }
 
-    // DM shows up with lock metadata and both parties agree on history
+    // ack pipeline: A's message leaves the outbox once B's DmAck arrives
+    wait_dbg(
+        &[&a, &b],
+        T,
+        "A's DM message must reach confirmed state via DmAck",
+        || format!("{}{}", dump_node(&a, "A"), dump_node(&b, "B")),
+        || {
+            let r = call(&a, "chat.messages", json!({"group_id": dgid}));
+            let m = r["messages"]
+                .as_array()?
+                .iter()
+                .find(|m| m["id"].as_str() == Some(mid.as_str()))?
+                .clone();
+            if m["state"].as_i64() == Some(1) {
+                Some(())
+            } else {
+                None
+            }
+        },
+    );
+
+    // both parties agree on history
     let ta = texts(&a, &dgid);
     let tb = texts(&b, &dgid);
     assert_eq!(ta, tb);
+    assert!(ta.contains(&"secret hello".to_string()));
+
+    // B replies; A receives (bidirectional)
+    call(
+        &b,
+        "chat.send",
+        json!({"group_id": dgid, "text": "secret reply"}),
+    );
+    wait_dbg(
+        &[&a, &b],
+        T,
+        "A must see B's reply",
+        || format!("{}{}", dump_node(&a, "A"), dump_node(&b, "B")),
+        || {
+            if texts(&a, &dgid).contains(&"secret reply".to_string()) {
+                Some(())
+            } else {
+                None
+            }
+        },
+    );
 }
 
 #[test]

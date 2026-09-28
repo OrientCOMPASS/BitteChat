@@ -14,6 +14,7 @@ pub mod bencode;
 pub mod chat;
 pub mod crypto;
 pub mod engine;
+pub mod filelog;
 pub mod filter;
 pub mod rss;
 pub mod store;

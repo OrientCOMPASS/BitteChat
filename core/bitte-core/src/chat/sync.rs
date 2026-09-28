@@ -50,6 +50,84 @@ pub enum ExtPayload {
     Msg(Vec<u8>),
     Want(Vec<Sha1Hash>),
     Blobs(Vec<Vec<u8>>),
+    /// v2 DM handshake — a signed request carrying the initiator's identity
+    /// pubkey, display name and X25519 exchange key. Delivered DIRECTLY to
+    /// the addressed peer over a shared group's swarm (never broadcast into
+    /// a group DAG, never put to the DHT).
+    DmReq {
+        gid: Sha1Hash,
+        from_pk: String,
+        from_name: String,
+        from_x: String,
+        ts: i64,
+        sig: [u8; 64],
+    },
+    /// Recipient accepted; carries the acceptor's X25519 key (signed).
+    DmAccept {
+        gid: Sha1Hash,
+        x: String,
+        ts: i64,
+        sig: [u8; 64],
+    },
+    /// Recipient declined (informational; no signature needed).
+    DmReject {
+        gid: Sha1Hash,
+    },
+    /// One signed+encrypted DM ChatMessage (raw canonical bytes).
+    DmMsg {
+        gid: Sha1Hash,
+        msg: Vec<u8>,
+    },
+    /// Delivery receipt for a DM message id, signed by the RECEIVER — lets
+    /// the sender clear its outbox entry.
+    DmAck {
+        gid: Sha1Hash,
+        id: Sha1Hash,
+        sig: [u8; 64],
+    },
+    /// Ask the peer for OUR messages with author_seq > after_seq (gap fill
+    /// after offline periods; the reply is a burst of DmMsg frames).
+    DmFetch {
+        gid: Sha1Hash,
+        after_seq: i64,
+    },
+}
+
+/// Canonical signable body of a DmReq (the "s" field itself excluded).
+pub fn dm_req_sig_body(
+    gid: &Sha1Hash,
+    from_pk: &str,
+    from_name: &str,
+    from_x: &str,
+    ts: i64,
+) -> Vec<u8> {
+    let mut d = Value::dict();
+    d.insert("m", Value::Int(5));
+    d.insert("g", Value::Str(gid.to_vec()));
+    d.insert("p", Value::Str(from_pk.as_bytes().to_vec()));
+    d.insert("n", Value::Str(from_name.as_bytes().to_vec()));
+    d.insert("x", Value::Str(from_x.as_bytes().to_vec()));
+    d.insert("t", Value::Int(ts));
+    bencode::encode(&d)
+}
+
+/// Canonical signable body of a DmAccept.
+pub fn dm_accept_sig_body(gid: &Sha1Hash, x: &str, ts: i64) -> Vec<u8> {
+    let mut d = Value::dict();
+    d.insert("m", Value::Int(6));
+    d.insert("g", Value::Str(gid.to_vec()));
+    d.insert("x", Value::Str(x.as_bytes().to_vec()));
+    d.insert("t", Value::Int(ts));
+    bencode::encode(&d)
+}
+
+/// Canonical signable body of a DmAck.
+pub fn dm_ack_sig_body(gid: &Sha1Hash, id: &Sha1Hash) -> Vec<u8> {
+    let mut d = Value::dict();
+    d.insert("m", Value::Int(8));
+    d.insert("g", Value::Str(gid.to_vec()));
+    d.insert("i", Value::Str(id.to_vec()));
+    bencode::encode(&d)
 }
 
 impl ExtPayload {
@@ -80,6 +158,49 @@ impl ExtPayload {
                     "b",
                     Value::List(b.iter().map(|x| Value::Str(x.clone())).collect()),
                 );
+            }
+            ExtPayload::DmReq {
+                gid,
+                from_pk,
+                from_name,
+                from_x,
+                ts,
+                sig,
+            } => {
+                d.insert("m", Value::Int(5));
+                d.insert("g", Value::Str(gid.to_vec()));
+                d.insert("p", Value::Str(from_pk.as_bytes().to_vec()));
+                d.insert("n", Value::Str(from_name.as_bytes().to_vec()));
+                d.insert("x", Value::Str(from_x.as_bytes().to_vec()));
+                d.insert("t", Value::Int(*ts));
+                d.insert("s", Value::Str(sig.to_vec()));
+            }
+            ExtPayload::DmAccept { gid, x, ts, sig } => {
+                d.insert("m", Value::Int(6));
+                d.insert("g", Value::Str(gid.to_vec()));
+                d.insert("x", Value::Str(x.as_bytes().to_vec()));
+                d.insert("t", Value::Int(*ts));
+                d.insert("s", Value::Str(sig.to_vec()));
+            }
+            ExtPayload::DmReject { gid } => {
+                d.insert("m", Value::Int(9));
+                d.insert("g", Value::Str(gid.to_vec()));
+            }
+            ExtPayload::DmMsg { gid, msg } => {
+                d.insert("m", Value::Int(7));
+                d.insert("g", Value::Str(gid.to_vec()));
+                d.insert("msg", Value::Str(msg.clone()));
+            }
+            ExtPayload::DmAck { gid, id, sig } => {
+                d.insert("m", Value::Int(8));
+                d.insert("g", Value::Str(gid.to_vec()));
+                d.insert("i", Value::Str(id.to_vec()));
+                d.insert("s", Value::Str(sig.to_vec()));
+            }
+            ExtPayload::DmFetch { gid, after_seq } => {
+                d.insert("m", Value::Int(10));
+                d.insert("g", Value::Str(gid.to_vec()));
+                d.insert("q", Value::Int(*after_seq));
             }
         }
         bencode::encode(&d)
@@ -119,9 +240,80 @@ impl ExtPayload {
                 }
                 Some(ExtPayload::Blobs(out))
             }
+            5 => {
+                let sig = fixed64(v.get_bytes("s")?)?;
+                Some(ExtPayload::DmReq {
+                    gid: hash_field(&v, "g")?,
+                    from_pk: hex_field(&v, "p", 64)?,
+                    from_name: String::from_utf8_lossy(v.get_bytes("n")?).into_owned(),
+                    from_x: hex_field(&v, "x", 64)?,
+                    ts: v.get_int("t").unwrap_or(0),
+                    sig,
+                })
+            }
+            6 => {
+                let sig = fixed64(v.get_bytes("s")?)?;
+                Some(ExtPayload::DmAccept {
+                    gid: hash_field(&v, "g")?,
+                    x: hex_field(&v, "x", 64)?,
+                    ts: v.get_int("t").unwrap_or(0),
+                    sig,
+                })
+            }
+            7 => Some(ExtPayload::DmMsg {
+                gid: hash_field(&v, "g")?,
+                msg: v.get_bytes("msg")?.to_vec(),
+            }),
+            8 => {
+                let sig = fixed64(v.get_bytes("s")?)?;
+                Some(ExtPayload::DmAck {
+                    gid: hash_field(&v, "g")?,
+                    id: hash_field(&v, "i")?,
+                    sig,
+                })
+            }
+            9 => Some(ExtPayload::DmReject {
+                gid: hash_field(&v, "g")?,
+            }),
+            10 => Some(ExtPayload::DmFetch {
+                gid: hash_field(&v, "g")?,
+                after_seq: v.get_int("q").unwrap_or(0),
+            }),
             _ => None,
         }
     }
+}
+
+fn hash_field(v: &Value, key: &str) -> Option<Sha1Hash> {
+    let b = v.get_bytes(key)?;
+    if b.len() != 20 {
+        return None;
+    }
+    let mut h = [0u8; 20];
+    h.copy_from_slice(b);
+    Some(h)
+}
+
+fn hex_field(v: &Value, key: &str, len: usize) -> Option<String> {
+    let b = v.get_bytes(key)?;
+    if b.len() != len {
+        return None;
+    }
+    let s = std::str::from_utf8(b).ok()?.to_string();
+    if s.chars().all(|c| c.is_ascii_hexdigit()) {
+        Some(s)
+    } else {
+        None
+    }
+}
+
+fn fixed64(b: &[u8]) -> Option<[u8; 64]> {
+    if b.len() != 64 {
+        return None;
+    }
+    let mut a = [0u8; 64];
+    a.copy_from_slice(b);
+    Some(a)
 }
 
 pub struct GroupSync {
@@ -312,15 +504,9 @@ impl GroupSync {
         }
         match self.dag.insert(id, sm.msg.clone(), sm.bytes.clone())? {
             crate::chat::dag::InsertOutcome::New => {
-                // group rename propagates through signed system messages
-                if sm.msg.kind == crate::chat::message::MsgKind::System as i64 {
-                    if let crate::chat::message::Payload::System { code, detail } = &sm.msg.payload
-                    {
-                        if code == "rename" && !detail.is_empty() {
-                            let _ = store.group_set_name(&self.gid, detail);
-                        }
-                    }
-                }
+                // v0.6: group names are LOCAL notes — a "rename" system
+                // message from a peer (legacy chain) is stored but no longer
+                // applied to our display name
                 let _ = store.missing_replace(&self.gid, &self.dag.missing());
                 if self.pending_puts.remove(&id) {
                     // our own message confirmed round-trip
@@ -417,6 +603,15 @@ impl GroupSync {
                     }
                 }
             }
+            // DM frames (DmReq/DmAccept/DmMsg/DmAck/DmReject/DmFetch) are
+            // routed by channel gid at the API layer, never through a room's
+            // GroupSync
+            ExtPayload::DmReq { .. }
+            | ExtPayload::DmAccept { .. }
+            | ExtPayload::DmReject { .. }
+            | ExtPayload::DmMsg { .. }
+            | ExtPayload::DmAck { .. }
+            | ExtPayload::DmFetch { .. } => {}
         }
     }
 
@@ -530,5 +725,86 @@ mod tests {
         assert!(sync.publish_heads(&store, &eng, now));
         assert_eq!(sync.head_seq, 1);
         assert!(!sync.dirty_heads);
+    }
+}
+
+#[cfg(test)]
+mod dm_payload_tests {
+    use super::*;
+    use crate::crypto::Identity;
+
+    #[test]
+    fn dm_req_roundtrip_and_sig() {
+        let id = Identity::generate();
+        let pk = hex::encode(id.public_key());
+        let xs = crate::crypto::x_secret_from_seed(&id.seed);
+        let x = hex::encode(crate::crypto::x_public(&xs));
+        let gid = [7u8; 20];
+        let now = 1234;
+        let body = dm_req_sig_body(&gid, &pk, "名字", &x, now);
+        let sig = id.sign(&body);
+        let p = ExtPayload::DmReq {
+            gid,
+            from_pk: pk.clone(),
+            from_name: "名字".into(),
+            from_x: x.clone(),
+            ts: now,
+            sig,
+        };
+        let enc = p.encode();
+        let dec = ExtPayload::decode(&enc).expect("dm req must roundtrip");
+        match dec {
+            ExtPayload::DmReq {
+                gid: g2,
+                from_pk: p2,
+                from_name: n2,
+                from_x: x2,
+                ts: t2,
+                sig: s2,
+            } => {
+                assert_eq!(g2, gid);
+                assert_eq!(p2, pk);
+                assert_eq!(n2, "名字");
+                assert_eq!(x2, x);
+                assert_eq!(t2, now);
+                assert_eq!(s2, sig);
+                assert!(crate::crypto::verify(
+                    &id.public_key(),
+                    &dm_req_sig_body(&g2, &p2, &n2, &x2, t2),
+                    &s2
+                ));
+            }
+            _ => panic!("wrong variant"),
+        }
+    }
+
+    #[test]
+    fn dm_msg_ack_fetch_roundtrip() {
+        let gid = [3u8; 20];
+        let id = [9u8; 20];
+        let p = ExtPayload::DmMsg {
+            gid,
+            msg: vec![1, 2, 3],
+        };
+        assert!(matches!(
+            ExtPayload::decode(&p.encode()).unwrap(),
+            ExtPayload::DmMsg { gid: g, msg } if g == gid && msg == vec![1, 2, 3]
+        ));
+        let sig = [5u8; 64];
+        let p = ExtPayload::DmAck { gid, id, sig };
+        assert!(matches!(
+            ExtPayload::decode(&p.encode()).unwrap(),
+            ExtPayload::DmAck { gid: g, id: i, sig: s } if g == gid && i == id && s == sig
+        ));
+        let p = ExtPayload::DmFetch { gid, after_seq: 42 };
+        assert!(matches!(
+            ExtPayload::decode(&p.encode()).unwrap(),
+            ExtPayload::DmFetch { gid: g, after_seq } if g == gid && after_seq == 42
+        ));
+        let p = ExtPayload::DmReject { gid };
+        assert!(matches!(
+            ExtPayload::decode(&p.encode()).unwrap(),
+            ExtPayload::DmReject { gid: g } if g == gid
+        ));
     }
 }

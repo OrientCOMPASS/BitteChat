@@ -16,6 +16,7 @@ const BT_PUSH_INTERVAL: u64 = 3;
 const GROUP_TICK_INTERVAL: u64 = 5;
 const OUTBOX_TICK_INTERVAL: u64 = 10;
 const RSS_TICK_INTERVAL: u64 = 60;
+const RESUME_TICK_INTERVAL: u64 = 120;
 const RSS_REFRESH_AGE_MS: i64 = 30 * 60 * 1000;
 
 impl Api {
@@ -62,6 +63,13 @@ impl Api {
                     if tick.is_multiple_of(RSS_TICK_INTERVAL) {
                         api.rss_tick();
                     }
+                    if tick.is_multiple_of(RESUME_TICK_INTERVAL) {
+                        // keep <data>/resume/*.fastresume fresh so restarts
+                        // never re-check/re-fetch completed torrents
+                        if let Err(e) = api.inner.engine.save_all_resume() {
+                            log::debug!("save_all_resume: {e}");
+                        }
+                    }
                 }
             })
             .expect("spawn scheduler");
@@ -73,6 +81,11 @@ impl Api {
         let mut guard = self.inner.state.lock().unwrap();
         let st = &mut *guard;
         for (gid_hex, rt) in st.groups.iter_mut() {
+            if rt.sync.manifest.is_dm() {
+                // DM: no DHT heads, no broadcast; delivery is handled by the
+                // outbox tick (addressed ext frames)
+                continue;
+            }
             let interval = if active.as_deref() == Some(gid_hex.as_str()) {
                 HEAD_POLL_ACTIVE_MS
             } else {
@@ -96,26 +109,52 @@ impl Api {
 
     fn outbox_tick(&self) {
         let now = crate::now_ms();
-        let mut guard = self.inner.state.lock().unwrap();
-        let st = &mut *guard;
-        let entries = match st.store.outbox_list() {
-            Ok(e) => e,
-            Err(_) => return,
-        };
-        for (row_id, _gid, msg_id, attempts, next_try) in entries {
-            if next_try > now {
-                continue;
-            }
-            if attempts > 60 {
-                let _ = st.store.outbox_remove(row_id);
-                continue;
-            }
-            let Some(raw) = st.store.message_get_raw(&msg_id).ok().flatten() else {
-                let _ = st.store.outbox_remove(row_id);
-                continue;
+        // (gid_hex) of DM channels with pending entries — actual delivery
+        // happens OUTSIDE the state lock (dm_route re-locks it)
+        let mut dm_gids: std::collections::HashSet<String> = std::collections::HashSet::new();
+        {
+            let mut guard = self.inner.state.lock().unwrap();
+            let st = &mut *guard;
+            let entries = match st.store.outbox_list() {
+                Ok(e) => e,
+                Err(_) => return,
             };
-            let _ = self.inner.engine.dht_put_immutable(&raw, &msg_id);
-            let _ = st.store.outbox_bump(row_id, now + backoff_ms(attempts));
+            for (row_id, gid, msg_id, attempts, next_try) in entries {
+                let gid_hex = hex::encode(gid);
+                if st
+                    .groups
+                    .get(&gid_hex)
+                    .map(|rt| rt.sync.manifest.is_dm())
+                    .unwrap_or(false)
+                {
+                    if attempts > 60 {
+                        // give up silently: DM delivery needs the peer online;
+                        // the entry is re-created on the next send anyway
+                        let _ = st.store.outbox_remove(row_id);
+                        continue;
+                    }
+                    if next_try <= now {
+                        dm_gids.insert(gid_hex);
+                    }
+                    continue;
+                }
+                if next_try > now {
+                    continue;
+                }
+                if attempts > 60 {
+                    let _ = st.store.outbox_remove(row_id);
+                    continue;
+                }
+                let Some(raw) = st.store.message_get_raw(&msg_id).ok().flatten() else {
+                    let _ = st.store.outbox_remove(row_id);
+                    continue;
+                };
+                let _ = self.inner.engine.dht_put_immutable(&raw, &msg_id);
+                let _ = st.store.outbox_bump(row_id, now + backoff_ms(attempts));
+            }
+        }
+        for gid_hex in dm_gids {
+            self.dm_flush_outbox(&gid_hex);
         }
     }
 
@@ -143,10 +182,12 @@ impl Api {
             EngineEvent::MetadataReceived { infohash } => {
                 self.try_complete_join(&infohash);
                 self.refresh_torrent_group_name(&infohash);
+                let _ = self.inner.engine.save_all_resume();
             }
             EngineEvent::TorrentFinished { infohash } => {
                 self.try_complete_join(&infohash);
                 self.refresh_torrent_group_name(&infohash);
+                let _ = self.inner.engine.save_all_resume();
             }
             EngineEvent::TorrentError { infohash, error } => {
                 self.emit_event(
@@ -180,23 +221,15 @@ impl Api {
             EngineEvent::ExtMessage {
                 infohash,
                 peer,
+                pk,
                 payload,
-            } => self.on_ext_message(infohash, peer, payload),
+            } => self.on_ext_message(infohash, peer, pk, payload),
             EngineEvent::ChatPeer {
                 infohash,
+                pk,
                 connected,
                 ..
-            } => {
-                if connected {
-                    // greet the new peer with our head set
-                    let st = self.inner.state.lock().unwrap();
-                    if let Some(gid) = st.by_ih.get(&infohash).cloned() {
-                        if let Some(rt) = st.groups.get(&gid) {
-                            rt.sync.ext_announce_heads(&*self.inner.engine);
-                        }
-                    }
-                }
-            }
+            } => self.on_chat_peer(infohash, pk, connected),
             EngineEvent::SessionStats { stats } => {
                 self.emit_event(
                     "sys.stats",
@@ -264,8 +297,6 @@ impl Api {
                         "chat.message_new",
                         json!({"group": gid_hex, "message": sm.msg}),
                     );
-                    // DHT-fetched messages must also trigger DM auto-join
-                    self.scan_dm_invites(std::slice::from_ref(&sm.msg));
                 }
                 self.emit_event(
                     "chat.sync",
@@ -397,7 +428,23 @@ impl Api {
         }
     }
 
-    fn on_ext_message(&self, infohash: String, _peer: String, payload: Vec<u8>) {
+    fn on_ext_message(&self, infohash: String, _peer: String, pk: String, payload: Vec<u8>) {
+        use crate::chat::sync::ExtPayload;
+        // DM frames are addressed by channel gid, independent of which swarm
+        // they rode in — route them before the per-swarm group handling
+        let decoded = ExtPayload::decode(&payload);
+        if let Some(
+            ext @ (ExtPayload::DmReq { .. }
+            | ExtPayload::DmAccept { .. }
+            | ExtPayload::DmReject { .. }
+            | ExtPayload::DmMsg { .. }
+            | ExtPayload::DmAck { .. }
+            | ExtPayload::DmFetch { .. }),
+        ) = decoded
+        {
+            self.on_dm_frame(&infohash, &pk, ext);
+            return;
+        }
         let now = crate::now_ms();
         let gid_hex = {
             let guard = self.inner.state.lock().unwrap();
@@ -443,63 +490,6 @@ impl Api {
         if had_new {
             self.emit_event("chat.group_updated", json!({"group": gid_hex}));
         }
-        self.scan_dm_invites(&new_msgs);
-    }
-
-    /// Check freshly ingested messages for DM invites addressed to us and
-    /// auto-join the channel. Covers BOTH ingest paths (ext push and DHT
-    /// fetch) so an invite that races in through the DHT is not missed.
-    fn scan_dm_invites(&self, msgs: &[crate::chat::ChatMessage]) {
-        let own_pk = self.own_pk_hex();
-        for m in msgs {
-            let crate::chat::message::Payload::System { code, detail } = &m.payload else {
-                continue;
-            };
-            if code != "dm_invite" {
-                continue;
-            }
-            match dm_invite_for_me(m, &own_pk) {
-                Some(magnet) => match self.chat_join_dm(json!({"magnet": magnet})) {
-                    Ok(_) => self.emit_event(
-                        "sys.log",
-                        json!({"level": "info", "msg": "dm invite accepted"}),
-                    ),
-                    Err(e) => self.emit_event(
-                        "sys.log",
-                        json!({"level": "warn", "msg": format!("dm invite join failed: {e}")}),
-                    ),
-                },
-                None => {
-                    // diagnostics: why didn't it match?
-                    let recip = detail.split(' ').next().unwrap_or("");
-                    self.emit_event(
-                        "sys.log",
-                        json!({"level": "warn", "msg": format!(
-                            "dm_invite skipped: own_pk={} recipient={} pk_match={} own_flag={}",
-                            &own_pk[..own_pk.len().min(8)],
-                            &recip[..recip.len().min(8)],
-                            recip == own_pk,
-                            m.own
-                        )}),
-                    );
-                }
-            }
-        }
-    }
-}
-
-/// If `m` is a DM invite addressed to `own_pk`, extract the magnet.
-fn dm_invite_for_me(m: &crate::chat::ChatMessage, own_pk: &str) -> Option<String> {
-    match &m.payload {
-        crate::chat::message::Payload::System { code, detail } if code == "dm_invite" => {
-            let (recipient, magnet) = detail.split_once(' ')?;
-            if recipient == own_pk && !m.own {
-                Some(magnet.to_string())
-            } else {
-                None
-            }
-        }
-        _ => None,
     }
 }
 

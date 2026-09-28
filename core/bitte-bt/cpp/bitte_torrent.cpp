@@ -21,6 +21,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <fstream>
 #include <functional>
 #include <map>
 #include <memory>
@@ -251,6 +252,10 @@ struct chat_peer_plugin final : peer_plugin
     {
         h["m"]["bc_chat"] = BC_EXT_ID;
         h["bc_cap"] = 1;
+        // advertise our identity pubkey so peers can address us directly
+        // (DM transport + presence); empty before an identity is set
+        std::string const pk = m_ctx->chat_pk();
+        if (!pk.empty()) h["bc_pk"] = pk;
     }
 
     bool on_extension_handshake(bdecode_node const& h) override;
@@ -294,11 +299,26 @@ struct chat_peer_plugin final : peer_plugin
     bool chat_ready() const { return m_peer_ext_id.load() > 0; }
     tcp::endpoint remote() const { return m_pc.remote(); }
 
+    /// identity pubkey (hex) the peer advertised in its bc_chat handshake;
+    /// empty for peers that did not send one (older clients)
+    std::string peer_pk() const
+    {
+        std::lock_guard<std::mutex> l(m_mx);
+        return m_peer_pk;
+    }
+
+    void set_peer_pk(std::string pk)
+    {
+        std::lock_guard<std::mutex> l(m_mx);
+        m_peer_pk = std::move(pk);
+    }
+
 private:
     bt_peer_connection_handle m_pc;
     sha1_hash m_ih;
     bc_ctx* m_ctx;
     std::atomic<int> m_peer_ext_id{0};
+    std::string m_peer_pk;
     std::mutex m_mx;
     std::vector<std::string> m_out;
 };
@@ -314,6 +334,23 @@ struct bc_ctx
 
     std::mutex reg_mx;
     std::map<std::string, std::vector<std::weak_ptr<chat_peer_plugin>>> registry;
+
+    // our own identity pubkey (hex), advertised in bc_chat handshakes so
+    // other clients can address DM frames to us; updated on identity switch
+    mutable std::mutex pk_mx;
+    std::string chat_pk_hex;
+
+    std::string chat_pk() const
+    {
+        std::lock_guard<std::mutex> l(pk_mx);
+        return chat_pk_hex;
+    }
+
+    void set_chat_pk(std::string pk_hex)
+    {
+        std::lock_guard<std::mutex> l(pk_mx);
+        chat_pk_hex = std::move(pk_hex);
+    }
 
     void emit(json::value const& v) const
     {
@@ -412,6 +449,75 @@ struct bc_ctx
         return n;
     }
 
+    /// Deliver `payload` only to the connected chat peer of swarm `ih` whose
+    /// advertised identity pubkey equals `pk_hex`. Returns the number of
+    /// matching peers the frame was queued for (0 = peer not connected here).
+    std::size_t send_to(std::string const& ih, std::string const& pk_hex,
+        std::string payload)
+    {
+        if (pk_hex.empty()) return 0;
+        std::vector<std::shared_ptr<chat_peer_plugin>> live;
+        {
+            std::lock_guard<std::mutex> l(reg_mx);
+            auto it = registry.find(ih);
+            if (it == registry.end()) return 0;
+            auto& v = it->second;
+            v.erase(std::remove_if(v.begin(), v.end(),
+                        [&live](auto const& w) {
+                            auto sp = w.lock();
+                            if (!sp) return true;
+                            live.push_back(std::move(sp));
+                            return false;
+                        }),
+                v.end());
+        }
+        std::size_t n = 0;
+        for (auto const& p : live)
+        {
+            if (!p->chat_ready()) continue;
+            if (p->peer_pk() != pk_hex) continue;
+            p->queue_send(payload);
+            ++n;
+        }
+        return n;
+    }
+
+    /// Chat-ready peers of a swarm: [{pk, endpoint}] (pk may be empty for
+    /// pre-v0.6 clients that do not advertise an identity).
+    json::value peers_json(std::string const& ih)
+    {
+        std::vector<std::shared_ptr<chat_peer_plugin>> live;
+        {
+            std::lock_guard<std::mutex> l(reg_mx);
+            auto it = registry.find(ih);
+            if (it != registry.end())
+            {
+                auto& v = it->second;
+                v.erase(std::remove_if(v.begin(), v.end(),
+                            [&live](auto const& w) {
+                                auto sp = w.lock();
+                                if (!sp) return true;
+                                live.push_back(std::move(sp));
+                                return false;
+                            }),
+                    v.end());
+            }
+        }
+        json::array arr;
+        for (auto const& p : live)
+        {
+            if (!p->chat_ready()) continue;
+            json::object o;
+            o["pk"] = p->peer_pk();
+            o["endpoint"] = peer_endpoint_str(p->remote());
+            arr.push_back(std::move(o));
+        }
+        json::object r;
+        r["ok"] = true;
+        r["peers"] = std::move(arr);
+        return r;
+    }
+
     bool peer_is_chat(tcp::endpoint const& ep)
     {
         std::lock_guard<std::mutex> l(reg_mx);
@@ -435,10 +541,16 @@ bool chat_peer_plugin::on_extension_handshake(bdecode_node const& h)
     std::int64_t const id = m.dict_find_int_value("bc_chat", 0);
     if (id <= 0 || id > 255) return false;
     m_peer_ext_id.store(static_cast<int>(id));
+    // identity pubkey the peer advertised (64 hex chars); tolerate its
+    // absence (older clients) — presence/DM addressing just won't work
+    bdecode_node const pk = h.dict_find_string("bc_pk");
+    if (pk.type() == bdecode_node::string_t && pk.string_length() == 64)
+        set_peer_pk(std::string(pk.string_value()));
     {
         json::object data;
         data["infohash"] = hex_encode(m_ih.data(), 20);
         data["peer"] = peer_endpoint_str(m_pc.remote());
+        data["pk"] = peer_pk();
         data["connected"] = true;
         m_ctx->emit_event("chat_peer", std::move(data));
     }
@@ -450,6 +562,7 @@ void chat_peer_plugin::on_disconnect(error_code const&)
     json::object data;
     data["infohash"] = hex_encode(m_ih.data(), 20);
     data["peer"] = peer_endpoint_str(m_pc.remote());
+    data["pk"] = peer_pk();
     data["connected"] = false;
     m_ctx->emit_event("chat_peer", std::move(data));
 }
@@ -464,6 +577,7 @@ bool chat_peer_plugin::on_extended(int const length, int const msg, span<char co
     json::object data;
     data["infohash"] = hex_encode(m_ih.data(), 20);
     data["peer"] = peer_endpoint_str(m_pc.remote());
+    data["pk"] = peer_pk();
     data["payload_b64"] = b64_encode(body.data(), static_cast<std::size_t>(body.size()));
     m_ctx->emit_event("ext_msg", std::move(data));
     return true;
@@ -545,6 +659,9 @@ struct bc_session
     std::atomic<std::int64_t> has_incoming{0};
     int idx_dht_nodes = -1;
     int idx_has_incoming = -1;
+
+    // directory for libtorrent resume data (<ih>.fastresume); empty disables
+    std::string resume_dir;
 };
 
 static char* json_to_cstr(json::value const& v)
@@ -815,10 +932,48 @@ static void alert_loop(bc_session* s)
                 s->ctx.emit_event("log", std::move(data));
                 break;
             }
-            case torrent_deleted_alert::alert_type:
             case save_resume_data_alert::alert_type:
-            case save_resume_data_failed_alert::alert_type:
+            {
+                auto* ra = alert_cast<save_resume_data_alert>(a);
+                if (!s->resume_dir.empty() && ra->params.info_hashes.has_v1())
+                {
+                    std::string const path = s->resume_dir + "/"
+                        + hex_encode(ra->params.info_hashes.v1.data(), 20)
+                        + ".fastresume";
+                    std::vector<char> const buf = write_resume_data_buf(ra->params);
+                    std::string tmp = path + ".tmp";
+                    {
+                        std::ofstream f(tmp, std::ios::binary | std::ios::trunc);
+                        if (f) f.write(buf.data(), static_cast<std::streamsize>(buf.size()));
+                    }
+                    error_code rec;
+                    std::filesystem::rename(tmp, path, rec); // atomic replace
+                    if (rec) std::filesystem::remove(tmp, rec);
+                }
                 break;
+            }
+            case save_resume_data_failed_alert::alert_type:
+            {
+                auto* fa = alert_cast<save_resume_data_failed_alert>(a);
+                json::object data;
+                data["level"] = "warn";
+                data["msg"] = std::string("save_resume_data failed: ")
+                    + fa->error.message();
+                s->ctx.emit_event("log", std::move(data));
+                break;
+            }
+            case torrent_deleted_alert::alert_type:
+            {
+                auto* da = alert_cast<torrent_deleted_alert>(a);
+                if (!s->resume_dir.empty())
+                {
+                    error_code rec;
+                    std::filesystem::remove(s->resume_dir + "/"
+                        + hex_encode(da->info_hash.v1.data(), 20)
+                        + ".fastresume", rec);
+                }
+                break;
+            }
             default:
                 break;
             }
@@ -841,6 +996,22 @@ static void alert_loop(bc_session* s)
 
 // ---- commands ----------------------------------------------------------------
 
+/// Attach <resume_dir>/<ih>.fastresume (if present) so the torrent restores
+/// with its verified pieces + metadata instead of re-checking/re-fetching.
+static void attach_resume(bc_session* s, add_torrent_params& atp, std::string const& ih)
+{
+    if (s->resume_dir.empty() || ih.empty()) return;
+    std::string const path = s->resume_dir + "/" + ih + ".fastresume";
+    std::error_code ec;
+    if (!std::filesystem::exists(path, ec)) return;
+    std::ifstream f(path, std::ios::binary);
+    if (!f) return;
+    std::vector<char> buf((std::istreambuf_iterator<char>(f)),
+        std::istreambuf_iterator<char>());
+    if (buf.empty()) return;
+    atp.resume_data = std::move(buf);
+}
+
 static json::value cmd_add_magnet(bc_session* s, json::object const& o)
 {
     std::string const magnet = jstr(o, "magnet");
@@ -857,6 +1028,7 @@ static json::value cmd_add_magnet(bc_session* s, json::object const& o)
     std::error_code fec;
     std::filesystem::create_directories(atp.save_path, fec);
     std::string const key = hex_encode(atp.info_hashes.v1.data(), 20);
+    attach_resume(s, atp, key);
     torrent_handle th = s->ses->add_torrent(std::move(atp));
     {
         std::lock_guard<std::mutex> l(s->st_mx);
@@ -890,6 +1062,7 @@ static json::value cmd_add_torrent(bc_session* s, json::object const& o)
     auto const ih = atp.ti->info_hashes();
     std::string key = ih_hex(ih);
     if (!ih.has_v1()) return json_err("v2-only torrents are not supported yet");
+    attach_resume(s, atp, key);
     torrent_handle th = s->ses->add_torrent(std::move(atp));
     std::string const tname = th.status(torrent_handle::query_name).name;
     {
@@ -1250,6 +1423,65 @@ static json::value cmd_ext_send(bc_session* s, json::object const& o)
     return r;
 }
 
+/// Deliver a bc_chat frame to ONE peer (by advertised identity pubkey) of a
+/// swarm — the DM transport. sent=0 means the peer is not connected here.
+static json::value cmd_ext_send_to(bc_session* s, json::object const& o)
+{
+    std::vector<char> payload;
+    if (!b64_decode(jstr(o, "payload_b64"), payload)) return json_err("bad base64");
+    std::string const ih = jstr(o, "infohash");
+    std::string const pk = jstr(o, "pk_hex");
+    if (pk.empty()) return json_err("missing pk_hex");
+    std::size_t const n = s->ctx.send_to(
+        ih, pk, std::string(payload.data(), payload.size()));
+    if (n > 0) s->ses->post_torrent_updates(); // wake the session thread to flush
+    json::object r;
+    r["ok"] = true;
+    r["sent"] = static_cast<std::int64_t>(n);
+    return r;
+}
+
+/// Chat-ready peers of a swarm with their advertised identity pubkeys —
+/// powers presence ("online") and DM peer discovery.
+static json::value cmd_ext_peers(bc_session* s, json::object const& o)
+{
+    return s->ctx.peers_json(jstr(o, "infohash"));
+}
+
+static json::value cmd_set_chat_pk(bc_session* s, json::object const& o)
+{
+    std::string const pk = jstr(o, "pk_hex");
+    if (!pk.empty() && pk.size() != 64) return json_err("bad pk_hex");
+    s->ctx.set_chat_pk(pk);
+    return json_ok();
+}
+
+/// Request resume-data snapshots for every live torrent; the
+/// save_resume_data_alert handler writes <resume_dir>/<ih>.fastresume.
+static json::value cmd_save_all_resume(bc_session* s, json::object const&)
+{
+    if (s->resume_dir.empty()) return json_err("no resume_dir configured");
+    std::error_code ec;
+    std::filesystem::create_directories(s->resume_dir, ec);
+    std::vector<torrent_handle> ths;
+    {
+        std::lock_guard<std::mutex> l(s->st_mx);
+        ths.reserve(s->handles.size());
+        for (auto const& kv : s->handles) ths.push_back(kv.second);
+    }
+    std::int64_t n = 0;
+    for (auto const& th : ths)
+    {
+        if (!th.is_valid()) continue;
+        th.save_resume_data(torrent_handle::save_info_dict);
+        ++n;
+    }
+    json::object r;
+    r["ok"] = true;
+    r["queued"] = n;
+    return r;
+}
+
 static json::value cmd_stats(bc_session* s, json::object const&)
 {
     std::int64_t up = 0, down = 0;
@@ -1348,6 +1580,10 @@ extern "C" bc_session* bct_create(const char* cfg_json, bc_event_fn cb, void* cb
             pack.set_str(settings_pack::dht_bootstrap_nodes, bootstrap);
         }
     }
+    // Chat rides on swarm connections: a seeder talking to another seeder has
+    // no pieces to exchange, and libtorrent would close such "redundant"
+    // connections by default — killing the bc_chat channel and presence.
+    pack.set_bool(settings_pack::close_redundant_connections, false);
     pack.set_bool(settings_pack::enable_lsd, true);
     pack.set_bool(settings_pack::enable_upnp, true);
     pack.set_bool(settings_pack::enable_natpmp, true);
@@ -1380,6 +1616,14 @@ extern "C" bc_session* bct_create(const char* cfg_json, bc_event_fn cb, void* cb
 
     s->idx_dht_nodes = find_metric_idx("dht.nodes");
     s->idx_has_incoming = find_metric_idx("net.has_incoming_connections");
+
+    s->resume_dir = jstr(cfg, "resume_dir");
+    if (!s->resume_dir.empty())
+    {
+        std::error_code rec;
+        std::filesystem::create_directories(s->resume_dir, rec);
+    }
+    s->ctx.set_chat_pk(jstr(cfg, "chat_pk_hex"));
 
     s->ses->add_extension(std::make_shared<chat_session_plugin>(&s->ctx));
 
@@ -1415,6 +1659,10 @@ extern "C" char* bct_call(bc_session* s, const char* method, const char* params_
         if (m == "dht_get_mutable") return json_to_cstr(cmd_dht_get_mutable(s, obj));
         if (m == "dht_put_mutable") return json_to_cstr(cmd_dht_put_mutable(s, obj));
         if (m == "ext_send") return json_to_cstr(cmd_ext_send(s, obj));
+        if (m == "ext_send_to") return json_to_cstr(cmd_ext_send_to(s, obj));
+        if (m == "ext_peers") return json_to_cstr(cmd_ext_peers(s, obj));
+        if (m == "set_chat_pk") return json_to_cstr(cmd_set_chat_pk(s, obj));
+        if (m == "save_all_resume") return json_to_cstr(cmd_save_all_resume(s, obj));
         if (m == "stats") return json_to_cstr(cmd_stats(s, obj));
         if (m == "set_limits") return json_to_cstr(cmd_set_limits(s, obj));
         return json_to_cstr(json_err("unknown method: " + m));

@@ -36,10 +36,14 @@ fn wait_event<F: Fn(&EngineEvent) -> bool>(
 #[test]
 fn native_engine_smoke() {
     let dir = tempfile::tempdir().unwrap();
+    let resume_dir = dir.path().join("resume");
+    std::fs::create_dir_all(&resume_dir).unwrap();
     let (engine, rx) = create_engine(json!({
         "data_dir": dir.path().to_string_lossy(),
         "listen_port": 18931,
         "user_agent": "BitteChatSmoke/0.1",
+        "resume_dir": resume_dir.to_string_lossy(),
+        "chat_pk_hex": "ab".repeat(32),
     }))
     .expect("libtorrent engine boots");
 
@@ -139,6 +143,62 @@ fn native_engine_smoke() {
         .expect("remove_tracker");
     let trackers = engine.trackers(&ih).expect("trackers after remove");
     assert_eq!(trackers.len(), 1);
+
+    // addressed ext delivery + presence respond (no peers connected here)
+    engine.set_chat_pk(&"ab".repeat(32)).expect("set_chat_pk");
+    let peers = engine.ext_peers(&ih).expect("ext_peers");
+    assert!(peers.is_empty());
+    let n = engine
+        .ext_send_to(&ih, &"cd".repeat(32), b"dm-frame")
+        .expect("ext_send_to");
+    assert_eq!(n, 0);
+
+    // resume-data round trip: snapshot -> remove -> restore file -> re-add.
+    // The torrent must come back COMPLETE without re-checking (this is what
+    // keeps progress across app restarts and fixed "seed page shows 0%").
+    engine.save_all_resume().expect("save_all_resume");
+    let rf = resume_dir.join(format!("{ih}.fastresume"));
+    let deadline = Instant::now() + Duration::from_secs(30);
+    while !rf.exists() && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(200));
+    }
+    assert!(rf.exists(), "resume data file was not written");
+    let resume_bytes = std::fs::read(&rf).unwrap();
+    assert!(!resume_bytes.is_empty());
+
+    engine.remove_torrent(&ih, false).expect("remove");
+    let gone = wait_event(
+        &rx,
+        Duration::from_secs(15),
+        |ev| matches!(ev, EngineEvent::TorrentRemoved { infohash } if *infohash == ih),
+    );
+    assert!(gone.is_some(), "torrent_removed alert missing");
+    // removal must clean the resume file up
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while rf.exists() && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(200));
+    }
+    assert!(!rf.exists(), "resume file must be removed with the torrent");
+
+    std::fs::write(&rf, &resume_bytes).unwrap();
+    let ih2 = engine
+        .add_torrent_bytes(&created.torrent_bytes, &seed_dir.to_string_lossy())
+        .expect("re-add with resume");
+    assert_eq!(ih2, ih);
+    let deadline = Instant::now() + Duration::from_secs(20);
+    loop {
+        let states = engine.torrent_states().expect("states");
+        if let Some(s) = states.iter().find(|s| s.infohash == ih) {
+            if s.progress >= 0.999 || s.finished {
+                break;
+            }
+        }
+        assert!(
+            Instant::now() < deadline,
+            "resume data did not restore completed state"
+        );
+        std::thread::sleep(Duration::from_millis(200));
+    }
 
     // pause/resume/remove lifecycle
     engine.set_paused(&ih, true).expect("pause");

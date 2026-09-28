@@ -27,6 +27,8 @@ struct BusState {
     /// infohash hex -> announced trackers (url, tier); shared view like the
     /// real network's tracker responses
     trackers: HashMap<String, Vec<(String, i32)>>,
+    /// engine id -> advertised bc_chat identity pubkey (hex)
+    pks: HashMap<usize, String>,
     txs: HashMap<usize, Sender<EngineEvent>>,
     next_id: usize,
 }
@@ -664,6 +666,7 @@ impl BtEngine for MockEngine {
 
     fn ext_send(&self, infohash: &str, payload: &[u8]) -> Result<u32> {
         let st = self.bus.state.lock().unwrap();
+        let own_pk = st.pks.get(&self.id).cloned().unwrap_or_default();
         let mut n = 0;
         if let Some(members) = st.swarms.get(infohash) {
             for m in members {
@@ -676,6 +679,7 @@ impl BtEngine for MockEngine {
                     EngineEvent::ExtMessage {
                         infohash: infohash.to_string(),
                         peer: format!("10.0.0.{}:6881", self.id + 1),
+                        pk: own_pk.clone(),
                         payload: payload.to_vec(),
                     },
                 );
@@ -683,6 +687,61 @@ impl BtEngine for MockEngine {
             }
         }
         Ok(n)
+    }
+
+    fn ext_send_to(&self, infohash: &str, pk_hex: &str, payload: &[u8]) -> Result<u32> {
+        let st = self.bus.state.lock().unwrap();
+        let own_pk = st.pks.get(&self.id).cloned().unwrap_or_default();
+        let mut n = 0;
+        if let Some(members) = st.swarms.get(infohash) {
+            for m in members {
+                if *m == self.id {
+                    continue;
+                }
+                if st.pks.get(m).map(|p| p == pk_hex) != Some(true) {
+                    continue;
+                }
+                Self::post_to(
+                    &st,
+                    *m,
+                    EngineEvent::ExtMessage {
+                        infohash: infohash.to_string(),
+                        peer: format!("10.0.0.{}:6881", self.id + 1),
+                        pk: own_pk.clone(),
+                        payload: payload.to_vec(),
+                    },
+                );
+                n += 1;
+            }
+        }
+        Ok(n)
+    }
+
+    fn ext_peers(&self, infohash: &str) -> Result<Vec<ExtPeerInfo>> {
+        let st = self.bus.state.lock().unwrap();
+        let mut out = Vec::new();
+        if let Some(members) = st.swarms.get(infohash) {
+            for m in members {
+                if *m == self.id {
+                    continue;
+                }
+                out.push(ExtPeerInfo {
+                    pk: st.pks.get(m).cloned().unwrap_or_default(),
+                    endpoint: format!("10.0.0.{}:6881", m + 1),
+                });
+            }
+        }
+        Ok(out)
+    }
+
+    fn set_chat_pk(&self, pk_hex: &str) -> Result<()> {
+        let mut st = self.bus.state.lock().unwrap();
+        st.pks.insert(self.id, pk_hex.to_string());
+        Ok(())
+    }
+
+    fn save_all_resume(&self) -> Result<()> {
+        Ok(())
     }
 
     fn add_tracker(&self, infohash: &str, url: &str, tier: i32) -> Result<()> {

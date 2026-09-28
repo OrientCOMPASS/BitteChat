@@ -60,14 +60,62 @@ fn json_error(msg: &str) -> String {
     json!({"ok": false, "error": msg}).to_string()
 }
 
-fn init_logging() {
-    #[cfg(target_os = "android")]
-    {
-        let _ = android_logger::init_once(
-            android_logger::Config::default()
-                .with_max_level(log::LevelFilter::Info)
-                .with_tag("bitte"),
-        );
+/// Global logger: tees every record to a rolling file under
+/// `<data_dir>/logs/core.log` (exportable from the settings page) and to
+/// logcat on Android. The file sink flushes per line so the log survives
+/// hard crashes — that is the whole point.
+struct TeeLogger {
+    file: bitte_core::filelog::FileLog,
+}
+
+impl log::Log for TeeLogger {
+    fn enabled(&self, metadata: &log::Metadata) -> bool {
+        metadata.level() <= log::Level::Info
+    }
+
+    fn log(&self, record: &log::Record) {
+        if !self.enabled(record.metadata()) {
+            return;
+        }
+        let line = bitte_core::filelog::format_record(record).replace('\n', " | ");
+        #[cfg(target_os = "android")]
+        {
+            let prio = match record.level() {
+                log::Level::Error => 6,
+                log::Level::Warn => 5,
+                log::Level::Info => 4,
+                log::Level::Debug => 3,
+                log::Level::Trace => 2,
+            };
+            if let (Ok(tag), Ok(msg)) = (CString::new("bitte"), CString::new(line.clone())) {
+                unsafe {
+                    android_log_write(prio, tag.as_ptr(), msg.as_ptr());
+                }
+            }
+        }
+        self.file.line(&line);
+    }
+
+    fn flush(&self) {}
+}
+
+#[cfg(target_os = "android")]
+extern "C" {
+    fn __android_log_write(prio: i32, tag: *const c_char, text: *const c_char) -> i32;
+}
+
+#[cfg(target_os = "android")]
+use __android_log_write as android_log_write;
+
+static TEE_LOGGER: OnceLock<TeeLogger> = OnceLock::new();
+
+fn init_logging(data_dir: &str) {
+    let logger = TeeLogger {
+        file: bitte_core::filelog::FileLog::open(std::path::Path::new(data_dir)),
+    };
+    if TEE_LOGGER.set(logger).is_ok() {
+        let _ = log::set_logger(TEE_LOGGER.get().unwrap());
+        log::set_max_level(log::LevelFilter::Info);
     }
 }
 
@@ -99,7 +147,6 @@ pub unsafe extern "C" fn bc_init(
     listener: extern "C" fn(*mut c_void, *const c_char, c_uint),
     ctx: *mut c_void,
 ) -> i64 {
-    init_logging();
     static PANIC_HOOK: OnceLock<()> = OnceLock::new();
     PANIC_HOOK.get_or_init(|| {
         std::panic::set_hook(Box::new(|info| {
@@ -114,6 +161,8 @@ pub unsafe extern "C" fn bc_init(
         .and_then(|d| d.as_str())
         .unwrap_or("./bitte-data")
         .to_string();
+    init_logging(&data_dir);
+    log::info!("bc_init: bitte {} data_dir={data_dir}", bitte_core::VERSION);
 
     let engine_cfg = json!({
         "listen_port": cfg.get("listen_port").and_then(|p| p.as_i64()).unwrap_or(17531),
@@ -121,6 +170,7 @@ pub unsafe extern "C" fn bc_init(
         "user_agent": format!("BitteChat/{}", bitte_core::VERSION),
         "up_limit": cfg.get("up_limit").and_then(|p| p.as_i64()).unwrap_or(0),
         "down_limit": cfg.get("down_limit").and_then(|p| p.as_i64()).unwrap_or(0),
+        "resume_dir": format!("{data_dir}/resume"),
     });
 
     let (engine, engine_rx) = match create_engine(engine_cfg) {
@@ -186,6 +236,7 @@ pub unsafe extern "C" fn bc_call(
     params_json: *const c_char,
 ) -> *mut c_char {
     let method = cstr_to_str(method).to_string();
+    let method_for_log = method.clone();
     let params_str = cstr_to_str(params_json).to_string();
     let result = std::panic::catch_unwind(AssertUnwindSafe(move || {
         let params: Json = if params_str.trim().is_empty() {
@@ -210,8 +261,16 @@ pub unsafe extern "C" fn bc_call(
         })
     }));
     match result {
-        Ok(s) => to_c_string(s),
-        Err(_) => to_c_string(json_error("internal panic")),
+        Ok(s) => {
+            if s.contains("\"ok\":false") {
+                log::warn!("bc_call {method_for_log} failed: {s}");
+            }
+            to_c_string(s)
+        }
+        Err(_) => {
+            log::error!("bc_call {method_for_log} PANICKED");
+            to_c_string(json_error("internal panic"))
+        }
     }
 }
 
@@ -231,11 +290,25 @@ pub unsafe extern "C" fn bc_free(s: *mut c_char) {
 /// in flight for it.
 #[no_mangle]
 pub unsafe extern "C" fn bc_shutdown(handle: i64) {
-    let entry = with_registry(|map| map.remove(&handle));
-    if let Some(entry) = entry {
-        *entry.api.inner.shutdown.write().unwrap() = true;
-        drop(entry);
+    if let Some(entry) = with_registry(|map| {
+        map.get(&handle).map(|e| {
+            (
+                Api {
+                    inner: e.api.inner.clone(),
+                },
+                e._engine.clone(),
+            )
+        })
+    }) {
+        *entry.0.inner.shutdown.write().unwrap() = true;
+        // snapshot resume data (verified pieces + metadata) so the next start
+        // does not re-check/re-fetch; give the alert thread a moment to write
+        log::info!("bc_shutdown: saving resume data");
+        let _ = entry.1.save_all_resume();
+        std::thread::sleep(std::time::Duration::from_millis(700));
     }
+    let entry = with_registry(|map| map.remove(&handle));
+    drop(entry);
 }
 
 /// Static version string (do not free).

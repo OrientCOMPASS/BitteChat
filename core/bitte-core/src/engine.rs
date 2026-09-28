@@ -37,6 +37,14 @@ pub struct PeerInfo {
     pub chat_capable: bool,
 }
 
+/// A connected `bc_chat` peer: advertised identity pubkey (hex, may be empty
+/// for pre-v0.6 clients) + socket endpoint.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ExtPeerInfo {
+    pub pk: String,
+    pub endpoint: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct TrackerInfo {
     pub url: String,
@@ -105,16 +113,19 @@ pub enum EngineEvent {
         key: String, // target hex (immutable) or pk hex (mutable)
         num_success: i32,
     },
-    /// a `bc_chat` extension message from a peer of a swarm
+    /// a `bc_chat` extension message from a peer of a swarm; `pk` is the
+    /// sender identity pubkey advertised in the ext handshake (may be empty)
     ExtMessage {
         infohash: String,
         peer: String,
+        pk: String,
         payload: Vec<u8>,
     },
     /// a peer supporting bc_chat connected / disconnected
     ChatPeer {
         infohash: String,
         peer: String,
+        pk: String,
         connected: bool,
     },
     SessionStats {
@@ -168,6 +179,22 @@ pub trait BtEngine: Send + Sync {
     /// Broadcast a bc_chat extension payload to all chat-capable peers of the
     /// swarm; returns the number of peers it was queued for.
     fn ext_send(&self, infohash: &str, payload: &[u8]) -> Result<u32>;
+
+    /// Deliver a bc_chat payload to the single peer of the swarm that
+    /// advertised identity pubkey `pk_hex` (DM transport). Returns 0 when
+    /// that peer is not currently connected here.
+    fn ext_send_to(&self, infohash: &str, pk_hex: &str, payload: &[u8]) -> Result<u32>;
+
+    /// Connected chat-ready peers of the swarm with their advertised pubkeys.
+    fn ext_peers(&self, infohash: &str) -> Result<Vec<ExtPeerInfo>>;
+
+    /// Update the identity pubkey advertised in bc_chat handshakes
+    /// (call on startup and on identity switch).
+    fn set_chat_pk(&self, pk_hex: &str) -> Result<()>;
+
+    /// Snapshot resume data (verified pieces + metadata) for every torrent so
+    /// restarts do not re-check/re-fetch. Best effort.
+    fn save_all_resume(&self) -> Result<()>;
 
     fn session_stats(&self) -> Result<SessionStats>;
 

@@ -103,11 +103,21 @@ fn parse_event(v: &Json) -> Option<EngineEvent> {
         "ext_msg" => Some(EngineEvent::ExtMessage {
             infohash: d.get("infohash")?.as_str()?.to_string(),
             peer: d.get("peer")?.as_str()?.to_string(),
+            pk: d
+                .get("pk")
+                .and_then(|p| p.as_str())
+                .unwrap_or("")
+                .to_string(),
             payload: b64_decode(d.get("payload_b64")?.as_str()?),
         }),
         "chat_peer" => Some(EngineEvent::ChatPeer {
             infohash: d.get("infohash")?.as_str()?.to_string(),
             peer: d.get("peer")?.as_str()?.to_string(),
+            pk: d
+                .get("pk")
+                .and_then(|p| p.as_str())
+                .unwrap_or("")
+                .to_string(),
             connected: d.get("connected")?.as_bool()?,
         }),
         "log" => Some(EngineEvent::Log {
@@ -392,6 +402,42 @@ impl BtEngine for LibtorrentEngine {
             json!({"infohash": infohash, "payload_b64": b64_encode(payload)}),
         )?;
         Ok(v.get("sent").and_then(|s| s.as_i64()).unwrap_or(0) as u32)
+    }
+
+    fn ext_send_to(&self, infohash: &str, pk_hex: &str, payload: &[u8]) -> Result<u32> {
+        let v = self.call(
+            "ext_send_to",
+            json!({
+                "infohash": infohash,
+                "pk_hex": pk_hex,
+                "payload_b64": b64_encode(payload),
+            }),
+        )?;
+        Ok(v.get("sent").and_then(|s| s.as_i64()).unwrap_or(0) as u32)
+    }
+
+    fn ext_peers(&self, infohash: &str) -> Result<Vec<ExtPeerInfo>> {
+        let v = self.call("ext_peers", json!({"infohash": infohash}))?;
+        let mut out = Vec::new();
+        if let Some(arr) = v.get("peers").and_then(|a| a.as_array()) {
+            for p in arr {
+                out.push(ExtPeerInfo {
+                    pk: p["pk"].as_str().unwrap_or("").to_string(),
+                    endpoint: p["endpoint"].as_str().unwrap_or("").to_string(),
+                });
+            }
+        }
+        Ok(out)
+    }
+
+    fn set_chat_pk(&self, pk_hex: &str) -> Result<()> {
+        self.call("set_chat_pk", json!({"pk_hex": pk_hex}))?;
+        Ok(())
+    }
+
+    fn save_all_resume(&self) -> Result<()> {
+        self.call("save_all_resume", json!({}))?;
+        Ok(())
     }
 
     fn set_limits(&self, upload: i64, download: i64) -> Result<()> {
