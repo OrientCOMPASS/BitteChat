@@ -69,9 +69,22 @@ v0.5 引入 `fvp`（libmdk 播放内核 + FFmpeg 软解兜底）。universal 包
 v0.5.0 按架构切分：**arm64-v8a ≈ 49.9 MB，x86_64 ≈ 53.8 MB，架构无关 ≈ 2.2 MB**
 → 分 ABI 后真机（arm64）APK ≈ **52.2 MB**。
 
-> **v0.5.2 起视频栈由 fvp(libmdk) 更换为 media_kit(libmpv)**（实机"有声无画"
-> 兼容性修复）：`libmdk.so/libffmpeg.so/libass.so/libfvp.so` 被 `libmpv.so` 等
-> media_kit 原生库取代，体积构成将随 v0.5.2 Release 实测后更新本节。
+## 3.1 v0.5.2 实测：音视频栈切换 media_kit(libmpv)
+
+fvp(libmdk) 因实机"有声无画"（Impeller 外部纹理合成类设备兼容问题）整体替换为
+media_kit(libmpv)，音频播放亦从 audioplayers 并入 mpv。universal 包实测
+**113.12 MB**（CI artifact，commit `5968d6a`），对比 v0.5.0 的 106.0 MB：
+
+| 变化 | arm64-v8a | x86_64 |
+|---|---:|---:|
+| − libffmpeg/libmdk/libass/libfvp（fvp 全家） | −12.04 MB | −13.13 MB |
+| + libmpv.so | +14.87 MB | +17.96 MB |
+| + libmediakitandroidhelper.so / event loop | +0.39 MB | +0.37 MB |
+| − classes.dex（ExoPlayer/Media3 + audioplayers Java 层移除） | ≈ −0.8 MB（架构无关） | 同左 |
+| + 核心/Dart 代码增量 | +0.17 MB | +0.21 MB |
+
+按架构切分：**arm64-v8a ≈ 53.1 MB，x86_64 ≈ 59.0 MB，架构无关 ≈ 1.0 MB**
+→ 分 ABI 后真机（arm64）APK ≈ **54.1 MB**（方案 A 的收益不变，见 §4）。
 
 ## 4. 瘦身选项（待确认，暂未实施）
 
