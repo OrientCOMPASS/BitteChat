@@ -3,7 +3,7 @@ members = ["bitte-core", "bitte-bt", "bitte-ffi"]
 resolver = "2"
 
 [workspace.package]
-version = "0.5.4"
+version = "0.5.5"
 edition = "2021"
 license = "Unlicense"
 repository = "https://github.com/OrientCOMPASS/BitteChat"

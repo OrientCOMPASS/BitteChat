@@ -22,7 +22,11 @@ class UiPrefs extends ChangeNotifier {
   int customColor = 0xFF2E7CF6;
   String? wallpaperPath;
   double wallpaperOpacity = 0.16;
-  bool wallpaperBlur = false;
+
+  /// blur strength in sigma px; 0 = no blur (replaces the old bool switch)
+  double wallpaperBlurSigma = 0;
+
+  bool get wallpaperBlur => wallpaperBlurSigma > 0;
 
   /// 运行时缓存：从壁纸提取的主色
   Color? wallpaperSeed;
@@ -50,7 +54,10 @@ class UiPrefs extends ChangeNotifier {
           prefs.wallpaperPath = j['wallpaper'] as String?;
           prefs.wallpaperOpacity =
               (j['wallpaperOpacity'] as num?)?.toDouble() ?? 0.16;
-          prefs.wallpaperBlur = (j['wallpaperBlur'] as bool?) ?? false;
+          // migrate the old bool switch: true -> sigma 6
+          prefs.wallpaperBlurSigma =
+              (j['wallpaperBlurSigma'] as num?)?.toDouble() ??
+                  ((j['wallpaperBlur'] as bool?) == true ? 6.0 : 0.0);
         }
       }
     } catch (_) {}
@@ -67,6 +74,7 @@ class UiPrefs extends ChangeNotifier {
         'wallpaper': wallpaperPath,
         'wallpaperOpacity': wallpaperOpacity,
         'wallpaperBlur': wallpaperBlur,
+        'wallpaperBlurSigma': wallpaperBlurSigma,
       }));
     } catch (_) {}
     notifyListeners();

@@ -20,7 +20,7 @@ class AppLog {
   static AppLog get instance => _instance!;
   static bool get ready => _instance != null;
 
-  static const _maxBytes = 2 * 1024 * 1024;
+  static const _maxBytes = 64 * 1024; // 64 KiB per generation (product cap)
 
   File get _file => File('$_dir/logs/app.log');
 
@@ -121,17 +121,71 @@ class AppLog {
     await tmp.writeAsString(buf.toString());
     final stamp =
         DateTime.now().toIso8601String().replaceAll(':', '-').split('.').first;
-    const ch = MethodChannel('bittechat/files');
-    final res = await ch.invokeMethod<String>('exportToDownloads', {
-      'path': tmp.path,
-      'name': 'bittechat-log-$stamp.txt',
-    });
-    debugPrint('log exported: $res');
-    return res ?? 'Download/BitteChat';
+    return exportFileToDownloads(tmp.path, 'bittechat-log-$stamp.txt');
   }
+}
+
+/// Write [srcPath] into the public Downloads directory (MediaStore on
+/// API 29+, direct write on 28) through the platform channel and return a
+/// human-readable destination description. Shared by the log export and the
+/// filter-script export.
+Future<String> exportFileToDownloads(String srcPath, String name) async {
+  const ch = MethodChannel('bittechat/files');
+  final res = await ch.invokeMethod<String>(
+      'exportToDownloads', {'path': srcPath, 'name': name});
+  debugPrint('exported to downloads: $res');
+  return res ?? 'Download/BitteChat/$name';
 }
 
 /// Log a line if the logger is up (no-op before init / on host tests).
 void appLog(String msg) {
   AppLog._safeWrite(msg);
+}
+
+/// Dump our own process's logcat into the app log (Android only).
+///
+/// An app may always read its OWN log entries without permissions — this
+/// captures the lines we cannot see from Dart: the Flutter renderer banner
+/// ("Using the Impeller rendering backend…" vs Skia), MediaCodec/OpenGL
+/// driver messages, mpv native logs, and native crash traces right before a
+/// hard crash (which leaves nothing in the Dart log).
+Future<void> captureOwnLogcat(String tag, {int tailLines = 220}) async {
+  if (!Platform.isAndroid) return;
+  if (!AppLog.ready) return;
+  try {
+    final r = await Process.run(
+      'logcat',
+      ['-d', '-v', 'brief', '--pid=$pid'],
+    );
+    final out = (r.stdout as String?) ?? '';
+    final lines = out.split('\n').where((l) {
+      final t = l.toLowerCase();
+      // keep renderer/GPU/codec/crash/mpv-relevant lines, drop chattier ones
+      return t.contains('impeller') ||
+          t.contains('skia') ||
+          t.contains('opengl') ||
+          t.contains('egl') ||
+          t.contains('vulkan') ||
+          t.contains('mediacodec') ||
+          t.contains('codec2') ||
+          t.contains('c2.') ||
+          t.contains('omx') ||
+          t.contains('mpv') ||
+          t.contains('mdk') ||
+          t.contains('flutter') ||
+          t.contains('androidruntime') ||
+          t.contains('libc') ||
+          t.contains('debug') ||
+          t.contains('surface') ||
+          t.contains('buffer') ||
+          t.contains('bitte');
+    }).toList();
+    final tail = lines.length > tailLines
+        ? lines.sublist(lines.length - tailLines)
+        : lines;
+    AppLog.instance
+        .write('--- logcat($tag) ${tail.length} lines ---\n${tail.join('\n')}');
+  } catch (e) {
+    AppLog.instance.write('logcat capture failed: $e');
+  }
 }

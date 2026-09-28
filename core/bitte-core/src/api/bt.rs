@@ -299,7 +299,7 @@ impl Api {
                 Some(r) => (r.kind, String::new()),
                 None => (0, String::new()),
             };
-            if !include_chat && (kind == 1 || kind == 2) {
+            if !include_chat && (kind == 1 || kind == 2 || kind == 4) {
                 continue;
             }
             let display_name = match kind {
@@ -341,7 +341,7 @@ impl Api {
             if seen.contains(ih) {
                 continue;
             }
-            if !include_chat && (r.kind == 1 || r.kind == 2) {
+            if !include_chat && (r.kind == 1 || r.kind == 2 || r.kind == 4) {
                 continue;
             }
             let room = if st.groups.contains_key(ih) {

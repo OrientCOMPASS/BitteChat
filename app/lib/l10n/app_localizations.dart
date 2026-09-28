@@ -2017,6 +2017,96 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'已屏蔽该用户'**
   String get dmBlocked;
+
+  /// No description provided for @storage.
+  ///
+  /// In zh, this message translates to:
+  /// **'存储'**
+  String get storage;
+
+  /// No description provided for @downloadDir.
+  ///
+  /// In zh, this message translates to:
+  /// **'下载目录'**
+  String get downloadDir;
+
+  /// No description provided for @downloadDirHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'新任务与接收的附件保存到该目录；已有任务保持在原位置'**
+  String get downloadDirHint;
+
+  /// No description provided for @downloadDirPick.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择目录'**
+  String get downloadDirPick;
+
+  /// No description provided for @downloadDirReset.
+  ///
+  /// In zh, this message translates to:
+  /// **'恢复默认'**
+  String get downloadDirReset;
+
+  /// No description provided for @downloadDirSaved.
+  ///
+  /// In zh, this message translates to:
+  /// **'下载目录已更新'**
+  String get downloadDirSaved;
+
+  /// No description provided for @filterScript.
+  ///
+  /// In zh, this message translates to:
+  /// **'过滤脚本'**
+  String get filterScript;
+
+  /// No description provided for @filterScriptHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'直接编辑、导入或导出过滤规则脚本（JSON）；可粘贴 LLM 生成的脚本后应用'**
+  String get filterScriptHint;
+
+  /// No description provided for @filterScriptApply.
+  ///
+  /// In zh, this message translates to:
+  /// **'应用'**
+  String get filterScriptApply;
+
+  /// No description provided for @filterScriptApplied.
+  ///
+  /// In zh, this message translates to:
+  /// **'过滤脚本已应用（{n} 条规则）'**
+  String filterScriptApplied(Object n);
+
+  /// No description provided for @filterScriptInvalid.
+  ///
+  /// In zh, this message translates to:
+  /// **'脚本格式无效'**
+  String get filterScriptInvalid;
+
+  /// No description provided for @importFile.
+  ///
+  /// In zh, this message translates to:
+  /// **'导入'**
+  String get importFile;
+
+  /// No description provided for @exportFile.
+  ///
+  /// In zh, this message translates to:
+  /// **'导出'**
+  String get exportFile;
+
+  /// No description provided for @rotate.
+  ///
+  /// In zh, this message translates to:
+  /// **'旋转 90°'**
+  String get rotate;
+
+  /// No description provided for @wallpaperBlurOff.
+  ///
+  /// In zh, this message translates to:
+  /// **'关'**
+  String get wallpaperBlurOff;
 }
 
 class _AppLocalizationsDelegate

@@ -1096,4 +1096,53 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get dmBlocked => 'User blocked';
+
+  @override
+  String get storage => 'Storage';
+
+  @override
+  String get downloadDir => 'Download directory';
+
+  @override
+  String get downloadDirHint =>
+      'New tasks and received attachments go here; existing tasks keep their location';
+
+  @override
+  String get downloadDirPick => 'Pick folder';
+
+  @override
+  String get downloadDirReset => 'Reset to default';
+
+  @override
+  String get downloadDirSaved => 'Download directory updated';
+
+  @override
+  String get filterScript => 'Filter script';
+
+  @override
+  String get filterScriptHint =>
+      'Edit, import or export the filter rule script (JSON); paste an LLM-generated script and apply';
+
+  @override
+  String get filterScriptApply => 'Apply';
+
+  @override
+  String filterScriptApplied(Object n) {
+    return 'Filter script applied ($n rules)';
+  }
+
+  @override
+  String get filterScriptInvalid => 'Invalid script format';
+
+  @override
+  String get importFile => 'Import';
+
+  @override
+  String get exportFile => 'Export';
+
+  @override
+  String get rotate => 'Rotate 90°';
+
+  @override
+  String get wallpaperBlurOff => 'Off';
 }

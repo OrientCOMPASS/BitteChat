@@ -35,7 +35,13 @@ class MainActivity : FlutterActivity() {
             }
         }
         channel = ch
-        pendingMagnet?.let { ch.invokeMethod("magnet", it) }
+        pendingMagnet?.let { m ->
+            try {
+                ch.invokeMethod("magnet", m)
+            } catch (e: Exception) {
+                android.util.Log.w("bittechat", "magnet forward failed: $e")
+            }
+        }
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "bittechat/files")
             .setMethodCallHandler { call, result ->
@@ -112,7 +118,17 @@ class MainActivity : FlutterActivity() {
         val data = intent.dataString
         if (data != null && data.startsWith("magnet:")) {
             pendingMagnet = data
-            channel?.invokeMethod("magnet", data)
+            // Fast background->foreground switches can deliver onNewIntent
+            // while the Flutter engine is detached/destroyed; invokeMethod
+            // then crashes natively with no Dart-side trace. Guard it — the
+            // pending value is picked up on the next takePendingMagnet.
+            try {
+                if (!isFinishing && !isDestroyed) {
+                    channel?.invokeMethod("magnet", data)
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("bittechat", "magnet forward failed: $e")
+            }
         }
     }
 }

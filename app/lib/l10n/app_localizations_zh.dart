@@ -1060,4 +1060,51 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get dmBlocked => '已屏蔽该用户';
+
+  @override
+  String get storage => '存储';
+
+  @override
+  String get downloadDir => '下载目录';
+
+  @override
+  String get downloadDirHint => '新任务与接收的附件保存到该目录；已有任务保持在原位置';
+
+  @override
+  String get downloadDirPick => '选择目录';
+
+  @override
+  String get downloadDirReset => '恢复默认';
+
+  @override
+  String get downloadDirSaved => '下载目录已更新';
+
+  @override
+  String get filterScript => '过滤脚本';
+
+  @override
+  String get filterScriptHint => '直接编辑、导入或导出过滤规则脚本（JSON）；可粘贴 LLM 生成的脚本后应用';
+
+  @override
+  String get filterScriptApply => '应用';
+
+  @override
+  String filterScriptApplied(Object n) {
+    return '过滤脚本已应用（$n 条规则）';
+  }
+
+  @override
+  String get filterScriptInvalid => '脚本格式无效';
+
+  @override
+  String get importFile => '导入';
+
+  @override
+  String get exportFile => '导出';
+
+  @override
+  String get rotate => '旋转 90°';
+
+  @override
+  String get wallpaperBlurOff => '关';
 }

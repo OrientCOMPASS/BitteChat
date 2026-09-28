@@ -13,6 +13,7 @@ import '../models.dart';
 import 'chat_view.dart';
 import 'home.dart';
 import '../core/l10n.dart';
+import '../widgets/tracker_editor.dart';
 
 class BtTab extends StatefulWidget {
   const BtTab({super.key, required this.prefs});
@@ -177,6 +178,12 @@ class _BtTabState extends State<BtTab> {
               setState(() => _includeChat = !_includeChat);
               _reload();
             },
+          ),
+          IconButton(
+            tooltip: L.t.defaultTrackers,
+            icon: Icon(Icons.hub_outlined),
+            onPressed: () =>
+                showDefaultTrackersEditor(context, onSaved: _reload),
           ),
           IconButton(
             tooltip: L.t.rateLimits,
@@ -453,6 +460,8 @@ class _TorrentTile extends StatelessWidget {
         return Icons.chat;
       case 3:
         return Icons.rss_feed;
+      case 4:
+        return Icons.upload_file;
       default:
         return Icons.cloud_download;
     }
@@ -546,7 +555,7 @@ class _TorrentTile extends StatelessWidget {
           }
         },
         itemBuilder: (ctx) => [
-          if (t.kind == 0 || t.kind == 3)
+          if (t.kind == 0 || t.kind == 3 || t.kind == 4)
             PopupMenuItem(
               value: 'chat',
               child: Row(

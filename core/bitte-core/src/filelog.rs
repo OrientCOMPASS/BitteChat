@@ -10,7 +10,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-const MAX_BYTES: u64 = 2 * 1024 * 1024;
+const MAX_BYTES: u64 = 64 * 1024; // 64 KiB per generation (product decision)
 const KEEP: u32 = 3; // core.log, core.1.log, core.2.log
 
 pub struct FileLog {

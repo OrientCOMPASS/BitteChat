@@ -81,6 +81,8 @@ pub struct CoreState {
 
 pub struct Inner {
     pub data_dir: PathBuf,
+    /// user-chosen download root (kv-persisted); None = <data_dir>/downloads
+    pub download_dir: RwLock<Option<PathBuf>>,
     pub engine: Arc<dyn BtEngine>,
     pub state: Mutex<CoreState>,
     pub active: RwLock<ActiveIdentity>,
@@ -152,8 +154,17 @@ impl Api {
         };
 
         let (emit, events) = channel::<String>();
+        // restore custom download dir (set via sys.set_download_dir)
+        let custom_dl = store
+            .kv_get("download_dir")
+            .ok()
+            .flatten()
+            .and_then(|b| String::from_utf8(b).ok())
+            .map(PathBuf::from)
+            .filter(|p| !p.as_os_str().is_empty());
         let inner = Arc::new(Inner {
             data_dir,
+            download_dir: RwLock::new(custom_dl),
             engine,
             state: Mutex::new(CoreState {
                 store,
@@ -207,7 +218,47 @@ impl Api {
     }
 
     pub fn downloads_dir(&self) -> PathBuf {
-        self.inner.data_dir.join("downloads")
+        self.inner
+            .download_dir
+            .read()
+            .unwrap()
+            .clone()
+            .unwrap_or_else(|| self.inner.data_dir.join("downloads"))
+    }
+
+    pub fn sys_get_download_dir(&self) -> Result<Json> {
+        Ok(json!({
+            "path": self.downloads_dir().to_string_lossy(),
+            "default": self.inner.data_dir.join("downloads").to_string_lossy(),
+            "custom": self.inner.download_dir.read().unwrap().is_some(),
+        }))
+    }
+
+    /// Point NEW downloads (BT tasks + received chat attachments) at a
+    /// user-chosen directory. Existing tasks keep their recorded save_path.
+    /// An empty path resets to the app-private default.
+    pub fn sys_set_download_dir(&self, p: Json) -> Result<Json> {
+        let raw = jstr(&p, "path")?.trim().to_string();
+        if raw.is_empty() {
+            *self.inner.download_dir.write().unwrap() = None;
+            let st = self.inner.state.lock().unwrap();
+            let _ = st.store.kv_set("download_dir", b"");
+            return Ok(json!({"ok": true, "path": self.downloads_dir().to_string_lossy()}));
+        }
+        let path = PathBuf::from(&raw);
+        // validate: create + write probe (fail fast with a clear error)
+        std::fs::create_dir_all(&path)
+            .map_err(|e| CoreError::Invalid(format!("目录不可用: {e}")))?;
+        let probe = path.join(".bitte-write-probe");
+        std::fs::write(&probe, b"x").map_err(|e| CoreError::Invalid(format!("目录不可写: {e}")))?;
+        let _ = std::fs::remove_file(&probe);
+        *self.inner.download_dir.write().unwrap() = Some(path.clone());
+        {
+            let st = self.inner.state.lock().unwrap();
+            let _ = st.store.kv_set("download_dir", raw.as_bytes());
+        }
+        log::info!("download dir set to {}", path.display());
+        Ok(json!({"ok": true, "path": path.to_string_lossy()}))
     }
 
     pub fn own_pk_hex(&self) -> String {
@@ -234,6 +285,8 @@ impl Api {
             "sys.identity.delete" => self.identity_delete(p),
             "sys.identity.set_avatar" => self.identity_set_avatar(p),
             "sys.set_active_group" => self.set_active_group(p),
+            "sys.get_download_dir" => self.sys_get_download_dir(),
+            "sys.set_download_dir" => self.sys_set_download_dir(p),
 
             "bt.add" => self.bt_add(p),
             "bt.add_file" => self.bt_add_file(p),

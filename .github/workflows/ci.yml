@@ -259,7 +259,14 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
           ls -la /dev/kvm
-      - name: Run integration test on emulator
+      - name: Generate real test video (H.264 + AAC, 6s)
+        run: |
+          ffmpeg -y -f lavfi -i testsrc2=size=640x360:rate=25 \
+            -f lavfi -i sine=frequency=440:sample_rate=44100 \
+            -t 6 -c:v libx264 -pix_fmt yuv420p -profile:v high -level 3.1 \
+            -c:a aac -b:a 64k -movflags +faststart /tmp/ci_video.mp4
+          ls -la /tmp/ci_video.mp4
+      - name: Run integration tests on emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
@@ -269,7 +276,14 @@ jobs:
           ram-size: 4096M
           disable-animations: true
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -camera-back none
-          script: cd app && flutter pub get && flutter test integration_test/app_test.dart -d emulator-5554 --reporter expanded
+          script: |
+            adb wait-for-device
+            adb push /tmp/ci_video.mp4 /data/local/tmp/ci_video.mp4
+            adb shell chmod 644 /data/local/tmp/ci_video.mp4
+            cd app
+            flutter pub get
+            flutter test integration_test/app_test.dart -d emulator-5554 --reporter expanded
+            flutter test integration_test/video_test.dart -d emulator-5554 --reporter expanded
 
   # ------------------------------------------------------------------
   # Release on tag

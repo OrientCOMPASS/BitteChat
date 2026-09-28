@@ -660,5 +660,27 @@
  "videoDecoderHardwareOnly": "硬件解码（MediaCodec）· 解码失败将明确报错",
  "dmRequestSubtitle": "请求与你私聊",
  "block": "屏蔽",
- "dmBlocked": "已屏蔽该用户"
+ "dmBlocked": "已屏蔽该用户",
+ "storage": "存储",
+ "downloadDir": "下载目录",
+ "downloadDirHint": "新任务与接收的附件保存到该目录；已有任务保持在原位置",
+ "downloadDirPick": "选择目录",
+ "downloadDirReset": "恢复默认",
+ "downloadDirSaved": "下载目录已更新",
+ "filterScript": "过滤脚本",
+ "filterScriptHint": "直接编辑、导入或导出过滤规则脚本（JSON）；可粘贴 LLM 生成的脚本后应用",
+ "filterScriptApply": "应用",
+ "filterScriptApplied": "过滤脚本已应用（{n} 条规则）",
+ "@filterScriptApplied": {
+  "placeholders": {
+   "n": {
+    "type": "Object"
+   }
+  }
+ },
+ "filterScriptInvalid": "脚本格式无效",
+ "importFile": "导入",
+ "exportFile": "导出",
+ "rotate": "旋转 90°",
+ "wallpaperBlurOff": "关"
 }

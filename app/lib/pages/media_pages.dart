@@ -12,6 +12,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
@@ -19,6 +20,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 import '../core/applog.dart';
 import '../core/files.dart';
 import '../core/l10n.dart';
+import '../core/ui_flags.dart';
 
 class VideoPlayerPage extends StatefulWidget {
   const VideoPlayerPage({super.key, required this.path, required this.title});
@@ -30,7 +32,19 @@ class VideoPlayerPage extends StatefulWidget {
   State<VideoPlayerPage> createState() => _VideoPlayerPageState();
 }
 
-class _VideoPlayerPageState extends State<VideoPlayerPage> {
+class _VideoPlayerPageState extends State<VideoPlayerPage>
+    with WidgetsBindingObserver {
+  /// Test/observability hooks — the CI video test asserts on these instead
+  /// of pixel-diffing a software-rendered emulator.
+  @visibleForTesting
+  static String? debugLastVideoParams;
+  @visibleForTesting
+  static Duration debugLastPosition = Duration.zero;
+  @visibleForTesting
+  static final List<String> debugMpvLogs = [];
+  @visibleForTesting
+  static String? debugLastError;
+
   Player? _player;
   VideoController? _videoController;
   bool _failed = false;
@@ -44,7 +58,30 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
   @override
   void initState() {
     super.initState();
+    debugMpvLogs.clear();
+    debugLastError = null;
+    debugLastVideoParams = null;
+    debugLastPosition = Duration.zero;
+    // hide the global wallpaper while video plays: no Opacity/filter layers
+    // underneath the external video texture (a compositing-stall suspect on
+    // some GPU drivers)
+    wallpaperSuppressed.value = true;
+    WidgetsBinding.instance.addObserver(this);
+    // snapshot native chatter (renderer banner, codec/driver lines) around
+    // playback start — the Dart-side log cannot see any of these
+    captureOwnLogcat('video-pre');
     _init();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // backgrounding: quiesce mpv — surface races during fast
+    // background/foreground switches were a native-crash suspect
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive) {
+      _player?.pause().catchError((_) {});
+      appLog('video lifecycle: $state (paused player)');
+    }
   }
 
   Future<void> _init() async {
@@ -73,6 +110,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
       _subs.addAll([
         player.stream.error.listen((e) {
           if (e.isEmpty) return;
+          debugLastError = e;
           appLog('mpv error: ${widget.path} -> $e');
           if (mounted) {
             setState(() {
@@ -81,10 +119,18 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
             });
           }
         }),
-        player.stream.log
-            .listen((l) => appLog('mpv[${l.prefix}/${l.level}] ${l.text}')),
-        player.stream.videoParams.listen((v) =>
-            appLog('mpv video params: ${widget.path} -> ${v.toString()}')),
+        player.stream.log.listen((l) {
+          final line = 'mpv[${l.prefix}/${l.level}] ${l.text}';
+          debugMpvLogs.add(line);
+          if (debugMpvLogs.length > 500) {
+            debugMpvLogs.removeRange(0, debugMpvLogs.length - 500);
+          }
+          appLog(line);
+        }),
+        player.stream.videoParams.listen((v) {
+          debugLastVideoParams = v.toString();
+          appLog('mpv video params: ${widget.path} -> ${v.toString()}');
+        }),
         player.stream.playing.listen((v) {
           if (mounted) setState(() => _playing = v);
         }),
@@ -92,6 +138,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
           if (mounted) setState(() => _completed = v);
         }),
         player.stream.position.listen((v) {
+          debugLastPosition = v;
           if (mounted) setState(() => _position = v);
         }),
         player.stream.duration.listen((v) {
@@ -117,6 +164,10 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
         Media(widget.path, extras: {'cache': 'no'}),
         play: true,
       );
+      // let the render pipeline spin up, then snapshot native chatter
+      Future.delayed(const Duration(seconds: 3), () {
+        captureOwnLogcat('video-post');
+      });
     } catch (e) {
       appLog('video init FAILED: ${widget.path} err=$e');
       if (mounted) {
@@ -198,6 +249,8 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    wallpaperSuppressed.value = false;
     for (final s in _subs) {
       s.cancel();
     }

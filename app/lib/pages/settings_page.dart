@@ -9,6 +9,7 @@ import 'package:file_picker/file_picker.dart';
 
 import '../core/api.dart';
 import '../core/applog.dart';
+import '../widgets/filter_script_page.dart';
 import '../core/prefs.dart';
 import 'wallpaper_edit.dart';
 import '../models.dart';
@@ -31,7 +32,7 @@ class _SettingsPageState extends State<SettingsPage> {
   Map<String, dynamic> _info = {};
   List<FilterRule> _rules = [];
   List<IdentityInfo> _identities = [];
-  List<String> _defaultTrackers = [];
+  Map<String, dynamic> _dlDir = {};
 
   @override
   void initState() {
@@ -46,40 +47,55 @@ class _SettingsPageState extends State<SettingsPage> {
       _info = _api.sysInfo();
       _rules = _api.filterRules();
       _identities = _api.identities();
-      _defaultTrackers = _api.defaultTrackers();
+      try {
+        _dlDir = _api.getDownloadDir();
+      } catch (_) {}
     });
   }
 
-  Future<void> _editDefaultTrackers() async {
-    final controller = TextEditingController(text: _defaultTrackers.join('\n'));
+  Future<void> _editDownloadDir() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final controller = TextEditingController(text: '${_dlDir['path'] ?? ''}');
     final saved = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(L.t.defaultTrackers),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(L.t.defaultTrackersHint,
-                  style: Theme.of(ctx)
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(color: Theme.of(ctx).colorScheme.outline)),
-              const SizedBox(height: 12),
-              TextField(
-                controller: controller,
-                maxLines: 8,
-                style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
-                decoration: InputDecoration(
-                  hintText:
-                      'udp://tracker.opentrackr.org:1337/announce\nhttps://tracker.example.org/announce',
-                  border: const OutlineInputBorder(),
+        title: Text(L.t.downloadDir),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(L.t.downloadDirHint,
+                style: Theme.of(ctx)
+                    .textTheme
+                    .bodySmall
+                    ?.copyWith(color: Theme.of(ctx).colorScheme.outline)),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              maxLines: 2,
+              style: const TextStyle(fontSize: 12),
+              decoration: InputDecoration(border: const OutlineInputBorder()),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                TextButton.icon(
+                  icon: const Icon(Icons.folder_open, size: 18),
+                  label: Text(L.t.downloadDirPick),
+                  onPressed: () async {
+                    final dir = await FilePicker.getDirectoryPath();
+                    if (dir != null) controller.text = dir;
+                  },
                 ),
-              ),
-            ],
-          ),
+                TextButton.icon(
+                  icon: const Icon(Icons.restart_alt, size: 18),
+                  label: Text(L.t.downloadDirReset),
+                  onPressed: () =>
+                      controller.text = '${_dlDir['default'] ?? ''}',
+                ),
+              ],
+            ),
+          ],
         ),
         actions: [
           TextButton(
@@ -90,187 +106,21 @@ class _SettingsPageState extends State<SettingsPage> {
         ],
       ),
     );
-    if (saved != true) return;
-    final urls = controller.text
-        .split('\n')
-        .map((s) => s.trim())
-        .where((s) => s.isNotEmpty)
-        .toList();
-    try {
-      final r = _api.setDefaultTrackers(urls);
-      _reload();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content:
-                Text(L.t.trackersApplied((r['applied_to'] as int?) ?? 0))));
-      }
-    } catch (e) {
-      if (mounted) showError(context, e);
+    if (saved != true) {
+      controller.dispose();
+      return;
     }
-  }
-
-  void _saveRules() {
+    final path = controller.text.trim();
+    controller.dispose();
     try {
-      _api.setFilterRules(_rules);
+      // empty string resets to the app-private default
+      final reset = path.isEmpty || path == '${_dlDir['default'] ?? ''}';
+      final r = _api.setDownloadDir(reset ? '' : path);
       _reload();
+      messenger.showSnackBar(SnackBar(
+          content: Text('${L.t.downloadDirSaved}: ${r['path'] ?? ''}')));
     } catch (e) {
-      showError(context, e);
-    }
-  }
-
-  Future<void> _editRule(FilterRule? existing) async {
-    final rule = existing ??
-        FilterRule(
-          id: DateTime.now().millisecondsSinceEpoch % 1000000,
-          enabled: true,
-          field: 'text',
-          mode: 'contains',
-          value: '',
-        );
-    final valueCtrl = TextEditingController(text: rule.value);
-    String field = rule.field;
-    String mode = rule.mode;
-    bool caseSensitive = rule.caseSensitive;
-    final saved = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setSheet) => AlertDialog(
-          title: Text(existing == null ? L.t.addRule : L.t.editRule),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              DropdownButtonFormField<String>(
-                initialValue: field,
-                items: [
-                  DropdownMenuItem(value: 'text', child: Text(L.t.fieldText)),
-                  DropdownMenuItem(
-                      value: 'author_name', child: Text(L.t.fieldName)),
-                  DropdownMenuItem(
-                      value: 'author_pk', child: Text(L.t.fieldPk)),
-                ],
-                onChanged: (v) => setSheet(() => field = v!),
-              ),
-              DropdownButtonFormField<String>(
-                initialValue: mode,
-                items: [
-                  DropdownMenuItem(
-                      value: 'contains', child: Text(L.t.modeContains)),
-                  DropdownMenuItem(
-                      value: 'equals', child: Text(L.t.modeEquals)),
-                  DropdownMenuItem(value: 'regex', child: Text(L.t.modeRegex)),
-                ],
-                onChanged: (v) => setSheet(() => mode = v!),
-              ),
-              TextField(
-                controller: valueCtrl,
-                decoration: InputDecoration(
-                    labelText: L.t.matchValue, border: OutlineInputBorder()),
-              ),
-              SwitchListTile(
-                value: caseSensitive,
-                title: Text(L.t.caseSensitive),
-                onChanged: (v) => setSheet(() => caseSensitive = v),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: Text(L.t.cancel)),
-            FilledButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                child: Text(L.t.save)),
-          ],
-        ),
-      ),
-    );
-    if (saved != true) return;
-    rule.field = field;
-    rule.mode = mode;
-    rule.caseSensitive = caseSensitive;
-    rule.value = valueCtrl.text;
-    if (existing == null) _rules.add(rule);
-    _saveRules();
-  }
-
-  Future<void> _pickSeedSource(BuildContext context) async {
-    final labels = {
-      SeedSource.brand: (L.t.seedBrand, Icons.branding_watermark_outlined),
-      SeedSource.wallpaper: (L.t.seedWallpaper, Icons.wallpaper),
-      SeedSource.custom: (L.t.seedCustom, Icons.palette_outlined),
-    };
-    await showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (final s in SeedSource.values)
-              ListTile(
-                leading: Icon(labels[s]!.$2),
-                title: Text(labels[s]!.$1),
-                trailing: widget.prefs.seedSource == s
-                    ? Icon(Icons.check_circle,
-                        color: Theme.of(ctx).colorScheme.primary)
-                    : null,
-                onTap: () async {
-                  Navigator.pop(ctx);
-                  widget.prefs.seedSource = s;
-                  if (s == SeedSource.custom) {
-                    await _pickCustomColor(context);
-                    return;
-                  }
-                  await widget.prefs.save();
-                },
-              ),
-            SizedBox(height: 8),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _pickCustomColor(BuildContext context) async {
-    final swatches = [
-      0xFF2E7CF6,
-      0xFFE5484D,
-      0xFF30A46C,
-      0xFFF5D90A,
-      0xFF8E4EC6,
-      0xFFE93D82,
-      0xFF0090FF,
-      0xFF12A594,
-      0xFFFF6E27,
-      0xFF64748B,
-    ];
-    final picked = await showDialog<int>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(L.t.pickColor),
-        content: Wrap(
-          spacing: 10,
-          runSpacing: 10,
-          children: [
-            for (final c in swatches)
-              GestureDetector(
-                onTap: () => Navigator.pop(ctx, c),
-                child: Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: Color(c),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-    if (picked != null) {
-      widget.prefs.customColor = picked;
-      await widget.prefs.save();
+      messenger.showSnackBar(SnackBar(content: Text('$e')));
     }
   }
 
@@ -572,6 +422,18 @@ class _SettingsPageState extends State<SettingsPage> {
                     child: Text(L.t.filterRules,
                         style: theme.textTheme.titleSmall)),
                 TextButton.icon(
+                  icon: Icon(Icons.data_object, size: 18),
+                  label: Text(L.t.filterScript),
+                  onPressed: () async {
+                    final changed = await Navigator.push<bool>(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => const FilterScriptPage()),
+                    );
+                    if (changed == true) _reload();
+                  },
+                ),
+                TextButton.icon(
                   icon: Icon(Icons.add, size: 18),
                   label: Text(L.t.add),
                   onPressed: () => _editRule(null),
@@ -696,15 +558,29 @@ class _SettingsPageState extends State<SettingsPage> {
             onTap: () => _pickWallpaper(context),
           ),
           if (widget.prefs.wallpaperPath != null)
-            ListTile(
-              leading: Icon(Icons.blur_on),
-              title: Text(L.t.wallpaperBlur),
-              trailing: Switch(
-                value: widget.prefs.wallpaperBlur,
-                onChanged: (v) {
-                  widget.prefs.wallpaperBlur = v;
-                  widget.prefs.save();
-                },
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  Icon(Icons.blur_on, size: 20),
+                  SizedBox(width: 12),
+                  Text(L.t.wallpaperBlur),
+                  Expanded(
+                    child: Slider(
+                      value: widget.prefs.wallpaperBlurSigma.clamp(0.0, 12.0),
+                      min: 0,
+                      max: 12,
+                      divisions: 24,
+                      label: widget.prefs.wallpaperBlurSigma == 0
+                          ? L.t.wallpaperBlurOff
+                          : widget.prefs.wallpaperBlurSigma.toStringAsFixed(1),
+                      onChanged: (v) {
+                        widget.prefs.wallpaperBlurSigma = v;
+                        widget.prefs.save();
+                      },
+                    ),
+                  ),
+                ],
               ),
             ),
           if (widget.prefs.wallpaperPath != null)
@@ -730,29 +606,23 @@ class _SettingsPageState extends State<SettingsPage> {
           const Divider(),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Text(L.t.network, style: theme.textTheme.titleSmall),
+            child: Text(L.t.storage, style: theme.textTheme.titleSmall),
           ),
           ListTile(
-            leading: Icon(Icons.hub_outlined),
-            title: Text(L.t.defaultTrackers),
-            subtitle: Text(_defaultTrackers.isEmpty
-                ? L.t.defaultTrackersNone
-                : L.t.defaultTrackersSet(_defaultTrackers.length)),
+            leading: Icon(Icons.drive_file_move_outlined),
+            title: Text(L.t.downloadDir),
+            subtitle: Text('${_dlDir['path'] ?? ''}',
+                style: theme.textTheme.bodySmall),
             trailing: Icon(Icons.edit_outlined, size: 18),
-            onTap: _editDefaultTrackers,
+            onTap: _editDownloadDir,
           ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Text(L.t.defaultTrackersHint,
+            child: Text(L.t.downloadDirHint,
                 style: theme.textTheme.bodySmall
                     ?.copyWith(color: theme.colorScheme.outline)),
           ),
           const Divider(),
-          ListTile(
-            leading: Icon(Icons.smart_display_outlined),
-            title: Text(L.t.videoDecoder),
-            subtitle: Text(L.t.videoDecoderHardwareOnly),
-          ),
           ListTile(
             leading: Icon(Icons.bug_report_outlined),
             title: Text(L.t.exportLogs),

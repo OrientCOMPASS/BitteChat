@@ -660,5 +660,27 @@
  "videoDecoderHardwareOnly": "Hardware decoding (MediaCodec) · failures are reported explicitly",
  "dmRequestSubtitle": "wants to start a private chat",
  "block": "Block",
- "dmBlocked": "User blocked"
+ "dmBlocked": "User blocked",
+ "storage": "Storage",
+ "downloadDir": "Download directory",
+ "downloadDirHint": "New tasks and received attachments go here; existing tasks keep their location",
+ "downloadDirPick": "Pick folder",
+ "downloadDirReset": "Reset to default",
+ "downloadDirSaved": "Download directory updated",
+ "filterScript": "Filter script",
+ "filterScriptHint": "Edit, import or export the filter rule script (JSON); paste an LLM-generated script and apply",
+ "filterScriptApply": "Apply",
+ "filterScriptApplied": "Filter script applied ({n} rules)",
+ "@filterScriptApplied": {
+  "placeholders": {
+   "n": {
+    "type": "Object"
+   }
+  }
+ },
+ "filterScriptInvalid": "Invalid script format",
+ "importFile": "Import",
+ "exportFile": "Export",
+ "rotate": "Rotate 90°",
+ "wallpaperBlurOff": "Off"
 }

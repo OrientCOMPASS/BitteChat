@@ -8,6 +8,7 @@ import 'package:media_kit/media_kit.dart';
 
 import 'core/api.dart';
 import 'core/applog.dart';
+import 'core/ui_flags.dart';
 import 'core/l10n.dart';
 import 'core/intent.dart';
 import 'core/prefs.dart';
@@ -140,7 +141,7 @@ class AppWallpaper extends StatefulWidget {
 class _AppWallpaperState extends State<AppWallpaper> {
   ui.Image? _image;
   String? _loadedPath;
-  bool? _loadedBlur;
+  double? _loadedSigma;
   int _loadedRev = -1;
 
   @override
@@ -156,7 +157,7 @@ class _AppWallpaperState extends State<AppWallpaper> {
     // when the image source or the blur flag changed (opacity is a paint
     // parameter and needs no decode)
     if (_loadedPath != widget.prefs.wallpaperPath ||
-        _loadedBlur != widget.prefs.wallpaperBlur ||
+        _loadedSigma != widget.prefs.wallpaperBlurSigma ||
         _loadedRev != widget.prefs.wallpaperRev) {
       _load();
     }
@@ -164,9 +165,9 @@ class _AppWallpaperState extends State<AppWallpaper> {
 
   Future<void> _load() async {
     final path = widget.prefs.wallpaperPath;
-    final blur = widget.prefs.wallpaperBlur;
+    final sigma = widget.prefs.wallpaperBlurSigma;
     _loadedPath = path;
-    _loadedBlur = blur;
+    _loadedSigma = sigma;
     _loadedRev = widget.prefs.wallpaperRev;
     if (path == null) {
       if (_image != null && mounted) {
@@ -183,7 +184,7 @@ class _AppWallpaperState extends State<AppWallpaper> {
       final frame = await codec.getNextFrame();
       codec.dispose();
       var img = frame.image;
-      if (blur) img = await _blurred(img);
+      if (sigma > 0) img = await _blurred(img, sigma);
       if (!mounted) {
         img.dispose();
         return;
@@ -205,11 +206,11 @@ class _AppWallpaperState extends State<AppWallpaper> {
 
   /// Bake the blur into the decoded bitmap once — an ImageFiltered layer
   /// would re-render a full-screen blur on every navigation frame.
-  static Future<ui.Image> _blurred(ui.Image src) async {
+  static Future<ui.Image> _blurred(ui.Image src, double sigma) async {
     final rec = ui.PictureRecorder();
     final canvas = ui.Canvas(rec);
     final paint = Paint()
-      ..imageFilter = ui.ImageFilter.blur(sigmaX: 6, sigmaY: 6);
+      ..imageFilter = ui.ImageFilter.blur(sigmaX: sigma, sigmaY: sigma);
     canvas.drawImage(src, Offset.zero, paint);
     final pic = rec.endRecording();
     final out = await pic.toImage(src.width, src.height);
@@ -228,13 +229,19 @@ class _AppWallpaperState extends State<AppWallpaper> {
   Widget build(BuildContext context) {
     final img = _image;
     if (img == null) return const SizedBox.shrink();
-    return Positioned.fill(
-      child: IgnorePointer(
-        child: Opacity(
-          opacity: widget.prefs.wallpaperOpacity.clamp(0.03, 1.0),
-          child: RawImage(image: img, fit: BoxFit.cover),
-        ),
-      ),
+    return ValueListenableBuilder<bool>(
+      valueListenable: wallpaperSuppressed,
+      builder: (context, suppressed, _) {
+        if (suppressed) return const SizedBox.shrink();
+        return Positioned.fill(
+          child: IgnorePointer(
+            child: Opacity(
+              opacity: widget.prefs.wallpaperOpacity.clamp(0.03, 1.0),
+              child: RawImage(image: img, fit: BoxFit.cover),
+            ),
+          ),
+        );
+      },
     );
   }
 }

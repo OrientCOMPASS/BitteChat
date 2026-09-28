@@ -209,6 +209,14 @@ class BitteApi extends ChangeNotifier {
   Map<String, dynamic> dmBlock(String peerPk) =>
       call('chat.dm_block', {'peer_pk': peerPk});
 
+  // ---- download directory -------------------------------------------------
+
+  Map<String, dynamic> getDownloadDir() => call('sys.get_download_dir');
+
+  /// Set (or with an empty path, reset) the root directory for NEW downloads.
+  Map<String, dynamic> setDownloadDir(String path) =>
+      call('sys.set_download_dir', {'path': path});
+
   /// Identified chat peers of a room: [{pk, name, endpoint}] — the member
   /// list you can start a DM with.
   List<Map<String, dynamic>> members(String groupId) {
