@@ -59,8 +59,9 @@ class _FilterScriptPageState extends State<FilterScriptPage> {
   void _apply() {
     try {
       final decoded = jsonDecode(_text.text);
-      if (decoded is! List)
+      if (decoded is! List) {
         throw const FormatException('top level must be a list');
+      }
       final rules = decoded
           .map((e) => FilterRule.fromJson(Map<String, dynamic>.from(e as Map)))
           .toList();
