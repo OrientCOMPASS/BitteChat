@@ -161,16 +161,19 @@ for ABI in $ABIS; do
     DEPS="$DEPS_ROOT/$ABI"
     mkdir -p "$DEPS"
     case "$ABI" in
-        arm64-v8a)   OSS_TARGET="android-arm64";  RUST_TARGET="aarch64-linux-android" ;;
-        x86_64)      OSS_TARGET="android-x86_64"; RUST_TARGET="x86_64-linux-android" ;;
-        armeabi-v7a) OSS_TARGET="android-arm";    RUST_TARGET="armv7-linux-androideabi" ;;
-        x86)         OSS_TARGET="android-x86";    RUST_TARGET="i686-linux-android" ;;
+        arm64-v8a)   OSS_TARGET="android-arm64";  RUST_TARGET="aarch64-linux-android";  SYSROOT_TRIPLE="aarch64-linux-android" ;;
+        x86_64)      OSS_TARGET="android-x86_64"; RUST_TARGET="x86_64-linux-android";   SYSROOT_TRIPLE="x86_64-linux-android" ;;
+        armeabi-v7a) OSS_TARGET="android-arm";    RUST_TARGET="armv7-linux-androideabi"; SYSROOT_TRIPLE="arm-linux-androideabi" ;;
+        x86)         OSS_TARGET="android-x86";    RUST_TARGET="i686-linux-android";     SYSROOT_TRIPLE="i686-linux-android" ;;
         *) echo "unknown ABI $ABI" >&2; exit 1 ;;
     esac
     build_openssl "$ABI" "$OSS_TARGET" "$DEPS"
     build_libtorrent "$ABI" "$DEPS"
     build_cpp_wrapper "$ABI" "$DEPS"
     build_rust "$ABI" "$RUST_TARGET" "$DEPS"
+    # libbitte_core.so is linked against libc++_shared: ship it alongside
+    mkdir -p "$JNI_OUT/$ABI"
+    cp "$TC/sysroot/usr/lib/$SYSROOT_TRIPLE/libc++_shared.so" "$JNI_OUT/$ABI/"
 done
 
 echo ">> native libs:"

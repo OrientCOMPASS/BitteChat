@@ -58,6 +58,9 @@ class BridgeException implements Exception {
 }
 
 class BitteBridge {
+  /// Why the native library failed to load (null when it loaded).
+  static String? lastOpenError;
+
   BitteBridge._(
       this._lib, this._handle, this._callable, this._controller, this.events);
 

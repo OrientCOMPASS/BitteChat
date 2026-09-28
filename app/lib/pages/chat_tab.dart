@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../core/api.dart';
+import '../core/bridge.dart';
 import '../core/intent.dart';
 import '../models.dart';
 import '../widgets/avatar.dart';
@@ -145,7 +146,7 @@ class _ChatTabState extends State<ChatTab> {
         ],
       ),
       body: !_api.available
-          ? const _DemoModeHint()
+          ? _DemoModeHint(error: BitteBridge.lastOpenError)
           : _groups.isEmpty
               ? _EmptyState(
                   icon: Icons.forum_outlined,
@@ -361,7 +362,9 @@ class _EmptyState extends StatelessWidget {
 }
 
 class _DemoModeHint extends StatelessWidget {
-  const _DemoModeHint();
+  const _DemoModeHint({this.error});
+
+  final String? error;
 
   @override
   Widget build(BuildContext context) {
@@ -378,11 +381,18 @@ class _DemoModeHint extends StatelessWidget {
             Text('演示模式', style: theme.textTheme.titleMedium),
             const SizedBox(height: 8),
             Text(
-              '未找到 libbitte_core.so。\n请安装 CI 构建的 Android APK 以启用完整功能。',
+              '未加载 libbitte_core.so。\n请安装 CI 构建的 Android APK 以启用完整功能。',
               textAlign: TextAlign.center,
               style: theme.textTheme.bodyMedium
                   ?.copyWith(color: theme.colorScheme.outline),
             ),
+            if (error != null) ...[
+              const SizedBox(height: 8),
+              Text(error!,
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: theme.colorScheme.error)),
+            ],
           ],
         ),
       ),

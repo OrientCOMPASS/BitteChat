@@ -6,6 +6,7 @@
 // Run: flutter test integration_test/app_test.dart -d <device>
 
 import 'package:bittechat/core/api.dart';
+import 'package:bittechat/core/bridge.dart';
 import 'package:bittechat/main.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -21,7 +22,9 @@ void main() {
       final api = BitteApi.instance;
 
       // the native library must load on-device
-      expect(api.available, isTrue, reason: 'libbitte_core.so failed to load');
+      expect(api.available, isTrue,
+          reason:
+              'libbitte_core.so failed to load: ${BitteBridge.lastOpenError}');
       final info = api.sysInfo();
       expect(info['engine'], 'libtorrent');
 
@@ -32,8 +35,7 @@ void main() {
       final gid = created['group_id'] as String;
       expect(gid.length, 40);
       expect(
-        (created['invite_magnet'] as String)
-            .startsWith('magnet:?xt=urn:btih:'),
+        (created['invite_magnet'] as String).startsWith('magnet:?xt=urn:btih:'),
         isTrue,
       );
 
