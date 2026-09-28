@@ -74,4 +74,5 @@ cd app && flutter build apk --release --split-per-abi
 - [x] v0.4.3 消息过滤规则引擎（折叠显示，不破坏链完整性）
 - [x] v0.4.5 国际化（zh/en）+ 身份档案管理
 - [x] v0.5.0 **种子即群聊**（移除"凭空建群"，房间 ID = infohash，头密钥确定性派生）+ Tracker 设置（全局默认列表/单任务增删/DHT 引导可配置）+ info hash 直连输入 + fvp 视频软解兜底 + 全局壁纸
+- [x] v0.5.1 修复 DHT 启动前的 BEP44 操作被 libtorrent 静默丢弃（冷启动丢头指针发布、消息抓取卡死在 fetching）——未就绪时排队延迟执行
 - [ ] v0.5+：前台服务保活、消息搜索、armeabi-v7a、目录做种、分 ABI 发布包瘦身
