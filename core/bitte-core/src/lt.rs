@@ -292,6 +292,36 @@ impl BtEngine for LibtorrentEngine {
         Ok(out)
     }
 
+    fn add_tracker(&self, infohash: &str, url: &str, tier: i32) -> Result<()> {
+        self.call(
+            "add_tracker",
+            json!({"infohash": infohash, "url": url, "tier": tier}),
+        )?;
+        Ok(())
+    }
+
+    fn remove_tracker(&self, infohash: &str, url: &str) -> Result<()> {
+        self.call("remove_tracker", json!({"infohash": infohash, "url": url}))?;
+        Ok(())
+    }
+
+    fn trackers(&self, infohash: &str) -> Result<Vec<TrackerInfo>> {
+        let v = self.call("trackers", json!({"infohash": infohash}))?;
+        let mut out = Vec::new();
+        if let Some(arr) = v.get("trackers").and_then(|a| a.as_array()) {
+            for t in arr {
+                out.push(TrackerInfo {
+                    url: t["url"].as_str().unwrap_or("").to_string(),
+                    tier: t["tier"].as_i64().unwrap_or(0) as i32,
+                    verified: t["verified"].as_bool().unwrap_or(false),
+                    fails: t["fails"].as_i64().unwrap_or(0) as i32,
+                    message: t["message"].as_str().unwrap_or("").to_string(),
+                });
+            }
+        }
+        Ok(out)
+    }
+
     fn create_torrent(&self, path: &str, comment: &str) -> Result<CreatedTorrent> {
         let v = self.call("create_torrent", json!({"path": path, "comment": comment}))?;
         let ih_hex = self.jstr(&v, "infohash")?;

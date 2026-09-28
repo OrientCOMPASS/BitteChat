@@ -967,6 +967,69 @@ static json::value cmd_file_priorities(bc_session* s, json::object const& o)
     return json_ok();
 }
 
+static json::value cmd_trackers(bc_session* s, json::object const& o)
+{
+    torrent_handle const th = find_handle(s, jstr(o, "infohash"));
+    if (!th.is_valid()) return json_err("unknown torrent");
+    json::array arr;
+    try
+    {
+        for (auto const& ae : th.trackers())
+        {
+            json::object to;
+            to["url"] = ae.url;
+            to["tier"] = ae.tier;
+            to["verified"] = ae.verified;
+            to["fails"] = ae.fails;
+            to["message"] = ae.message;
+            arr.push_back(std::move(to));
+        }
+    }
+    catch (std::exception const& e)
+    {
+        return json_err(e.what());
+    }
+    json::object r;
+    r["ok"] = true;
+    r["trackers"] = std::move(arr);
+    return r;
+}
+
+static json::value cmd_add_tracker(bc_session* s, json::object const& o)
+{
+    torrent_handle const th = find_handle(s, jstr(o, "infohash"));
+    if (!th.is_valid()) return json_err("unknown torrent");
+    std::string const url = jstr(o, "url");
+    if (url.empty()) return json_err("missing url");
+    int const tier = static_cast<int>(jint(o, "tier", 0));
+    try
+    {
+        th.add_tracker(url, tier);
+    }
+    catch (std::exception const& e)
+    {
+        return json_err(e.what());
+    }
+    return json_ok();
+}
+
+static json::value cmd_remove_tracker(bc_session* s, json::object const& o)
+{
+    torrent_handle const th = find_handle(s, jstr(o, "infohash"));
+    if (!th.is_valid()) return json_err("unknown torrent");
+    std::string const url = jstr(o, "url");
+    if (url.empty()) return json_err("missing url");
+    try
+    {
+        th.remove_tracker(url);
+    }
+    catch (std::exception const& e)
+    {
+        return json_err(e.what());
+    }
+    return json_ok();
+}
+
 static json::value cmd_create_torrent(bc_session* s, json::object const& o)
 {
     (void)s;
@@ -1183,6 +1246,20 @@ extern "C" bc_session* bct_create(const char* cfg_json, bc_event_fn cb, void* cb
             static_cast<int>(static_cast<std::uint32_t>(mask)));
     }
     pack.set_bool(settings_pack::enable_dht, true);
+    {
+        // a single bootstrap host is fragile (it has been down before);
+        // seed the DHT from several well-known routers unless overridden
+        std::string bootstrap = jstr(cfg, "dht_bootstrap_nodes");
+        if (bootstrap.empty())
+        {
+            bootstrap = "dht.libtorrent.org:25401,"
+                        "router.bittorrent.com:6881,"
+                        "router.utorrent.com:6881,"
+                        "dht.transmissionbt.com:6881,"
+                        "router.bitcomet.com:6881";
+        }
+        pack.set_str(settings_pack::dht_bootstrap_nodes, bootstrap);
+    }
     pack.set_bool(settings_pack::enable_lsd, true);
     pack.set_bool(settings_pack::enable_upnp, true);
     pack.set_bool(settings_pack::enable_natpmp, true);
@@ -1241,6 +1318,9 @@ extern "C" char* bct_call(bc_session* s, const char* method, const char* params_
         if (m == "peers") return json_to_cstr(cmd_peers(s, obj));
         if (m == "files") return json_to_cstr(cmd_files(s, obj));
         if (m == "file_priorities") return json_to_cstr(cmd_file_priorities(s, obj));
+        if (m == "trackers") return json_to_cstr(cmd_trackers(s, obj));
+        if (m == "add_tracker") return json_to_cstr(cmd_add_tracker(s, obj));
+        if (m == "remove_tracker") return json_to_cstr(cmd_remove_tracker(s, obj));
         if (m == "create_torrent") return json_to_cstr(cmd_create_torrent(s, obj));
         if (m == "dht_get_immutable") return json_to_cstr(cmd_dht_get_immutable(s, obj));
         if (m == "dht_put_immutable") return json_to_cstr(cmd_dht_put_immutable(s, obj));

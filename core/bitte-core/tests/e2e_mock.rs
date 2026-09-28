@@ -98,11 +98,6 @@ fn wait_until<T>(nodes: &[&Node], timeout: Duration, mut cond: impl FnMut() -> O
 
 const T: Duration = Duration::from_secs(15);
 
-fn msg_count(node: &Node, gid: &str) -> i64 {
-    let r = call(node, "chat.messages", json!({"group_id": gid}));
-    r["total"].as_i64().unwrap_or(-1)
-}
-
 fn texts(node: &Node, gid: &str) -> Vec<String> {
     let r = call(node, "chat.messages", json!({"group_id": gid}));
     r["messages"]
@@ -113,37 +108,83 @@ fn texts(node: &Node, gid: &str) -> Vec<String> {
         .collect()
 }
 
+/// A seeds a real torrent and enters its chat room (a torrent IS a room;
+/// the room id equals the infohash). Returns (gid == infohash, magnet).
+fn seed_room(a: &Node, tag: &str) -> (String, String) {
+    let fpath = a.path.join(format!("room-{tag}.bin"));
+    std::fs::write(&fpath, format!("content of {tag}").as_bytes()).unwrap();
+    let seeded = call(
+        a,
+        "bt.create_seed",
+        json!({"path": fpath.to_string_lossy()}),
+    );
+    let ih = seeded["infohash"].as_str().unwrap().to_string();
+    let magnet = seeded["magnet"].as_str().unwrap().to_string();
+    // entering by BARE infohash exercises the hash-only input path
+    let joined = call(a, "chat.join_group", json!({"magnet": &ih}));
+    assert_eq!(joined["group_id"].as_str().unwrap(), ih.as_str());
+    (ih, magnet)
+}
+
+/// Enter the chat room of a torrent from a magnet or bare hash.
+fn join_room(n: &Node, invite: &str) -> String {
+    let r = call(n, "chat.join_group", json!({"magnet": invite}));
+    r["group_id"].as_str().unwrap().to_string()
+}
+
+/// Wait until `gid` shows up in the node's chat group list.
+fn wait_group(n: &Node, gid: &str) {
+    wait_until(&[n], T, || {
+        let groups = call(n, "chat.groups", json!({}));
+        groups["groups"]
+            .as_array()?
+            .iter()
+            .find(|g| g["group_id"].as_str() == Some(gid))?;
+        Some(())
+    });
+}
+
 #[test]
-fn e2e_create_join_chat() {
+fn e2e_torrent_room_chat() {
     let bus = MockBus::new();
     let (a, _ta) = spawn_node(&bus);
     let (b, _tb) = spawn_node(&bus);
 
-    // A creates a group
-    let created = call(&a, "chat.create_group", json!({"name": "开发群"}));
-    let gid = created["group_id"].as_str().unwrap().to_string();
-    let magnet = created["invite_magnet"].as_str().unwrap().to_string();
+    // A seeds a regular torrent — its infohash IS the chat room id
+    let (gid, magnet) = seed_room(&a, "dev");
+    assert_eq!(gid.len(), 40);
     assert!(magnet.starts_with("magnet:?xt=urn:btih:"));
 
-    // B joins via the invite magnet
-    let joined = call(&b, "chat.join_group", json!({"magnet": magnet}));
-    assert!(
-        joined["pending"].as_bool().unwrap_or(false)
-            || joined["already"].as_bool().unwrap_or(false)
-    );
+    // B enters the same room via the magnet; re-entering is idempotent
+    assert_eq!(join_room(&b, &magnet), gid);
+    let again = call(&b, "chat.join_group", json!({"magnet": &gid}));
+    assert_eq!(again["already"], json!(true));
 
-    // B should see the group with the genesis system message
-    wait_until(&[&a, &b], T, || {
-        let groups = call(&b, "chat.groups", json!({}));
-        let arr = groups["groups"].as_array()?;
-        arr.iter()
-            .find(|g| g["group_id"].as_str() == Some(gid.as_str()))?;
-        if msg_count(&b, &gid) >= 1 {
-            Some(())
-        } else {
-            None
-        }
-    });
+    // the room's torrent stays a visible BT task on both nodes, bound to
+    // the group
+    for n in [&a, &b] {
+        let list = call(n, "bt.list", json!({}));
+        let t = list["torrents"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|t| t["infohash"].as_str() == Some(gid.as_str()))
+            .expect("room torrent visible on BT page")
+            .clone();
+        assert_eq!(t["group_id"].as_str().unwrap(), gid.as_str());
+    }
+
+    // room name follows the torrent name
+    let groups = call(&a, "chat.groups", json!({}));
+    let g = groups["groups"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|g| g["group_id"].as_str() == Some(gid.as_str()))
+        .unwrap()
+        .clone();
+    assert_eq!(g["name"].as_str().unwrap(), "room-dev.bin");
+    assert_eq!(g["dm"], json!(false));
 
     // A sends a text; B receives it via the ext channel (same swarm)
     call(&a, "chat.send", json!({"group_id": gid, "text": "大家好"}));
@@ -205,6 +246,34 @@ fn e2e_create_join_chat() {
         .find(|g| g["group_id"].as_str() == Some(gid.as_str()))
         .unwrap();
     assert_eq!(g["unread"].as_i64().unwrap(), 0);
+
+    // leaving the room keeps the torrent task (it is the user's download),
+    // only the chat binding goes away
+    call(&b, "chat.leave_group", json!({"group_id": gid}));
+    let groups = call(&b, "chat.groups", json!({}));
+    assert!(!groups["groups"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|g| g["group_id"].as_str() == Some(gid.as_str())));
+    let list = call(&b, "bt.list", json!({}));
+    let t = list["torrents"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|t| t["infohash"].as_str() == Some(gid.as_str()))
+        .expect("torrent survives leaving the room")
+        .clone();
+    assert_eq!(t["group_id"].as_str().unwrap(), "");
+    // ...and B can re-enter later, history intact
+    assert_eq!(join_room(&b, &gid), gid);
+    wait_until(&[&b], T, || {
+        if texts(&b, &gid).contains(&"大家好".to_string()) {
+            Some(())
+        } else {
+            None
+        }
+    });
 }
 
 #[test]
@@ -216,12 +285,16 @@ fn e2e_offline_dht_sync() {
         let (a, _ta) = spawn_node(&bus);
         let b = spawn_node_at(&bus, dir_b.path());
 
-        let created = call(&a, "chat.create_group", json!({"name": "离线测试"}));
-        gid = created["group_id"].as_str().unwrap().to_string();
-        let magnet = created["invite_magnet"].as_str().unwrap().to_string();
-        call(&b, "chat.join_group", json!({"magnet": &magnet}));
+        let (gid2, magnet) = seed_room(&a, "offline");
+        gid = gid2;
+        join_room(&b, &magnet);
+        call(
+            &a,
+            "chat.send",
+            json!({"group_id": gid, "text": "在线时的一条"}),
+        );
         wait_until(&[&a, &b], T, || {
-            if msg_count(&b, &gid) >= 1 {
+            if texts(&b, &gid).contains(&"在线时的一条".to_string()) {
                 Some(())
             } else {
                 None
@@ -255,17 +328,7 @@ fn e2e_offline_dht_sync() {
     // B comes back with the same data dir: persistence + DHT head polling
     // must restore the full history including the offline message.
     let b2 = spawn_node_at(&bus, dir_b.path());
-    wait_until(&[&b2], T, || {
-        let groups = call(&b2, "chat.groups", json!({}));
-        let arr = groups["groups"].as_array()?;
-        arr.iter()
-            .find(|g| g["group_id"].as_str() == Some(gid.as_str()))?;
-        if msg_count(&b2, &gid) >= 1 {
-            Some(())
-        } else {
-            None
-        }
-    });
+    wait_group(&b2, &gid);
     wait_until(&[&b2], Duration::from_secs(30), || {
         if texts(&b2, &gid).contains(&"错过了一条".to_string()) {
             Some(())
@@ -273,6 +336,13 @@ fn e2e_offline_dht_sync() {
             None
         }
     });
+    // the restored room is re-bound to its torrent task
+    let list = call(&b2, "bt.list", json!({}));
+    assert!(list["torrents"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|t| t["infohash"].as_str() == Some(gid.as_str())));
 }
 
 #[test]
@@ -281,17 +351,8 @@ fn e2e_attachment_transfer() {
     let (a, _ta) = spawn_node(&bus);
     let (b, _tb) = spawn_node(&bus);
 
-    let created = call(&a, "chat.create_group", json!({"name": "文件群"}));
-    let gid = created["group_id"].as_str().unwrap().to_string();
-    let magnet = created["invite_magnet"].as_str().unwrap().to_string();
-    call(&b, "chat.join_group", json!({"magnet": magnet}));
-    wait_until(&[&a, &b], T, || {
-        if msg_count(&b, &gid) >= 1 {
-            Some(())
-        } else {
-            None
-        }
-    });
+    let (gid, magnet) = seed_room(&a, "files");
+    join_room(&b, &magnet);
 
     // A sends a file
     let fpath = a.path.join("hello.txt");
@@ -379,17 +440,8 @@ fn e2e_long_text_chunking() {
     let bus = MockBus::new();
     let (a, _ta) = spawn_node(&bus);
     let (b, _tb) = spawn_node(&bus);
-    let created = call(&a, "chat.create_group", json!({"name": "长文群"}));
-    let gid = created["group_id"].as_str().unwrap().to_string();
-    let magnet = created["invite_magnet"].as_str().unwrap().to_string();
-    call(&b, "chat.join_group", json!({"magnet": magnet}));
-    wait_until(&[&a, &b], T, || {
-        if msg_count(&b, &gid) >= 1 {
-            Some(())
-        } else {
-            None
-        }
-    });
+    let (gid, magnet) = seed_room(&a, "longtext");
+    join_room(&b, &magnet);
 
     let long: String = "区块链防篡改消息".repeat(200); // 2000 chars, 6000 bytes
     call(&a, "chat.send", json!({"group_id": gid, "text": &long}));
@@ -407,17 +459,8 @@ fn e2e_tampered_item_rejected() {
     let bus = MockBus::new();
     let (a, _ta) = spawn_node(&bus);
     let (b, _tb) = spawn_node(&bus);
-    let created = call(&a, "chat.create_group", json!({"name": "防篡改"}));
-    let gid = created["group_id"].as_str().unwrap().to_string();
-    let magnet = created["invite_magnet"].as_str().unwrap().to_string();
-    call(&b, "chat.join_group", json!({"magnet": magnet}));
-    wait_until(&[&a, &b], T, || {
-        if msg_count(&b, &gid) >= 1 {
-            Some(())
-        } else {
-            None
-        }
-    });
+    let (gid, magnet) = seed_room(&a, "tamper");
+    join_room(&b, &magnet);
 
     call(
         &a,
@@ -447,9 +490,9 @@ fn e2e_tampered_item_rejected() {
 
     // fresh node C joins and must NOT accept the corrupted message
     let (c, _tc) = spawn_node(&bus);
-    call(&c, "chat.join_group", json!({"magnet": magnet}));
-    // C gets the group (manifest fine) but the corrupted message is rejected;
-    // genesis may arrive; assert the tampered text never appears
+    join_room(&c, &magnet);
+    // C learns the head pointers (ext announcement + DHT) but the corrupted
+    // immutable item fails verification, so the text never appears
     std::thread::sleep(Duration::from_secs(3));
     drain(&c);
     let texts_c = texts(&c, &gid);
@@ -462,17 +505,8 @@ fn e2e_group_rename_propagates() {
     let bus = MockBus::new();
     let (a, _ta) = spawn_node(&bus);
     let (b, _tb) = spawn_node(&bus);
-    let created = call(&a, "chat.create_group", json!({"name": "旧名字"}));
-    let gid = created["group_id"].as_str().unwrap().to_string();
-    let magnet = created["invite_magnet"].as_str().unwrap().to_string();
-    call(&b, "chat.join_group", json!({"magnet": magnet}));
-    wait_until(&[&a, &b], T, || {
-        if msg_count(&b, &gid) >= 1 {
-            Some(())
-        } else {
-            None
-        }
-    });
+    let (gid, magnet) = seed_room(&a, "rename");
+    join_room(&b, &magnet);
 
     call(
         &a,
@@ -515,18 +549,9 @@ fn e2e_dm_encrypted_end_to_end() {
     let (a, _ta) = spawn_node(&bus);
     let (b, _tb) = spawn_node(&bus);
 
-    // shared group first (DM keys travel in message `x` fields)
-    let created = call(&a, "chat.create_group", json!({"name": "同群"}));
-    let gid = created["group_id"].as_str().unwrap().to_string();
-    let magnet = created["invite_magnet"].as_str().unwrap().to_string();
-    call(&b, "chat.join_group", json!({"magnet": magnet}));
-    wait_until(&[&a, &b], T, || {
-        if msg_count(&b, &gid) >= 1 {
-            Some(())
-        } else {
-            None
-        }
-    });
+    // shared torrent room first (DM keys travel in message `x` fields)
+    let (gid, magnet) = seed_room(&a, "dm-shared");
+    join_room(&b, &magnet);
     call(
         &b,
         "chat.send",
@@ -678,17 +703,8 @@ fn e2e_filter_rules_block_and_validate() {
     let bus = MockBus::new();
     let (a, _ta) = spawn_node(&bus);
     let (b, _tb) = spawn_node(&bus);
-    let created = call(&a, "chat.create_group", json!({"name": "过滤群"}));
-    let gid = created["group_id"].as_str().unwrap().to_string();
-    let magnet = created["invite_magnet"].as_str().unwrap().to_string();
-    call(&b, "chat.join_group", json!({"magnet": magnet}));
-    wait_until(&[&a, &b], T, || {
-        if msg_count(&b, &gid) >= 1 {
-            Some(())
-        } else {
-            None
-        }
-    });
+    let (gid, magnet) = seed_room(&a, "filter");
+    join_room(&b, &magnet);
     call(
         &b,
         "chat.send",
@@ -791,9 +807,7 @@ fn e2e_identity_profiles() {
     );
     assert_eq!(now_id["name"].as_str().unwrap(), "新身份");
 
-    let created_g = call(&a, "chat.create_group", json!({"name": "身份测试群"}));
-    let gid = created_g["group_id"].as_str().unwrap().to_string();
-    let magnet = created_g["invite_magnet"].as_str().unwrap().to_string();
+    let (gid, magnet) = seed_room(&a, "identity");
     call(
         &a,
         "chat.send",
@@ -829,12 +843,141 @@ fn e2e_identity_profiles() {
 }
 
 #[test]
+fn e2e_hash_input_and_default_trackers() {
+    let bus = MockBus::new();
+    let (a, _ta) = spawn_node(&bus);
+    let (b, _tb) = spawn_node(&bus);
+
+    // A seeds a file so the torrent exists on the bus
+    let fpath = a.path.join("tracked.bin");
+    std::fs::write(&fpath, b"tracker payload").unwrap();
+    let seeded = call(
+        &a,
+        "bt.create_seed",
+        json!({"path": fpath.to_string_lossy()}),
+    );
+    let ih = seeded["infohash"].as_str().unwrap().to_string();
+
+    // invalid default tracker lists are rejected
+    let bad = try_call(
+        &a,
+        "bt.set_default_trackers",
+        json!({"trackers": ["file:///x", "udp://ok.example:1337/announce"]}),
+    );
+    assert!(bad.is_err());
+
+    // set a valid default
+    call(
+        &b,
+        "bt.set_default_trackers",
+        json!({"trackers": ["udp://tracker.opentrackr.org:1337/announce"]}),
+    );
+    let got = call(&b, "bt.get_default_trackers", json!({}));
+    assert_eq!(got["trackers"].as_array().unwrap().len(), 1);
+
+    // B adds by BARE UPPERCASE HASH — no magnet needed
+    let added = call(&b, "bt.add", json!({"magnet": ih.to_uppercase()}));
+    assert_eq!(added["infohash"].as_str().unwrap(), ih.as_str());
+    let stored = added["magnet"].as_str().unwrap().to_string();
+    assert!(stored.starts_with(&format!("magnet:?xt=urn:btih:{ih}")));
+    assert!(
+        stored.contains("tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce"),
+        "default tracker must be merged into the stored magnet: {stored}"
+    );
+
+    // the engine torrent carries the tracker too
+    let tr = call(&b, "bt.trackers", json!({"infohash": ih}));
+    let arr = tr["trackers"].as_array().unwrap();
+    assert_eq!(arr.len(), 1);
+    assert_eq!(
+        arr[0]["url"].as_str().unwrap(),
+        "udp://tracker.opentrackr.org:1337/announce"
+    );
+
+    // per-torrent add/remove, with URL validation
+    let bad = try_call(
+        &b,
+        "bt.add_tracker",
+        json!({"infohash": ih, "url": "ftp://x.example/announce"}),
+    );
+    assert!(bad.is_err());
+    call(
+        &b,
+        "bt.add_tracker",
+        json!({"infohash": ih, "url": "https://t.example/announce"}),
+    );
+    let tr = call(&b, "bt.trackers", json!({"infohash": ih}));
+    assert_eq!(tr["trackers"].as_array().unwrap().len(), 2);
+    call(
+        &b,
+        "bt.remove_tracker",
+        json!({"infohash": ih, "url": "https://t.example/announce"}),
+    );
+    let tr = call(&b, "bt.trackers", json!({"infohash": ih}));
+    assert_eq!(tr["trackers"].as_array().unwrap().len(), 1);
+    // removal also strips it from the stored magnet
+    let list = call(&b, "bt.list", json!({}));
+    let t = list["torrents"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|t| t["infohash"] == json!(ih))
+        .unwrap()
+        .clone();
+    let m = t["magnet"].as_str().unwrap().to_string();
+    assert!(!m.contains("t.example"), "tracker removed from magnet: {m}");
+
+    // entering the room by bare hash reuses the same BT task
+    let joined = call(&b, "chat.join_group", json!({"magnet": &ih}));
+    assert_eq!(joined["group_id"].as_str().unwrap(), ih.as_str());
+    let list = call(&b, "bt.list", json!({}));
+    let t = list["torrents"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|t| t["infohash"] == json!(ih))
+        .unwrap()
+        .clone();
+    assert_eq!(t["group_id"].as_str().unwrap(), ih.as_str());
+
+    // base32 infohash input works as well
+    let b32 = base32_encode(&hex::decode(&ih).unwrap());
+    let joined2 = call(&a, "chat.join_group", json!({"magnet": &b32}));
+    assert_eq!(joined2["group_id"].as_str().unwrap(), ih.as_str());
+}
+
+/// RFC4648 base32 (no padding) — mirrors what clients emit for v1 hashes.
+fn base32_encode(data: &[u8]) -> String {
+    const ALPHA: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+    let mut out = String::new();
+    let mut buf = 0u32;
+    let mut bits = 0u32;
+    for &b in data {
+        buf = (buf << 8) | b as u32;
+        bits += 8;
+        while bits >= 5 {
+            bits -= 5;
+            out.push(ALPHA[((buf >> bits) & 0x1F) as usize] as char);
+        }
+    }
+    if bits > 0 {
+        out.push(ALPHA[((buf << (5 - bits)) & 0x1F) as usize] as char);
+    }
+    out
+}
+
+#[test]
 fn dispatch_errors_are_graceful() {
     let bus = MockBus::new();
     let (a, _ta) = spawn_node(&bus);
     assert!(try_call(&a, "chat.messages", json!({"group_id": "deadbeef"})).is_err());
     assert!(try_call(&a, "no.such.method", json!({})).is_err());
     assert!(try_call(&a, "chat.send", json!({"group_id": "aa", "text": "x"})).is_err());
+    // "create a group from nothing" is gone — torrents are the rooms now
+    assert!(try_call(&a, "chat.create_group", json!({"name": "x"})).is_err());
+    // garbage join input is rejected with a helpful error
+    let err = try_call(&a, "chat.join_group", json!({"magnet": "hello world"}));
+    assert!(err.is_err());
     let info = call(&a, "sys.info", json!({}));
     assert_eq!(info["engine"].as_str(), Some("mock"));
 }

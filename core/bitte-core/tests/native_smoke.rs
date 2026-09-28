@@ -122,6 +122,24 @@ fn native_engine_smoke() {
     let n = engine.ext_send(&ih, b"hello").expect("ext_send");
     assert_eq!(n, 0);
 
+    // tracker round-trip through the C++ ABI
+    engine
+        .add_tracker(&ih, "udp://tracker.opentrackr.org:1337/announce", 0)
+        .expect("add_tracker");
+    engine
+        .add_tracker(&ih, "https://tracker.example.org/announce", 1)
+        .expect("add_tracker 2");
+    let trackers = engine.trackers(&ih).expect("trackers");
+    assert_eq!(trackers.len(), 2);
+    assert!(trackers
+        .iter()
+        .any(|t| t.url == "udp://tracker.opentrackr.org:1337/announce" && t.tier == 0));
+    engine
+        .remove_tracker(&ih, "https://tracker.example.org/announce")
+        .expect("remove_tracker");
+    let trackers = engine.trackers(&ih).expect("trackers after remove");
+    assert_eq!(trackers.len(), 1);
+
     // pause/resume/remove lifecycle
     engine.set_paused(&ih, true).expect("pause");
     engine.set_paused(&ih, false).expect("resume");

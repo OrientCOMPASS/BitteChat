@@ -1,7 +1,15 @@
-//! Group manifest: the small bencoded document inside every group's manifest
-//! torrent. Possession of the manifest torrent's magnet link is the group
-//! membership capability — it contains the shared head-signing seed that lets
-//! every member publish new DAG heads to the DHT.
+//! Group manifests.
+//!
+//! Two kinds of channels exist:
+//!   * **torrent rooms** (the normal case): ANY BitTorrent torrent is a chat
+//!     room. The room id is the torrent infohash and the head-signing key is
+//!     derived deterministically from it ([`GroupManifest::for_torrent`]) —
+//!     no manifest file is exchanged at all; the synthesized manifest only
+//!     exists in-memory / in the local store to reuse the sync machinery.
+//!   * **DM channels**: a small `bitte-group.benc` manifest torrent carrying
+//!     both parties' identity + X25519 keys ([`GroupManifest::new`] with the
+//!     `dm` field set). Possession of its magnet link is the membership
+//!     capability; message bodies are E2E encrypted.
 
 use serde::{Deserialize, Serialize};
 
@@ -12,6 +20,20 @@ use crate::{CoreError, Result, HEAD_SALT_PREFIX, MANIFEST_FILE};
 pub const MANIFEST_VERSION: i64 = 1;
 pub const MAX_GROUP_NAME_LEN: usize = 96;
 pub const MAX_AVATAR_LEN: usize = 8 * 1024;
+
+/// Truncate a display name to at most MAX_GROUP_NAME_LEN bytes on a char
+/// boundary (torrent names can be arbitrarily long).
+pub fn clamp_name(name: &str) -> String {
+    let trimmed = name.trim();
+    if trimmed.len() <= MAX_GROUP_NAME_LEN {
+        return trimmed.to_string();
+    }
+    let mut end = MAX_GROUP_NAME_LEN;
+    while end > 0 && !trimmed.is_char_boundary(end) {
+        end -= 1;
+    }
+    trimmed[..end].to_string()
+}
 
 /// One side of a DM channel: ed25519 identity + x25519 exchange key.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -85,6 +107,41 @@ impl GroupManifest {
 
     pub fn is_dm(&self) -> bool {
         self.dm.is_some()
+    }
+
+    /// Synthesize the channel descriptor of a **torrent room**: any torrent
+    /// is a chat room, its infohash is the room id (`gid`) and the BEP44
+    /// head-signing keypair is derived from it, so every peer of the swarm
+    /// can independently reconstruct the same manifest. `name` is the
+    /// torrent's display name (updated when metadata arrives).
+    pub fn for_torrent(ih: &Sha1Hash, name: &str) -> GroupManifest {
+        let head_seed = crate::crypto::torrent_head_seed(ih);
+        let head = Identity::from_seed(head_seed);
+        let display = clamp_name(name);
+        let ih_hex = hex::encode(ih);
+        let display = if display.is_empty() {
+            format!("种子 {}", &ih_hex[..8])
+        } else {
+            display
+        };
+        GroupManifest {
+            gid: *ih,
+            name: display,
+            avatar: Vec::new(),
+            created: crate::now_ms(),
+            creator_pk: [0u8; 32],
+            creator_name: String::new(),
+            head_pk: head.public_key(),
+            head_seed,
+            dm: None,
+        }
+    }
+
+    /// True for torrent rooms (gid == the swarm torrent's infohash, no DM).
+    /// For DM channels the gid is derived from both parties' keys and never
+    /// equals the manifest torrent's infohash.
+    pub fn is_torrent_room(&self) -> bool {
+        !self.is_dm() && self.creator_pk == [0u8; 32]
     }
 
     /// The DM peer that is not `me`.
@@ -348,5 +405,35 @@ mod tests {
         let m = GroupManifest::new("g", "bob", &creator, &head, vec![]).unwrap();
         assert!(m.head_salt().starts_with("bc1:"));
         assert_eq!(m.head_salt().len(), 4 + 40);
+    }
+
+    #[test]
+    fn torrent_room_manifest_is_deterministic() {
+        let ih = [7u8; 20];
+        let a = GroupManifest::for_torrent(&ih, "Ubuntu 24.04 LTS");
+        let b = GroupManifest::for_torrent(&ih, "Ubuntu 24.04 LTS");
+        // gid IS the infohash; head key derives from it — identical on every
+        // client, which is what lets any swarm member publish head pointers
+        assert_eq!(a.gid, ih);
+        assert_eq!(a.head_pk, b.head_pk);
+        assert_eq!(a.head_seed, b.head_seed);
+        assert_eq!(a.head_salt(), format!("bc1:{}", hex::encode(ih)));
+        assert!(a.is_torrent_room());
+        assert!(!a.is_dm());
+        // roundtrip through the persisted (bencoded) form
+        let dec = GroupManifest::decode(&a.encode()).unwrap();
+        assert_eq!(dec.head_pk, a.head_pk);
+        assert_eq!(dec.name, a.name);
+        assert!(dec.is_torrent_room());
+    }
+
+    #[test]
+    fn torrent_room_name_clamped_and_fallback() {
+        let ih = [3u8; 20];
+        let long = "很".repeat(100); // 300 bytes > 96
+        let m = GroupManifest::for_torrent(&ih, &long);
+        assert!(m.name.len() <= MAX_GROUP_NAME_LEN);
+        let empty = GroupManifest::for_torrent(&ih, "  ");
+        assert_eq!(empty.name, format!("种子 {}", &hex::encode(ih)[..8]));
     }
 }

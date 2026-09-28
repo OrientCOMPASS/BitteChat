@@ -212,10 +212,16 @@ impl Api {
             "bt.stats" => self.bt_stats(),
             "bt.set_limits" => self.bt_set_limits(p),
             "bt.get_limits" => self.bt_get_limits(),
+            "bt.trackers" => self.bt_trackers(p),
+            "bt.add_tracker" => self.bt_add_tracker(p),
+            "bt.remove_tracker" => self.bt_remove_tracker(p),
+            "bt.get_default_trackers" => self.bt_get_default_trackers(),
+            "bt.set_default_trackers" => self.bt_set_default_trackers(p),
 
             "chat.groups" => self.chat_groups(),
             "chat.create_group" => self.chat_create_group(p),
             "chat.join_group" => self.chat_join_group(p),
+            "chat.join_dm" => self.chat_join_dm(p),
             "chat.leave_group" => self.chat_leave_group(p),
             "chat.messages" => self.chat_messages(p),
             "chat.send" => self.chat_send(p),
@@ -424,34 +430,57 @@ impl Api {
     fn restore_state(&self) -> Result<()> {
         let own_pk = self.own_pk_hex();
         let mut st = self.inner.state.lock().unwrap();
+        let torrents: std::collections::HashMap<String, crate::store::TorrentRow> = st
+            .store
+            .torrents_all()?
+            .into_iter()
+            .map(|r| (r.infohash.clone(), r))
+            .collect();
         let groups = st.store.groups_all()?;
         for row in &groups {
             if row.left {
                 continue;
             }
             let gid_hex = hex::encode(row.gid);
-            let ih = crate::mock::parse_magnet(&row.magnet)
-                .map(|(ih, _)| ih)
-                .unwrap_or_default();
-            let save_dir = self.groups_dir().join(&ih);
-            if !ih.is_empty() {
-                if let Err(e) = self.inner.engine.add_magnet(
+            let swarm_ih = if row.manifest.is_torrent_room() {
+                // torrent room: the swarm IS the content torrent; the
+                // torrents loop below re-adds it (kind=0) with its stored
+                // magnet (trackers included)
+                gid_hex.clone()
+            } else {
+                // DM / legacy manifest channel: re-add the internal
+                // manifest torrent
+                let ih = crate::mock::parse_magnet(&row.magnet)
+                    .map(|(ih, _)| ih)
+                    .unwrap_or_default();
+                if !ih.is_empty() {
+                    let save_dir = self.groups_dir().join(&ih);
+                    if let Err(e) = self.inner.engine.add_magnet(
+                        &row.magnet,
+                        &save_dir.to_string_lossy(),
+                        Some(crate::MANIFEST_FILE),
+                    ) {
+                        log::warn!("restore: re-add manifest failed: {e}");
+                    }
+                }
+                ih
+            };
+            if swarm_ih.is_empty() {
+                continue;
+            }
+            if row.manifest.is_torrent_room() && !torrents.contains_key(&swarm_ih) {
+                // group without a registry row (shouldn't happen): add anyway
+                let save_dir = self.downloads_dir().join(&swarm_ih);
+                let _ = self.inner.engine.add_magnet(
                     &row.magnet,
                     &save_dir.to_string_lossy(),
-                    Some(crate::MANIFEST_FILE),
-                ) {
-                    log::warn!("restore: re-add manifest failed: {e}");
-                }
-                // maybe the manifest is already on disk (previous run)
-                let mf = save_dir.join(crate::MANIFEST_FILE);
-                if mf.exists() {
-                    st.pending_joins.insert(ih.clone(), save_dir.clone());
-                }
-                st.by_ih.insert(ih.clone(), gid_hex.clone());
+                    Some(&row.name),
+                );
             }
+            st.by_ih.insert(swarm_ih.clone(), gid_hex.clone());
             let dag = crate::chat::sync::rebuild_dag(&st.store, &row.gid, &own_pk)?;
             let own_seq = dag.author_seq(&own_pk);
-            let mut sync = GroupSync::new(row.gid, row.manifest.clone(), row.head_seq, ih);
+            let mut sync = GroupSync::new(row.gid, row.manifest.clone(), row.head_seq, swarm_ih);
             sync.dag = dag;
             st.groups.insert(
                 gid_hex,
@@ -463,7 +492,7 @@ impl Api {
                 },
             );
         }
-        for t in st.store.torrents_all()? {
+        for t in torrents.values() {
             if t.kind == 1 {
                 continue; // manifest torrents handled above
             }
@@ -499,7 +528,9 @@ impl Api {
     }
 
     /// Kick the join pipeline for a manifest torrent that just got metadata.
-    /// Called from the event loop; safe to call repeatedly.
+    /// Called from the event loop; safe to call repeatedly. Only DM/legacy
+    /// manifest channels use the pending-join pipeline — torrent rooms bind
+    /// synchronously in `enter_torrent_room`.
     pub fn try_complete_join(&self, ih_hex: &str) {
         let save_dir = {
             let st = self.inner.state.lock().unwrap();
@@ -623,6 +654,75 @@ impl Api {
             },
             json!({"group": chat::group_summary_from_row(&row)}),
         );
+    }
+
+    /// Torrent metadata arrived: adopt the real torrent name for its chat
+    /// room (unless the user renamed the room — then only the internal
+    /// "auto name" tracker in the manifest is updated).
+    pub fn refresh_torrent_group_name(&self, ih_hex: &str) {
+        let eng_name = self
+            .inner
+            .engine
+            .torrent_states()
+            .ok()
+            .and_then(|v| v.into_iter().find(|s| s.infohash == ih_hex).map(|s| s.name))
+            .unwrap_or_default();
+        let eng_name = eng_name.trim().to_string();
+        if eng_name.is_empty()
+            || (eng_name.len() == 40
+                && eng_name.chars().all(|c| c.is_ascii_hexdigit())
+                && eng_name.eq_ignore_ascii_case(ih_hex))
+        {
+            return;
+        }
+        let eng_name = crate::chat::group::clamp_name(&eng_name);
+        let mut changed = false;
+        {
+            let mut st = self.inner.state.lock().unwrap();
+            let Some(rt) = st.groups.get_mut(ih_hex) else {
+                return;
+            };
+            if !rt.sync.manifest.is_torrent_room() {
+                return;
+            }
+            // rename ingest only updates the store — sync the runtime row
+            // so the rename is not clobbered by the auto-name below
+            if let Ok(Some(stored)) = st.store.group_get(&rt.sync.gid) {
+                rt.row.name = stored.name;
+            }
+            let auto = rt.sync.manifest.name.clone();
+            if auto == eng_name && rt.row.name == eng_name {
+                return;
+            }
+            rt.sync.manifest.name = eng_name.clone();
+            if rt.row.name == auto || rt.row.name.is_empty() {
+                rt.row.name = eng_name.clone();
+                changed = true;
+            }
+            // keep the persisted copy in sync, then persist
+            rt.row.manifest = rt.sync.manifest.clone();
+            if let Err(e) = st.store.group_upsert(&rt.row) {
+                log::warn!("name refresh persist failed: {e}");
+            }
+            // keep the BT registry name in sync when it is still a placeholder
+            if let Ok(Some(trow)) = st.store.torrent_get(ih_hex) {
+                let n = trow.name.trim();
+                let placeholder = n.is_empty()
+                    || (n.len() == 40
+                        && n.chars().all(|c| c.is_ascii_hexdigit())
+                        && n.eq_ignore_ascii_case(ih_hex));
+                if placeholder {
+                    let _ = st.store.torrent_set_name(ih_hex, &eng_name);
+                }
+            }
+        }
+        if changed {
+            Api::emit_from(
+                &self.inner,
+                "chat.group_updated",
+                serde_json::json!({"group": ih_hex}),
+            );
+        }
     }
 
     /// Create + broadcast a y=3 system message (join/leave/rename...).

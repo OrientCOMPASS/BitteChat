@@ -142,9 +142,11 @@ impl Api {
         match ev {
             EngineEvent::MetadataReceived { infohash } => {
                 self.try_complete_join(&infohash);
+                self.refresh_torrent_group_name(&infohash);
             }
             EngineEvent::TorrentFinished { infohash } => {
                 self.try_complete_join(&infohash);
+                self.refresh_torrent_group_name(&infohash);
             }
             EngineEvent::TorrentError { infohash, error } => {
                 self.emit_event(
@@ -447,7 +449,7 @@ impl Api {
             self.emit_event("chat.group_updated", json!({"group": gid_hex}));
         }
         for magnet in invites {
-            let _ = self.chat_join_group(json!({"magnet": magnet}));
+            let _ = self.chat_join_dm(json!({"magnet": magnet}));
         }
     }
 }

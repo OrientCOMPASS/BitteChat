@@ -776,6 +776,52 @@ impl Store {
         Ok(())
     }
 
+    pub fn torrent_get(&self, infohash: &str) -> Result<Option<TorrentRow>> {
+        let mut st = self.conn.prepare(
+            "SELECT infohash,name,magnet,save_path,kind,group_id,added FROM torrents WHERE infohash=?1",
+        )?;
+        let mut rows = st.query_map(params![infohash], |r| {
+            let gb: Option<Vec<u8>> = r.get(5)?;
+            Ok(TorrentRow {
+                infohash: r.get(0)?,
+                name: r.get(1)?,
+                magnet: r.get(2)?,
+                save_path: r.get(3)?,
+                kind: r.get(4)?,
+                group_id: gb.as_deref().and_then(|b| hash_from_blob(b).ok()),
+                added: r.get(6)?,
+            })
+        })?;
+        match rows.next() {
+            Some(r) => Ok(Some(r?)),
+            None => Ok(None),
+        }
+    }
+
+    pub fn torrent_set_magnet(&self, infohash: &str, magnet: &str) -> Result<()> {
+        self.conn.execute(
+            "UPDATE torrents SET magnet=?2 WHERE infohash=?1",
+            params![infohash, magnet],
+        )?;
+        Ok(())
+    }
+
+    pub fn torrent_set_name(&self, infohash: &str, name: &str) -> Result<()> {
+        self.conn.execute(
+            "UPDATE torrents SET name=?2 WHERE infohash=?1",
+            params![infohash, name],
+        )?;
+        Ok(())
+    }
+
+    pub fn torrent_set_group(&self, infohash: &str, gid: Option<&Sha1Hash>) -> Result<()> {
+        self.conn.execute(
+            "UPDATE torrents SET group_id=?2 WHERE infohash=?1",
+            params![infohash, gid.map(|g| g.to_vec())],
+        )?;
+        Ok(())
+    }
+
     pub fn torrents_all(&self) -> Result<Vec<TorrentRow>> {
         let mut st = self.conn.prepare(
             "SELECT infohash,name,magnet,save_path,kind,group_id,added FROM torrents ORDER BY added ASC",

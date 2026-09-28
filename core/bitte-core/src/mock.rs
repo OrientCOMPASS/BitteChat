@@ -24,6 +24,9 @@ struct BusState {
     swarms: HashMap<String, HashSet<usize>>,
     /// engines waiting for a torrent that is not published yet
     waiters: HashMap<String, Vec<(usize, PathBuf)>>,
+    /// infohash hex -> announced trackers (url, tier); shared view like the
+    /// real network's tracker responses
+    trackers: HashMap<String, Vec<(String, i32)>>,
     txs: HashMap<usize, Sender<EngineEvent>>,
     next_id: usize,
 }
@@ -256,6 +259,124 @@ fn base32_decode(s: &str) -> Option<Vec<u8>> {
         }
     }
     Some(out)
+}
+
+/// Normalize user input into `(infohash_hex_lowercase, dn, magnet)`.
+///
+/// Accepts, in addition to full magnet links:
+///   * a bare 40-char hex infohash (any case, whitespace tolerated)
+///   * a bare 32-char base32 infohash
+///   * `btih:` / `urn:btih:` prefixed hashes
+/// Bare hashes are expanded into a canonical `magnet:?xt=urn:btih:<hex>`.
+pub fn normalize_torrent_input(input: &str) -> Result<(String, Option<String>, String)> {
+    let s = input.trim();
+    if s.is_empty() {
+        return Err(CoreError::Invalid("empty input".into()));
+    }
+    if s.starts_with("magnet:?") {
+        let compact: String = s.chars().filter(|c| !c.is_whitespace()).collect();
+        let (ih, dn) = parse_magnet(&compact)?;
+        return Ok((ih, dn, compact));
+    }
+    let bare: String = s.chars().filter(|c| !c.is_whitespace()).collect();
+    let b = bare
+        .strip_prefix("urn:btih:")
+        .or_else(|| bare.strip_prefix("btih:"))
+        .unwrap_or(&bare);
+    let ih = if b.len() == 40 && b.chars().all(|c| c.is_ascii_hexdigit()) {
+        b.to_lowercase()
+    } else if b.len() == 32
+        && b.chars()
+            .all(|c| "abcdefghijklmnopqrstuvwxyz234567".contains(c.to_ascii_lowercase()))
+    {
+        let bytes = base32_decode(&b.to_ascii_uppercase())
+            .ok_or_else(|| CoreError::Invalid("bad base32 infohash".into()))?;
+        if bytes.len() != 20 {
+            return Err(CoreError::Invalid("bad base32 infohash".into()));
+        }
+        hex::encode(bytes)
+    } else {
+        return Err(CoreError::Invalid(
+            "not a magnet link or infohash (expected magnet:?, 40 hex or 32 base32 chars)".into(),
+        ));
+    };
+    Ok((ih, None, format!("magnet:?xt=urn:btih:{ih}")))
+}
+
+/// Validate a tracker announce URL (http/https/udp, no whitespace).
+pub fn valid_tracker_url(url: &str) -> bool {
+    let u = url.trim();
+    if u.is_empty() || u.len() > 512 || u.chars().any(|c| c.is_whitespace()) {
+        return false;
+    }
+    let l = u.to_ascii_lowercase();
+    l.starts_with("http://") || l.starts_with("https://") || l.starts_with("udp://")
+}
+
+#[cfg(test)]
+mod normalize_tests {
+    use super::*;
+
+    #[test]
+    fn normalize_full_magnet_passthrough() {
+        let m = "magnet:?xt=urn:btih:AABBCCDDEEFF00112233445566778899AABBCCDD&dn=My%20File&tr=udp%3A%2F%2Fx.org%3A1337";
+        let (ih, dn, mag) = normalize_torrent_input(m).unwrap();
+        assert_eq!(ih, "aabbccddeeff00112233445566778899aabbccdd");
+        assert_eq!(dn.as_deref(), Some("My File"));
+        assert_eq!(mag, m);
+    }
+
+    #[test]
+    fn normalize_bare_hex_hash() {
+        let (ih, dn, mag) =
+            normalize_torrent_input("  AABBCCDDEEFF00112233445566778899AABBCCDD ").unwrap();
+        assert_eq!(ih, "aabbccddeeff00112233445566778899aabbccdd");
+        assert!(dn.is_none());
+        assert_eq!(
+            mag,
+            "magnet:?xt=urn:btih:aabbccddeeff00112233445566778899aabbccdd"
+        );
+    }
+
+    #[test]
+    fn normalize_base32_and_prefixed() {
+        // base32 of 20 zero bytes = 32 'A's
+        let (ih, _, _) = normalize_torrent_input("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA").unwrap();
+        assert_eq!(ih, "0".repeat(40));
+        let (ih2, _, _) =
+            normalize_torrent_input("btih:aabbccddeeff00112233445566778899aabbccdd").unwrap();
+        assert_eq!(ih2, "aabbccddeeff00112233445566778899aabbccdd");
+        let (ih3, _, _) =
+            normalize_torrent_input("urn:btih:AABBCCDDEEFF00112233445566778899AABBCCDD").unwrap();
+        assert_eq!(ih3, ih2);
+    }
+
+    #[test]
+    fn normalize_rejects_junk() {
+        for bad in [
+            "",
+            "hello world",
+            "aabbccddeeff00112233445566778899aabbccd", // 39 hex
+            "http://example.com/file.torrent",
+            "magnet:?xt=urn:btmh:1220aabb",
+        ] {
+            assert!(
+                normalize_torrent_input(bad).is_err(),
+                "should reject {bad:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn tracker_url_validation() {
+        assert!(valid_tracker_url(
+            "udp://tracker.opentrackr.org:1337/announce"
+        ));
+        assert!(valid_tracker_url("https://t.example/announce"));
+        assert!(!valid_tracker_url("ftp://x/announce"));
+        assert!(!valid_tracker_url("udp://x y/announce"));
+        assert!(!valid_tracker_url(""));
+    }
 }
 
 impl BtEngine for MockEngine {
@@ -626,6 +747,51 @@ impl BtEngine for MockEngine {
             }
         }
         Ok(n)
+    }
+
+    fn add_tracker(&self, infohash: &str, url: &str, tier: i32) -> Result<()> {
+        if !self.mine.lock().unwrap().contains_key(infohash) {
+            return Err(CoreError::NotFound(infohash.into()));
+        }
+        let mut st = self.bus.state.lock().unwrap();
+        let v = st.trackers.entry(infohash.to_string()).or_default();
+        if !v.iter().any(|(u, _)| u == url) {
+            v.push((url.to_string(), tier));
+        }
+        Ok(())
+    }
+
+    fn remove_tracker(&self, infohash: &str, url: &str) -> Result<()> {
+        if !self.mine.lock().unwrap().contains_key(infohash) {
+            return Err(CoreError::NotFound(infohash.into()));
+        }
+        let mut st = self.bus.state.lock().unwrap();
+        if let Some(v) = st.trackers.get_mut(infohash) {
+            v.retain(|(u, _)| u != url);
+        }
+        Ok(())
+    }
+
+    fn trackers(&self, infohash: &str) -> Result<Vec<TrackerInfo>> {
+        if !self.mine.lock().unwrap().contains_key(infohash) {
+            return Err(CoreError::NotFound(infohash.into()));
+        }
+        let st = self.bus.state.lock().unwrap();
+        Ok(st
+            .trackers
+            .get(infohash)
+            .map(|v| {
+                v.iter()
+                    .map(|(u, t)| TrackerInfo {
+                        url: u.clone(),
+                        tier: *t,
+                        verified: false,
+                        fails: 0,
+                        message: String::new(),
+                    })
+                    .collect()
+            })
+            .unwrap_or_default())
     }
 
     fn set_limits(&self, _upload: i64, _download: i64) -> Result<()> {

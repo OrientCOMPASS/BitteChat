@@ -37,6 +37,15 @@ pub struct PeerInfo {
     pub chat_capable: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct TrackerInfo {
+    pub url: String,
+    pub tier: i32,
+    pub verified: bool,
+    pub fails: i32,
+    pub message: String,
+}
+
 #[derive(Debug, Clone)]
 pub struct CreatedTorrent {
     pub infohash: Sha1Hash,
@@ -134,6 +143,11 @@ pub trait BtEngine: Send + Sync {
     fn torrent_peers(&self, infohash: &str) -> Result<Vec<PeerInfo>>;
     fn set_file_priorities(&self, infohash: &str, priorities: Vec<i8>) -> Result<()>;
     fn file_list(&self, infohash: &str) -> Result<Vec<FileEntry>>;
+
+    /// Tracker management. `add_tracker` is idempotent per URL.
+    fn add_tracker(&self, infohash: &str, url: &str, tier: i32) -> Result<()>;
+    fn remove_tracker(&self, infohash: &str, url: &str) -> Result<()>;
+    fn trackers(&self, infohash: &str) -> Result<Vec<TrackerInfo>>;
 
     /// Create a v1-only torrent for `path` (file or directory).
     fn create_torrent(&self, path: &str, comment: &str) -> Result<CreatedTorrent>;

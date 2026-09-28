@@ -134,16 +134,238 @@ impl Api {
     }
 
     pub fn chat_create_group(&self, p: Json) -> Result<Json> {
-        let name = jstr(&p, "name")?.to_string();
-        let avatar = p
-            .get("avatar_b64")
-            .and_then(|v| v.as_str())
-            .and_then(|s| base64::engine::general_purpose::STANDARD.decode(s).ok())
-            .unwrap_or_default();
-        let (identity, profile_name) = self.identity_snapshot();
-        let head = Identity::generate();
-        let manifest = GroupManifest::new(&name, &profile_name, &identity, &head, avatar)?;
-        self.create_channel(manifest)
+        // v0.5: groups are torrents now — "creating a group from nothing" is
+        // gone. Any torrent (magnet / infohash / .torrent file) is a chat
+        // room; see `chat_join_group`. This method is kept only to return a
+        // helpful error to older frontends.
+        let _ = p;
+        Err(CoreError::NotFound(
+            "chat.create_group 已移除：一个种子就是一个群聊，请用 chat.join_group 添加种子并进入其群聊".into(),
+        ))
+    }
+
+    /// Enter the chat room of a torrent (creating the binding if needed).
+    ///
+    /// Accepts a magnet link, a bare 40-hex infohash or a 32-char base32
+    /// infohash. The room id IS the torrent infohash; the torrent stays a
+    /// regular, visible BT task — chat rides on its swarm.
+    pub fn chat_join_group(&self, p: Json) -> Result<Json> {
+        let input = jstr(&p, "magnet")?.trim().to_string();
+        let (ih_hex, dn, magnet) = crate::mock::normalize_torrent_input(&input)?;
+        self.enter_torrent_room(&ih_hex, dn.as_deref(), &magnet)
+    }
+
+    /// Shared room-entry pipeline (chat page add / BT page "enter chat" /
+    /// system magnet intent).
+    pub fn enter_torrent_room(&self, ih_hex: &str, dn: Option<&str>, magnet: &str) -> Result<Json> {
+        let gid = hex20(ih_hex)?;
+        let now = crate::now_ms();
+
+        // already an active group? (torrent rooms key by ih; DM/legacy
+        // manifest channels key by their manifest torrent ih via by_ih)
+        {
+            let st = self.inner.state.lock().unwrap();
+            if let Some(gid_hex) = st.by_ih.get(ih_hex) {
+                if st.groups.contains_key(gid_hex) {
+                    if let Ok(h20) = hex20(gid_hex) {
+                        if let Ok(Some(row)) = st.store.group_get(&h20) {
+                            return Ok(json!({
+                                "group_id": gid_hex,
+                                "already": true,
+                                "dm": row.manifest.is_dm(),
+                                "name": row.name,
+                            }));
+                        }
+                    }
+                }
+            }
+        }
+
+        let in_engine = self
+            .inner
+            .engine
+            .torrent_states()
+            .map(|v| v.iter().any(|s| s.infohash == ih_hex))
+            .unwrap_or(false);
+        let name = self.resolve_room_name(ih_hex, dn);
+        let magnet = self.stored_magnet_with_defaults(magnet);
+
+        let (save_dir, row) = {
+            let st = self.inner.state.lock().unwrap();
+            let save_dir = st
+                .store
+                .torrent_get(ih_hex)
+                .ok()
+                .flatten()
+                .map(|r| r.save_path)
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| self.save_dir_for(ih_hex));
+            // manifest.name tracks the AUTO name (torrent metadata name);
+            // row.name is the display name and survives user renames
+            let manifest = crate::chat::group::GroupManifest::for_torrent(&gid, &name);
+            let prev = st.store.group_get(&gid).ok().flatten();
+            let display = match &prev {
+                Some(old) if old.name != old.manifest.name => old.name.clone(),
+                _ => manifest.name.clone(),
+            };
+            let row = match &prev {
+                Some(old) => GroupRow {
+                    gid,
+                    name: display,
+                    avatar: old.avatar.clone(),
+                    magnet: magnet.clone(),
+                    manifest,
+                    head_seq: old.head_seq,
+                    created: old.created,
+                    joined: now,
+                    last_read_ts: old.last_read_ts,
+                    left: false,
+                },
+                None => GroupRow {
+                    gid,
+                    name: display,
+                    avatar: Vec::new(),
+                    magnet: magnet.clone(),
+                    manifest,
+                    head_seq: 0,
+                    created: now,
+                    joined: now,
+                    last_read_ts: now,
+                    left: false,
+                },
+            };
+            (save_dir, row)
+        };
+        std::fs::create_dir_all(&save_dir)?;
+
+        if !in_engine {
+            self.inner
+                .engine
+                .add_magnet(&magnet, &save_dir, dn.or(Some(row.name.as_str())))?;
+            self.apply_default_trackers(ih_hex);
+        }
+
+        let own_pk = self.own_pk_hex();
+        {
+            let mut st = self.inner.state.lock().unwrap();
+            st.store.group_upsert(&row)?;
+            st.store.group_set_left(&gid, false)?;
+            st.store.torrent_upsert(&TorrentRow {
+                infohash: ih_hex.to_string(),
+                name: row.name.clone(),
+                magnet: magnet.clone(),
+                save_path: save_dir.clone(),
+                kind: 0,
+                group_id: Some(gid),
+                added: now,
+            })?;
+            // upsert only refreshes name on conflict — bind explicitly
+            st.store.torrent_set_group(ih_hex, Some(&gid))?;
+            st.store.torrent_set_magnet(ih_hex, &magnet)?;
+            let dag = crate::chat::sync::rebuild_dag(&st.store, &gid, &own_pk).unwrap_or_default();
+            let own_seq = dag.author_seq(&own_pk);
+            let mut sync = crate::chat::sync::GroupSync::new(
+                gid,
+                row.manifest.clone(),
+                row.head_seq,
+                ih_hex.to_string(),
+            );
+            sync.dag = dag;
+            st.groups.insert(
+                ih_hex.to_string(),
+                GroupRuntime {
+                    sync,
+                    row: row.clone(),
+                    own_seq,
+                    last_publish: 0,
+                },
+            );
+            st.by_ih.insert(ih_hex.to_string(), ih_hex.to_string());
+        }
+
+        // start syncing (head pointer + missing messages) right away
+        self.kick_group_sync(ih_hex);
+        self.emit_event(
+            "chat.group_joined",
+            json!({"group": group_summary_from_row(&row)}),
+        );
+        Ok(json!({
+            "group_id": ih_hex,
+            "name": row.name,
+            "magnet": magnet,
+            "infohash": ih_hex,
+            "dm": false,
+        }))
+    }
+
+    /// Best display name for a room: engine torrent name (real metadata) >
+    /// registry name > magnet `dn` > short-hash placeholder.
+    fn resolve_room_name(&self, ih_hex: &str, dn: Option<&str>) -> String {
+        let looks_like_hash = |n: &str| {
+            n.len() == 40
+                && n.chars().all(|c| c.is_ascii_hexdigit())
+                && n.eq_ignore_ascii_case(ih_hex)
+        };
+        if let Ok(states) = self.inner.engine.torrent_states() {
+            if let Some(s) = states.iter().find(|s| s.infohash == ih_hex) {
+                let n = s.name.trim();
+                if !n.is_empty() && !looks_like_hash(n) {
+                    return crate::chat::group::clamp_name(n);
+                }
+            }
+        }
+        {
+            let st = self.inner.state.lock().unwrap();
+            if let Ok(Some(row)) = st.store.torrent_get(ih_hex) {
+                let n = row.name.trim();
+                if !n.is_empty() && !looks_like_hash(n) {
+                    return crate::chat::group::clamp_name(n);
+                }
+            }
+        }
+        if let Some(dn) = dn.map(str::trim).filter(|d| !d.is_empty()) {
+            return crate::chat::group::clamp_name(dn);
+        }
+        format!("种子 {}", &ih_hex[..8])
+    }
+
+    /// Join an encrypted DM channel from its manifest magnet (used by the
+    /// dm_invite auto-join flow). Regular torrent rooms go through
+    /// [`Api::chat_join_group`] instead.
+    pub fn chat_join_dm(&self, p: Json) -> Result<Json> {
+        let input = jstr(&p, "magnet")?.trim().to_string();
+        let (ih_hex, _dn, magnet) = crate::mock::normalize_torrent_input(&input)?;
+        let now = crate::now_ms();
+        {
+            let st = self.inner.state.lock().unwrap();
+            if let Some(gid) = st.by_ih.get(&ih_hex) {
+                return Ok(json!({"group_id": gid, "already": true}));
+            }
+            if let Ok(Some(row)) = st.store.group_by_magnet_ih(&ih_hex) {
+                return Ok(json!({"group_id": hex::encode(row.gid), "already": true}));
+            }
+        }
+        let save_dir = self.groups_dir().join(&ih_hex);
+        std::fs::create_dir_all(&save_dir)?;
+        {
+            let mut st = self.inner.state.lock().unwrap();
+            st.pending_joins.insert(ih_hex.clone(), save_dir.clone());
+            st.store.torrent_upsert(&TorrentRow {
+                infohash: ih_hex.clone(),
+                name: "私聊频道(加入中)".into(),
+                magnet: magnet.clone(),
+                save_path: save_dir.to_string_lossy().to_string(),
+                kind: 1,
+                group_id: None,
+                added: now,
+            })?;
+        }
+        self.inner
+            .engine
+            .add_magnet(&magnet, &save_dir.to_string_lossy(), Some(MANIFEST_FILE))?;
+        // in case the manifest is already on disk (re-join), try immediately
+        self.try_complete_join(&ih_hex);
+        Ok(json!({"pending": true, "infohash": ih_hex}))
     }
 
     /// Start (or fetch) an encrypted DM channel with the author of any
@@ -252,8 +474,9 @@ impl Api {
         self.inner
             .engine
             .add_torrent_bytes(&created.torrent_bytes, &final_dir.to_string_lossy())?;
+        self.apply_default_trackers(&ih_hex);
 
-        let magnet = created.magnet.clone();
+        let magnet = self.stored_magnet_with_defaults(&created.magnet);
         let row = GroupRow {
             gid: manifest.gid,
             name: manifest.name.clone(),
@@ -348,54 +571,46 @@ impl Api {
         }))
     }
 
-    pub fn chat_join_group(&self, p: Json) -> Result<Json> {
-        let magnet = jstr(&p, "magnet")?.trim().to_string();
-        let (ih_hex, _dn) = crate::mock::parse_magnet(&magnet)?;
-        let now = crate::now_ms();
-        {
-            let st = self.inner.state.lock().unwrap();
-            if let Some(gid) = st.by_ih.get(&ih_hex) {
-                return Ok(json!({"group_id": gid, "already": true}));
-            }
-            if let Ok(Some(row)) = st.store.group_by_magnet_ih(&ih_hex) {
-                return Ok(json!({"group_id": hex::encode(row.gid), "already": true}));
-            }
-        }
-        let save_dir = self.groups_dir().join(&ih_hex);
-        std::fs::create_dir_all(&save_dir)?;
-        {
-            let mut st = self.inner.state.lock().unwrap();
-            st.pending_joins.insert(ih_hex.clone(), save_dir.clone());
-            st.store.torrent_upsert(&TorrentRow {
-                infohash: ih_hex.clone(),
-                name: "群聊清单(加入中)".into(),
-                magnet: magnet.clone(),
-                save_path: save_dir.to_string_lossy().to_string(),
-                kind: 1,
-                group_id: None,
-                added: now,
-            })?;
-        }
-        self.inner
-            .engine
-            .add_magnet(&magnet, &save_dir.to_string_lossy(), Some(MANIFEST_FILE))?;
-        // in case the manifest is already on disk (re-join), try immediately
-        self.try_complete_join(&ih_hex);
-        Ok(json!({"pending": true, "infohash": ih_hex}))
-    }
-
     pub fn chat_leave_group(&self, p: Json) -> Result<Json> {
         let gid_hex = jstr(&p, "group_id")?.to_string();
         let delete_history = jbool(&p, "delete_history", false);
         let gid = hex20(&gid_hex)?;
-        // best-effort farewell message while we are still a member
+        let (is_torrent_room, ih) = {
+            let st = self.inner.state.lock().unwrap();
+            match st.groups.get(&gid_hex) {
+                Some(rt) => (rt.sync.manifest.is_torrent_room(), rt.sync.swarm_ih.clone()),
+                None => {
+                    // runtime gone (restart with left flag?) — fall back to the row
+                    let room = st
+                        .store
+                        .group_get(&gid)
+                        .ok()
+                        .flatten()
+                        .map(|r| r.manifest.is_torrent_room())
+                        .unwrap_or(false);
+                    (room, gid_hex.clone())
+                }
+            }
+        };
+        if is_torrent_room {
+            // torrent rooms: no farewell spam — every downloader of a public
+            // torrent would see join/leave noise. The torrent itself is the
+            // user's BT task and stays in the session; we only unbind the
+            // chat room.
+            let mut st = self.inner.state.lock().unwrap();
+            if delete_history {
+                st.store.group_purge(&gid)?;
+            }
+            st.store.group_set_left(&gid, true)?;
+            st.store.torrent_set_group(&ih, None)?;
+            st.groups.remove(&gid_hex);
+            st.by_ih.remove(&ih);
+            return Ok(json!({"ok": true, "torrent_kept": true}));
+        }
+        // DM / legacy manifest channels: best-effort farewell message while
+        // we are still a member, then remove the (internal) manifest torrent
         self.send_system_message(&gid_hex, "leave", "");
         let mut st = self.inner.state.lock().unwrap();
-        let ih = st
-            .groups
-            .get(&gid_hex)
-            .map(|rt| rt.sync.swarm_ih.clone())
-            .unwrap_or_default();
         if !ih.is_empty() {
             let _ = st.store.torrent_remove(&ih);
             let _ = self.inner.engine.remove_torrent(&ih, true);
@@ -622,6 +837,8 @@ impl Api {
         self.inner
             .engine
             .add_torrent_bytes(&created.torrent_bytes, &dest_dir.to_string_lossy())?;
+        self.apply_default_trackers(&ih_hex);
+        let att_magnet = self.stored_magnet_with_defaults(&created.magnet);
 
         let att = Payload::Attachment(AttachmentInfo {
             infohash: ih_hex.clone(),
@@ -635,12 +852,13 @@ impl Api {
             st.store.torrent_upsert(&TorrentRow {
                 infohash: ih_hex.clone(),
                 name: display_name.clone(),
-                magnet: created.magnet.clone(),
+                magnet: att_magnet.clone(),
                 save_path: dest_dir.to_string_lossy().to_string(),
                 kind: 2,
                 group_id: Some(gid),
                 added: now,
             })?;
+            st.store.torrent_set_magnet(&ih_hex, &att_magnet)?;
             let rt = st
                 .groups
                 .get_mut(&gid_hex)
@@ -686,7 +904,7 @@ impl Api {
         Ok(json!({
             "id": sm.msg.id,
             "infohash": ih_hex,
-            "magnet": created.magnet,
+            "magnet": att_magnet,
         }))
     }
 
@@ -737,20 +955,24 @@ impl Api {
             .torrent_states()?
             .into_iter()
             .any(|s| s.infohash == ih_hex);
+        let magnet = self.stored_magnet_with_defaults(&format!(
+            "magnet:?xt=urn:btih:{ih_hex}&dn={}",
+            urlquery(&name)
+        ));
         if !existing {
             let save_dir = self.downloads_dir().join(&ih_hex);
             std::fs::create_dir_all(&save_dir)?;
-            let magnet = format!("magnet:?xt=urn:btih:{ih_hex}&dn={}", urlquery(&name));
             self.inner
                 .engine
                 .add_magnet(&magnet, &save_dir.to_string_lossy(), Some(&name))?;
+            self.apply_default_trackers(&ih_hex);
         }
         {
             let st = self.inner.state.lock().unwrap();
             st.store.torrent_upsert(&crate::store::TorrentRow {
                 infohash: ih_hex.clone(),
                 name: name.clone(),
-                magnet: format!("magnet:?xt=urn:btih:{ih_hex}"),
+                magnet: magnet.clone(),
                 save_path: self
                     .downloads_dir()
                     .join(&ih_hex)
@@ -760,6 +982,7 @@ impl Api {
                 group_id: Some(gid),
                 added: crate::now_ms(),
             })?;
+            st.store.torrent_set_magnet(&ih_hex, &magnet)?;
         }
         self.emit_event("chat.group_updated", json!({"group": gid_hex}));
         Ok(json!({"infohash": ih_hex, "name": name}))
@@ -803,11 +1026,13 @@ impl Api {
         let m = &rt.sync.manifest;
         Ok(json!({
             "group": group_summary_from_row(&rt.row),
+            "kind": if m.is_dm() { "dm" } else if m.is_torrent_room() { "torrent" } else { "manifest" },
             "creator": {
                 "pk": hex::encode(m.creator_pk),
                 "name": m.creator_name,
             },
             "created": m.created,
+            "infohash": rt.sync.swarm_ih,
             "manifest_infohash": rt.sync.swarm_ih,
             "head_seq": rt.sync.head_seq,
             "heads": rt.sync.dag.heads().iter().map(hex::encode).collect::<Vec<_>>(),

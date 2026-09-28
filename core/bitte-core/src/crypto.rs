@@ -140,6 +140,23 @@ pub fn x_public(xs: &XSecret) -> XPub {
     PublicKey::from(&secret).to_bytes()
 }
 
+/// Deterministic head-pointer signing seed for a torrent chat room.
+///
+/// Every client that knows the torrent infohash derives the SAME ed25519
+/// keypair, so any swarm member can publish/verify the group's BEP44 head
+/// item — the same "shared write capability" model the DM/group manifest
+/// `head.s` field had, but derived from public data instead of distributed.
+/// Security rests on per-message signatures + DAG merging, not on this key.
+pub fn torrent_head_seed(ih: &Sha1Hash) -> Seed {
+    let mut h = Sha256::new();
+    h.update(b"bitte-chat-torrent-head-v1");
+    h.update(ih);
+    let out = h.finalize();
+    let mut s = [0u8; 32];
+    s.copy_from_slice(&out);
+    s
+}
+
 /// ECDH shared secret -> per-channel symmetric key bound to the channel id.
 pub fn channel_key(my_xs: &XSecret, their_xp: &XPub, gid: &Sha1Hash) -> [u8; 32] {
     use x25519_dalek::{PublicKey, StaticSecret};
