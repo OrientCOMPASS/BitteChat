@@ -4,8 +4,10 @@ use base64::Engine as _;
 use serde_json::{json, Value as Json};
 
 use crate::api::{hex20, jbool, ji64, jstr, Api, GroupRuntime};
-use crate::chat::group::GroupManifest;
-use crate::chat::message::{create_message, plan_text, AttachmentInfo, MsgKind, Payload};
+use crate::chat::group::{DmParty, GroupManifest};
+use crate::chat::message::{
+    create_message, create_message_opts, plan_text, AttachmentInfo, MsgKind, MsgOpts, Payload,
+};
 use crate::chat::sync::ExtPayload;
 use crate::crypto::Identity;
 use crate::store::{GroupRow, TorrentRow};
@@ -33,10 +35,33 @@ pub fn group_summary_from_row(row: &GroupRow) -> Json {
         "created": row.created,
         "joined": row.joined,
         "left": row.left,
+        "dm": row.manifest.is_dm(),
     })
 }
 
 impl Api {
+    fn identity_snapshot(&self) -> (Identity, String) {
+        let id = self.inner.identity.read().unwrap().clone();
+        let pn = self.inner.profile.read().unwrap().name.clone();
+        (id, pn)
+    }
+
+    /// Symmetric channel key for a DM manifest (None for plain groups).
+    pub fn dm_channel_key(&self, manifest: &GroupManifest) -> Option<[u8; 32]> {
+        let (a, b) = manifest.dm.as_ref()?;
+        let identity = self.inner.identity.read().unwrap().clone();
+        let own_pk = identity.public_key();
+        let peer = if a.k == own_pk {
+            b
+        } else if b.k == own_pk {
+            a
+        } else {
+            return None;
+        };
+        let xs = crate::crypto::x_secret_from_seed(&identity.seed);
+        Some(crate::crypto::channel_key(&xs, &peer.x, &manifest.gid))
+    }
+
     pub fn chat_groups(&self) -> Result<Json> {
         let own_pk = self.own_pk_hex();
         let st = self.inner.state.lock().unwrap();
@@ -116,21 +141,103 @@ impl Api {
             .and_then(|v| v.as_str())
             .and_then(|s| base64::engine::general_purpose::STANDARD.decode(s).ok())
             .unwrap_or_default();
-        let (identity, profile_name) = {
-            let id = self.inner.identity.read().unwrap().clone();
-            let pn = self.inner.profile.read().unwrap().name.clone();
-            (id, pn)
-        };
+        let (identity, profile_name) = self.identity_snapshot();
         let head = Identity::generate();
         let manifest = GroupManifest::new(&name, &profile_name, &identity, &head, avatar)?;
+        self.create_channel(manifest)
+    }
+
+    /// Start (or fetch) an encrypted DM channel with the author of any
+    /// message we have seen (their X25519 key travels in the `x` field).
+    pub fn chat_start_dm(&self, p: Json) -> Result<Json> {
+        let their_pk_hex = jstr(&p, "author_pk")?.to_string();
+        let their_pk = crate::api::hex32(&their_pk_hex)?;
+        let identity = self.inner.identity.read().unwrap().clone();
+        let own_pk = identity.public_key();
+        if their_pk == own_pk {
+            return Err(CoreError::Invalid("不能和自己私聊".into()));
+        }
+        let gid = GroupManifest::dm_gid(&own_pk, &their_pk);
+        {
+            let st = self.inner.state.lock().unwrap();
+            if let Ok(Some(row)) = st.store.group_get(&gid) {
+                return Ok(
+                    json!({"group_id": hex::encode(gid), "existing": true, "name": row.name}),
+                );
+            }
+        }
+        let (their_x_hex, their_name) = {
+            let st = self.inner.state.lock().unwrap();
+            st.store.message_author_x(&their_pk_hex)?.ok_or_else(|| {
+                CoreError::NotFound("还没有对方的密钥信息：先在同群聊里收到 TA 至少一条消息".into())
+            })?
+        };
+        let mut their_x = [0u8; 32];
+        their_x.copy_from_slice(&crate::api::hex32(&their_x_hex)?);
+        let own_xs = crate::crypto::x_secret_from_seed(&identity.seed);
+        let own_x = crate::crypto::x_public(&own_xs);
+        let head = Identity::generate();
+        let mut manifest =
+            GroupManifest::new(&their_name, &self.profile().name, &identity, &head, vec![])?;
+        manifest.gid = gid;
+        let (a, b) = if own_pk <= their_pk {
+            (
+                DmParty {
+                    k: own_pk,
+                    x: own_x,
+                },
+                DmParty {
+                    k: their_pk,
+                    x: their_x,
+                },
+            )
+        } else {
+            (
+                DmParty {
+                    k: their_pk,
+                    x: their_x,
+                },
+                DmParty {
+                    k: own_pk,
+                    x: own_x,
+                },
+            )
+        };
+        manifest.dm = Some((a, b));
+        let mut r = self.create_channel(manifest.clone())?;
+        if let Some(o) = r.as_object_mut() {
+            o.insert("dm".to_string(), json!(true));
+        }
+        // invite the peer through any group we share: the magnet is a
+        // capability, message bodies stay E2E encrypted
+        let magnet = r
+            .get("invite_magnet")
+            .and_then(|m| m.as_str())
+            .unwrap_or_default()
+            .to_string();
+        let shared = {
+            let st = self.inner.state.lock().unwrap();
+            st.store.message_group_of_author(&their_pk_hex)?
+        };
+        if let Some(gid) = shared {
+            self.send_system_message(
+                &hex::encode(gid),
+                "dm_invite",
+                &format!("{their_pk_hex} {magnet}"),
+            );
+        }
+        Ok(r)
+    }
+
+    /// Shared pipeline: persist manifest torrent, register runtime, genesis.
+    fn create_channel(&self, manifest: GroupManifest) -> Result<Json> {
+        let (identity, profile_name) = self.identity_snapshot();
         let gid_hex = hex::encode(manifest.gid);
         let now = crate::now_ms();
 
-        // write the manifest file into a staging dir, create the torrent,
-        // then move the dir to groups/<infohash>
         let staging = self.groups_dir().join(format!("_new_{}", &gid_hex[..8]));
         std::fs::create_dir_all(&staging)?;
-        let mf = staging.join(MANIFEST_FILE);
+        let mf = staging.join(crate::MANIFEST_FILE);
         std::fs::write(&mf, manifest.encode())?;
         let created = self
             .inner
@@ -161,8 +268,8 @@ impl Api {
             left: false,
         };
 
-        // genesis system message: the root of the group's DAG
-        let genesis = create_message(
+        let channel_key = self.dm_channel_key(&manifest);
+        let genesis = crate::chat::message::create_message_opts(
             &manifest.gid,
             &[],
             1,
@@ -174,15 +281,16 @@ impl Api {
                 code: "create".into(),
                 detail: manifest.name.clone(),
             },
+            &crate::chat::message::MsgOpts { channel_key },
         )?;
         let genesis_id = genesis.id;
 
         {
             let mut st = self.inner.state.lock().unwrap();
             st.store.group_upsert(&row)?;
-            st.store.torrent_upsert(&TorrentRow {
+            st.store.torrent_upsert(&crate::store::TorrentRow {
                 infohash: ih_hex.clone(),
-                name: format!("群聊清单·{}", manifest.name),
+                name: format!("清单·{}", manifest.name),
                 magnet: magnet.clone(),
                 save_path: final_dir.to_string_lossy().to_string(),
                 kind: 1,
@@ -210,7 +318,6 @@ impl Api {
             );
         }
 
-        // publish genesis to DHT + heads (outside the lock)
         let _ = self
             .inner
             .engine
@@ -234,7 +341,6 @@ impl Api {
             json!({"group": group_summary_from_row(&row)}),
         );
 
-        // fix: `created` was moved into row.created; recompute json
         Ok(json!({
             "group_id": gid_hex,
             "invite_magnet": magnet,
@@ -316,6 +422,29 @@ impl Api {
             let _ = dag.insert(sm.id, sm.msg, sm.bytes);
         }
         let mut display = crate::store::Store::display_messages(dag.ordered());
+        // decrypt DM payloads
+        if let Some(rt) = st.groups.get(&gid_hex) {
+            if let Some(key) = self.dm_channel_key(&rt.sync.manifest) {
+                for m in display.iter_mut() {
+                    if let Payload::Sealed { sealed_b64 } = &m.payload {
+                        let opened =
+                            crate::chat::message::open_dm_payload(&key, m.author_seq, sealed_b64);
+                        match opened {
+                            Some((kind_i, payload)) => {
+                                m.kind = kind_i;
+                                m.payload = payload;
+                            }
+                            None => {
+                                m.payload = Payload::System {
+                                    code: "sealed".into(),
+                                    detail: "解密失败（密钥不匹配？）".into(),
+                                };
+                            }
+                        }
+                    }
+                }
+            }
+        }
         let total = display.len();
         let from = (total as i64 - limit).max(0) as usize;
         display.drain(0..from);
@@ -359,11 +488,7 @@ impl Api {
         if text.trim().is_empty() || text.len() > 32 * 1024 {
             return Err(CoreError::Invalid("empty or too long text".into()));
         }
-        let (identity, profile_name) = {
-            let id = self.inner.identity.read().unwrap().clone();
-            let pn = self.inner.profile.read().unwrap().name.clone();
-            (id, pn)
-        };
+        let (identity, profile_name) = self.identity_snapshot();
         let gid = hex20(&gid_hex)?;
         let now = crate::now_ms();
         let parts = plan_text(&text);
@@ -378,10 +503,11 @@ impl Api {
                 .get_mut(&gid_hex)
                 .ok_or_else(|| CoreError::NotFound("group".into()))?;
             swarm_ih = rt.sync.swarm_ih.clone();
+            let channel_key = self.dm_channel_key(&rt.sync.manifest);
             let mut parents = rt.sync.dag.heads();
             for (i, (kind, payload)) in parts.into_iter().enumerate() {
                 rt.own_seq += 1;
-                let sm = create_message(
+                let sm = create_message_opts(
                     &gid,
                     &parents,
                     rt.own_seq,
@@ -390,6 +516,7 @@ impl Api {
                     &profile_name,
                     kind,
                     &payload,
+                    &crate::chat::message::MsgOpts { channel_key },
                 )?;
                 rt.sync.pending_puts.insert(sm.id);
                 rt.sync.ingest(&st.store, sm.clone(), 0)?;
@@ -515,8 +642,9 @@ impl Api {
                 .get_mut(&gid_hex)
                 .ok_or_else(|| CoreError::NotFound("group".into()))?;
             let parents = rt.sync.dag.heads();
+            let channel_key = self.dm_channel_key(&rt.sync.manifest);
             rt.own_seq += 1;
-            let sm = create_message(
+            let sm = create_message_opts(
                 &gid,
                 &parents,
                 rt.own_seq,
@@ -525,6 +653,7 @@ impl Api {
                 &profile_name,
                 MsgKind::Attachment,
                 &att,
+                &MsgOpts { channel_key },
             )?;
             rt.sync.pending_puts.insert(sm.id);
             rt.sync.ingest(&st.store, sm.clone(), 0)?;
@@ -691,11 +820,13 @@ fn message_preview(m: &crate::chat::ChatMessage) -> String {
         Payload::Attachment(a) => format!("[文件] {}", a.name),
         Payload::System { code, detail } => match code.as_str() {
             "create" => format!("创建了群聊「{detail}」"),
+            "dm_invite" => "发来了私聊邀请（自动加入）".into(),
             "join" => "加入了群聊".into(),
             "leave" => "退出了群聊".into(),
             _ => format!("[系统] {code}"),
         },
         Payload::Chunk { .. } => "[消息片段]".into(),
+        Payload::Sealed { .. } => "[端到端加密消息]".into(),
     }
 }
 

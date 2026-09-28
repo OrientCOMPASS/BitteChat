@@ -31,7 +31,7 @@ pub const MAX_ENCODED_SIZE: usize = 950; // keep under the 1000B BEP44 limit
 pub const MAX_PARENTS: usize = 8;
 pub const MAX_NAME_LEN: usize = 64;
 /// max bytes of user text per (chunk) message payload
-pub const MAX_TEXT_BYTES: usize = 600;
+pub const MAX_TEXT_BYTES: usize = 560;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[repr(i64)]
@@ -72,10 +72,22 @@ pub struct ChunkInfo {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Payload {
-    Text { text: String },
+    Text {
+        text: String,
+    },
     Attachment(AttachmentInfo),
-    System { code: String, detail: String },
-    Chunk { chunk: ChunkInfo, data: Vec<u8> },
+    System {
+        code: String,
+        detail: String,
+    },
+    Chunk {
+        chunk: ChunkInfo,
+        data: Vec<u8>,
+    },
+    /// end-to-end encrypted payload (DM channels); UI decrypts via channel key
+    Sealed {
+        sealed_b64: String,
+    },
 }
 
 /// A parsed and verified chat message.
@@ -90,6 +102,9 @@ pub struct ChatMessage {
     pub author_name: String,
     pub kind: i64,
     pub payload: Payload,
+    /// sender's X25519 public key (hex), present since v0.4.2
+    #[serde(default)]
+    pub sender_x: Option<String>,
     /// whether *we* authored this message
     #[serde(default)]
     pub own: bool,
@@ -202,9 +217,14 @@ fn unsigned_dict(
     name: &str,
     kind: MsgKind,
     payload_bytes: &[u8],
+    sender_x: &[u8; 32],
+    encrypted: bool,
 ) -> Value {
     let mut d = Value::dict();
     d.insert("v", Value::Int(PROTOCOL_VERSION));
+    if encrypted {
+        d.insert("e", Value::Int(1));
+    }
     d.insert("g", Value::Str(group.to_vec()));
     d.insert(
         "p",
@@ -213,10 +233,18 @@ fn unsigned_dict(
     d.insert("s", Value::Int(author_seq));
     d.insert("t", Value::Int(ts));
     d.insert("k", Value::Str(author.public_key().to_vec()));
+    d.insert("x", Value::Str(sender_x.to_vec()));
     d.insert("n", Value::Str(name.as_bytes().to_vec()));
     d.insert("y", Value::Int(kind as i64));
     d.insert("b", Value::Str(payload_bytes.to_vec()));
     d
+}
+
+/// Options for message creation (DM encryption).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct MsgOpts {
+    /// when set, the payload is sealed with this channel key (ChaCha20-Poly1305)
+    pub channel_key: Option<[u8; 32]>,
 }
 
 /// Create and sign one message. Returns canonical bytes and parsed view.
@@ -231,14 +259,54 @@ pub fn create_message(
     kind: MsgKind,
     payload: &Payload,
 ) -> Result<SignedMessage> {
+    create_message_opts(
+        group,
+        parents,
+        author_seq,
+        ts,
+        author,
+        name,
+        kind,
+        payload,
+        &MsgOpts::default(),
+    )
+}
+
+/// Like [`create_message`] with DM encryption options.
+#[allow(clippy::too_many_arguments)]
+pub fn create_message_opts(
+    group: &Sha1Hash,
+    parents: &[Sha1Hash],
+    author_seq: i64,
+    ts: i64,
+    author: &Identity,
+    name: &str,
+    kind: MsgKind,
+    payload: &Payload,
+    opts: &MsgOpts,
+) -> Result<SignedMessage> {
     if parents.len() > MAX_PARENTS {
         return Err(CoreError::Invalid("too many parents".into()));
     }
     if name.len() > MAX_NAME_LEN {
         return Err(CoreError::Invalid("author name too long".into()));
     }
-    let pb = payload_to_bytes(kind, payload)?;
-    let unsigned = unsigned_dict(group, parents, author_seq, ts, author, name, kind, &pb);
+    let xs = crypto::x_secret_from_seed(&author.seed);
+    let xpub = crypto::x_public(&xs);
+    let (outer_kind, pb, encrypted) = match opts.channel_key {
+        Some(key) => {
+            let mut inner = Value::dict();
+            inner.insert("y", Value::Int(kind as i64));
+            inner.insert("b", Value::Str(payload_to_bytes(kind, payload)?));
+            let plain = bencode::encode(&inner);
+            let sealed = crypto::seal(&key, author_seq, &plain);
+            (MsgKind::Text, sealed, true)
+        }
+        None => (kind, payload_to_bytes(kind, payload)?, false),
+    };
+    let unsigned = unsigned_dict(
+        group, parents, author_seq, ts, author, name, outer_kind, &pb, &xpub, encrypted,
+    );
     let unsigned_bytes = bencode::encode(&unsigned);
     let sig = author.sign(&unsigned_bytes);
 
@@ -261,8 +329,15 @@ pub fn create_message(
         ts,
         author_pk: hex::encode(author.public_key()),
         author_name: name.to_string(),
-        kind: kind as i64,
-        payload: payload.clone(),
+        kind: outer_kind as i64,
+        payload: if encrypted {
+            Payload::Sealed {
+                sealed_b64: base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &pb),
+            }
+        } else {
+            payload.clone()
+        },
+        sender_x: Some(hex::encode(xpub)),
         own: true,
         state: 0,
     };
@@ -273,12 +348,15 @@ pub fn create_message(
 /// On success returns the parsed message with `own=false` (caller may adjust)
 /// and the canonical bytes (which are guaranteed equal to the input when the
 /// input was canonical; non-canonical inputs are rejected).
+fn b64_encode(b: &[u8]) -> String {
+    base64::Engine::encode(&base64::engine::general_purpose::STANDARD, b)
+}
+
 pub fn verify_message(raw: &[u8], now_ms: i64) -> Result<SignedMessage> {
     if raw.len() > crate::crypto::BEP44_VALUE_LIMIT {
         return Err(CoreError::Invalid("message exceeds DHT item limit".into()));
     }
     let v = bencode::decode(raw)?; // strict decoder: rejects non-canonical input
-                                   // re-encoding a strictly decoded value is canonical and must be identical
     if bencode::encode(&v) != raw {
         return Err(CoreError::Invalid("message not canonically encoded".into()));
     }
@@ -329,7 +407,6 @@ pub fn verify_message(raw: &[u8], now_ms: i64) -> Result<SignedMessage> {
     let mut sig: Sig64 = [0u8; 64];
     sig.copy_from_slice(sig_b);
 
-    // rebuild the unsigned dict (everything except "sig") and verify
     let unsigned = match v.clone() {
         Value::Dict(mut d) => {
             d.remove(&b"sig"[..]);
@@ -343,7 +420,6 @@ pub fn verify_message(raw: &[u8], now_ms: i64) -> Result<SignedMessage> {
     }
 
     let ts = v.get_int("t").unwrap_or(0);
-    // clock sanity: allow generous skew, reject far-future timestamps
     if ts <= 0 || ts > now_ms + 24 * 3600 * 1000 {
         return Err(CoreError::Invalid("timestamp out of range".into()));
     }
@@ -351,13 +427,25 @@ pub fn verify_message(raw: &[u8], now_ms: i64) -> Result<SignedMessage> {
     if name.len() > MAX_NAME_LEN {
         return Err(CoreError::Invalid("author name too long".into()));
     }
+    let sender_x = match v.get_bytes("x") {
+        Some(xb) if xb.len() == 32 => Some(hex::encode(xb)),
+        Some(_) => return Err(CoreError::Invalid("bad x length".into())),
+        None => None,
+    };
+    let encrypted = v.get_int("e").unwrap_or(0) == 1;
     let kind_i = v.get_int("y").unwrap_or(0);
     let kind =
         MsgKind::from_i64(kind_i).ok_or_else(|| CoreError::Invalid("unknown kind".into()))?;
     let b = v
         .get_bytes("b")
         .ok_or_else(|| CoreError::Invalid("missing b".into()))?;
-    let payload = payload_from_bytes(kind, b)?;
+    let payload = if encrypted {
+        Payload::Sealed {
+            sealed_b64: b64_encode(b),
+        }
+    } else {
+        payload_from_bytes(kind, b)?
+    };
     let seq = v.get_int("s").unwrap_or(0);
     if seq < 0 {
         return Err(CoreError::Invalid("negative seq".into()));
@@ -377,10 +465,29 @@ pub fn verify_message(raw: &[u8], now_ms: i64) -> Result<SignedMessage> {
             author_name: name,
             kind: kind_i,
             payload,
+            sender_x,
             own: false,
             state: 1,
         },
     })
+}
+
+/// Decrypt a sealed DM payload into its real (kind, payload).
+pub fn open_dm_payload(
+    key: &[u8; 32],
+    author_seq: i64,
+    sealed_b64: &str,
+) -> Option<(i64, Payload)> {
+    use base64::Engine as _;
+    let sealed = base64::engine::general_purpose::STANDARD
+        .decode(sealed_b64.as_bytes())
+        .ok()?;
+    let plain = crypto::open_sealed(key, author_seq, &sealed)?;
+    let v = bencode::decode(&plain).ok()?;
+    let kind_i = v.get_int("y")?;
+    let kind = MsgKind::from_i64(kind_i)?;
+    let b = v.get_bytes("b")?;
+    Some((kind_i, payload_from_bytes(kind, b).ok()?))
 }
 
 /// Parse a raw message WITHOUT signature verification. Only for reading back
@@ -407,12 +514,20 @@ pub fn parse_message_unverified(raw: &[u8], own_pk_hex: &str) -> Result<SignedMe
     let pk_b = v
         .get_bytes("k")
         .ok_or_else(|| CoreError::Invalid("missing k".into()))?;
+    let sender_x = v.get_bytes("x").filter(|x| x.len() == 32).map(hex::encode);
+    let encrypted = v.get_int("e").unwrap_or(0) == 1;
     let kind_i = v.get_int("y").unwrap_or(0);
     let kind = MsgKind::from_i64(kind_i).ok_or_else(|| CoreError::Invalid("kind".into()))?;
     let b = v
         .get_bytes("b")
         .ok_or_else(|| CoreError::Invalid("missing b".into()))?;
-    let payload = payload_from_bytes(kind, b)?;
+    let payload = if encrypted {
+        Payload::Sealed {
+            sealed_b64: b64_encode(b),
+        }
+    } else {
+        payload_from_bytes(kind, b)?
+    };
     let author_pk = hex::encode(pk_b);
     let id = crypto::sha1(raw);
     Ok(SignedMessage {
@@ -428,15 +543,13 @@ pub fn parse_message_unverified(raw: &[u8], own_pk_hex: &str) -> Result<SignedMe
             author_pk: author_pk.clone(),
             kind: kind_i,
             payload,
+            sender_x,
             own: author_pk == own_pk_hex,
             state: 1,
         },
     })
 }
 
-/// Split user text into a list of (kind, payload) message specs. Short texts
-/// become a single `Text` message; long texts become a chain of `Chunk` parts
-/// sharing a random chunk id.
 pub fn plan_text(text: &str) -> Vec<(MsgKind, Payload)> {
     let bytes = text.as_bytes();
     if bytes.len() <= MAX_TEXT_BYTES {

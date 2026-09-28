@@ -63,6 +63,7 @@ CREATE TABLE IF NOT EXISTS messages (
   body BLOB NOT NULL,
   parents TEXT NOT NULL DEFAULT '',
   state INTEGER NOT NULL DEFAULT 1,
+  x BLOB,
   chunk_cid BLOB,
   chunk_idx INTEGER,
   chunk_total INTEGER
@@ -139,12 +140,30 @@ impl Store {
         conn.pragma_update(None, "synchronous", "NORMAL")?;
         conn.pragma_update(None, "foreign_keys", "ON")?;
         conn.execute_batch(SCHEMA)?;
+        // migration: older databases lack the x column
+        let cols: Vec<String> = conn
+            .prepare("PRAGMA table_info(messages)")?
+            .query_map([], |r| r.get::<_, String>(1))?
+            .collect::<std::result::Result<Vec<_>, rusqlite::Error>>()?;
+        let has_x = cols.iter().any(|n| n == "x");
+        if !has_x {
+            conn.execute("ALTER TABLE messages ADD COLUMN x BLOB", [])?;
+        }
         Ok(Store { conn })
     }
 
     pub fn open_in_memory() -> Result<Store> {
         let conn = Connection::open_in_memory()?;
         conn.execute_batch(SCHEMA)?;
+        // migration: older databases lack the x column
+        let cols: Vec<String> = conn
+            .prepare("PRAGMA table_info(messages)")?
+            .query_map([], |r| r.get::<_, String>(1))?
+            .collect::<std::result::Result<Vec<_>, rusqlite::Error>>()?;
+        let has_x = cols.iter().any(|n| n == "x");
+        if !has_x {
+            conn.execute("ALTER TABLE messages ADD COLUMN x BLOB", [])?;
+        }
         Ok(Store { conn })
     }
 
@@ -305,9 +324,14 @@ impl Store {
             _ => (None, None, None),
         };
         let pk = hex::decode(&m.author_pk).unwrap_or_default();
+        let x = m
+            .sender_x
+            .as_ref()
+            .and_then(|h| hex::decode(h).ok())
+            .filter(|b| b.len() == 32);
         let n = self.conn.execute(
-            "INSERT OR IGNORE INTO messages(id,group_id,author_pk,author_name,ts,seq,kind,body,parents,state,chunk_cid,chunk_idx,chunk_total)
-             VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13)",
+            "INSERT OR IGNORE INTO messages(id,group_id,author_pk,author_name,ts,seq,kind,body,parents,state,chunk_cid,chunk_idx,chunk_total,x)
+             VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14)",
             params![
                 sm.id.to_vec(),
                 gid.to_vec(),
@@ -321,7 +345,8 @@ impl Store {
                 state,
                 chunk_cid,
                 chunk_idx,
-                chunk_total
+                chunk_total,
+                x,
             ],
         )?;
         Ok(n > 0)
@@ -444,6 +469,35 @@ impl Store {
         }
         out.sort_by_key(|m| (m.ts, m.author_seq, m.id.clone()));
         out
+    }
+
+    /// First group containing a message by this author (for DM invites).
+    pub fn message_group_of_author(&self, author_pk_hex: &str) -> Result<Option<Sha1Hash>> {
+        let pk = hex::decode(author_pk_hex).unwrap_or_default();
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT group_id FROM messages WHERE author_pk=?1 ORDER BY ts ASC LIMIT 1",
+                params![pk],
+                |r| r.get::<_, Vec<u8>>(0),
+            )
+            .optional()?
+            .and_then(|b| hash_from_blob(&b).ok()))
+    }
+
+    /// Latest known X25519 key + display name of an author (for DM setup).
+    pub fn message_author_x(&self, author_pk_hex: &str) -> Result<Option<(String, String)>> {
+        let pk = hex::decode(author_pk_hex).unwrap_or_default();
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT x, author_name FROM messages WHERE author_pk=?1 AND x IS NOT NULL
+                 ORDER BY ts DESC LIMIT 1",
+                params![pk],
+                |r| Ok((r.get::<_, Vec<u8>>(0)?, r.get::<_, String>(1)?)),
+            )
+            .optional()?
+            .map(|(x, name)| (hex::encode(x), name)))
     }
 
     pub fn unread_count(&self, gid: &Sha1Hash, last_read_ts: i64, own_pk_hex: &str) -> Result<i64> {

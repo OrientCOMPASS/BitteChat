@@ -195,6 +195,7 @@ impl Api {
             "chat.mark_read" => self.chat_mark_read(p),
             "chat.rename_group" => self.chat_rename_group(p),
             "chat.sync" => self.chat_sync(p),
+            "chat.start_dm" => self.chat_start_dm(p),
             "chat.group_detail" => self.chat_group_detail(p),
 
             "rss.feeds" => self.rss_feeds(),
@@ -222,10 +223,13 @@ impl Api {
 
     fn identity_get(&self) -> Result<Json> {
         let p = self.profile();
+        let id = self.inner.identity.read().unwrap().clone();
+        let xs = crate::crypto::x_secret_from_seed(&id.seed);
         Ok(json!({
             "name": p.name,
             "avatar_b64": p.avatar_b64,
             "pk": self.own_pk_hex(),
+            "x": hex::encode(crate::crypto::x_public(&xs)),
         }))
     }
 
@@ -485,8 +489,9 @@ impl Api {
                 return;
             };
             let parents = rt.sync.dag.heads();
+            let channel_key = self.dm_channel_key(&rt.sync.manifest);
             rt.own_seq += 1;
-            let sm = match crate::chat::message::create_message(
+            let sm = match crate::chat::message::create_message_opts(
                 &gid,
                 &parents,
                 rt.own_seq,
@@ -498,6 +503,7 @@ impl Api {
                     code: code.to_string(),
                     detail: detail.to_string(),
                 },
+                &crate::chat::message::MsgOpts { channel_key },
             ) {
                 Ok(sm) => sm,
                 Err(e) => {

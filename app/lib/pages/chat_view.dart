@@ -39,6 +39,7 @@ class _ChatViewPageState extends State<ChatViewPage> {
   bool _showJump = false;
 
   String get _gid => widget.group.id;
+  bool get _isDm => widget.group.dm;
 
   @override
   void initState() {
@@ -119,6 +120,42 @@ class _ChatViewPageState extends State<ChatViewPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            if (!m.own && !_isDm)
+              ListTile(
+                leading: const Icon(Icons.lock_outline),
+                title: const Text('发起私聊'),
+                subtitle: Text('与 ${m.authorName} 的端到端加密频道'),
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  try {
+                    final r = _api.startDm(m.authorPk);
+                    final dgid = r['group_id'] as String;
+                    if (!mounted) return;
+                    final groups = _api.chatGroups();
+                    final summary = groups.firstWhere(
+                      (g) => g.id == dgid,
+                      orElse: () => GroupSummary(
+                        id: dgid,
+                        name: m.authorName,
+                        avatarB64: '',
+                        inviteMagnet: '',
+                        unread: 0,
+                        lastTs: 0,
+                        online: 0,
+                        syncing: false,
+                        messages: 0,
+                        missing: 0,
+                        dm: true,
+                      ),
+                    );
+                    await Navigator.of(context).push(MaterialPageRoute(
+                        builder: (_) => ChatViewPage(group: summary)));
+                    _reload();
+                  } catch (e) {
+                    if (mounted) showError(context, e);
+                  }
+                },
+              ),
             if (m.payloadKind == MsgPayloadKind.text)
               ListTile(
                 leading: const Icon(Icons.copy),
@@ -242,10 +279,28 @@ class _ChatViewPageState extends State<ChatViewPage> {
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(widget.group.name),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (_isDm) ...[
+                  Icon(Icons.lock, size: 16, color: theme.colorScheme.primary),
+                  const SizedBox(width: 6),
+                ],
+                Flexible(
+                  child: Text(widget.group.name,
+                      maxLines: 1, overflow: TextOverflow.ellipsis),
+                ),
+              ],
+            ),
             if (missing > 0)
               Text(
                 '同步中：缺 $missing 条历史消息',
+                style: theme.textTheme.bodySmall
+                    ?.copyWith(color: theme.colorScheme.primary),
+              )
+            else if (_isDm)
+              Text(
+                '端到端加密私聊（X25519 + ChaCha20-Poly1305）',
                 style: theme.textTheme.bodySmall
                     ?.copyWith(color: theme.colorScheme.primary),
               )

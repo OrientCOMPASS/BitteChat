@@ -238,9 +238,32 @@ class _GroupTile extends StatelessWidget {
         : '${group.previewOwn ? '我' : group.previewAuthor}: ${group.previewText}';
     return ListTile(
       onTap: onTap,
-      leading: GroupAvatar(name: group.name, keyHex: group.id, size: 48),
+      leading: Stack(
+        children: [
+          GroupAvatar(name: group.name, keyHex: group.id, size: 48),
+          if (group.dm)
+            Positioned(
+              right: 0,
+              bottom: 0,
+              child: Container(
+                padding: const EdgeInsets.all(2),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surface,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(Icons.lock,
+                    size: 12, color: Theme.of(context).colorScheme.primary),
+              ),
+            ),
+        ],
+      ),
       title: Row(
         children: [
+          if (group.dm) ...[
+            Icon(Icons.lock_outline,
+                size: 14, color: theme.colorScheme.primary),
+            const SizedBox(width: 4),
+          ],
           Flexible(
             child: Text(
               group.name,

@@ -15,6 +15,7 @@
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use rand::rngs::OsRng;
 use sha1::{Digest, Sha1};
+use sha2::{Sha256, Sha512};
 
 use crate::bencode::Value;
 
@@ -113,6 +114,77 @@ pub fn bep44_verify(pk: &PubKey, seq: i64, value: &[u8], salt: &[u8], sig: &Sig6
 
 /// Max size (bytes) of a BEP44 item value accepted by most DHT implementations.
 pub const BEP44_VALUE_LIMIT: usize = 1000;
+
+// ---- DM channel crypto (X25519 ECDH + ChaCha20-Poly1305) ------------------
+
+use chacha20poly1305::aead::{Aead, KeyInit};
+use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
+use sha2::Digest as _;
+
+pub type XSecret = [u8; 32];
+pub type XPub = [u8; 32];
+
+/// Deterministic X25519 secret for an identity: SHA-512(ed25519 seed)[..32].
+pub fn x_secret_from_seed(seed: &Seed) -> XSecret {
+    let mut h = Sha512::new();
+    h.update(b"bitte-x25519-v1");
+    h.update(seed);
+    let out = h.finalize();
+    let mut s = [0u8; 32];
+    s.copy_from_slice(&out[..32]);
+    s
+}
+
+pub fn x_public(xs: &XSecret) -> XPub {
+    use x25519_dalek::{PublicKey, StaticSecret};
+    let secret = StaticSecret::from(*xs);
+    PublicKey::from(&secret).to_bytes()
+}
+
+/// ECDH shared secret -> per-channel symmetric key bound to the channel id.
+pub fn channel_key(my_xs: &XSecret, their_xp: &XPub, gid: &Sha1Hash) -> [u8; 32] {
+    use x25519_dalek::{PublicKey, StaticSecret};
+    let secret = StaticSecret::from(*my_xs);
+    let shared = secret.diffie_hellman(&PublicKey::from(*their_xp));
+    let mut h = Sha256::new();
+    h.update(b"bitte-dm-v1");
+    h.update(shared.as_bytes());
+    h.update(gid);
+    let out = h.finalize();
+    let mut k = [0u8; 32];
+    k.copy_from_slice(&out);
+    k
+}
+
+fn nonce_for(seq: i64) -> Nonce {
+    let mut n = [0u8; 12];
+    n[..8].copy_from_slice(&seq.to_le_bytes());
+    Nonce::from(n)
+}
+
+/// Seal a plaintext payload; output = nonce(12) || ciphertext.
+pub fn seal(key: &[u8; 32], seq: i64, plain: &[u8]) -> Vec<u8> {
+    let cipher = ChaCha20Poly1305::new(Key::from_slice(key));
+    let nonce = nonce_for(seq);
+    let ct = cipher
+        .encrypt(&nonce, plain)
+        .expect("chacha20poly1305 encryption cannot fail with valid sizes");
+    let mut out = Vec::with_capacity(12 + ct.len());
+    out.extend_from_slice(nonce.as_slice());
+    out.extend_from_slice(&ct);
+    out
+}
+
+/// Open a sealed payload; None on auth failure.
+pub fn open_sealed(key: &[u8; 32], seq: i64, sealed: &[u8]) -> Option<Vec<u8>> {
+    if sealed.len() < 12 + 16 {
+        return None;
+    }
+    let cipher = ChaCha20Poly1305::new(Key::from_slice(key));
+    let nonce = nonce_for(seq);
+    let _ = &sealed[..12]; // nonce is embedded but deterministic from seq
+    cipher.decrypt(&nonce, &sealed[12..]).ok()
+}
 
 #[cfg(test)]
 mod tests {

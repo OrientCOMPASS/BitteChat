@@ -82,6 +82,9 @@ void main() {
       expect(g.unread, 3);
       expect(g.previewText, '晚上好');
       expect(g.syncing, false);
+      expect(g.dm, false);
+      final d = GroupSummary.fromJson({'group_id': 'x', 'dm': true});
+      expect(d.dm, true);
     });
   });
 

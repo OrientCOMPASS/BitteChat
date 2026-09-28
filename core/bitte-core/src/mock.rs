@@ -76,6 +76,11 @@ impl MockBus {
         }
     }
 
+    /// Test helper: raw immutable item bytes (to assert sealing).
+    pub fn immutable(&self, target: &[u8; 20]) -> Option<Vec<u8>> {
+        self.state.lock().unwrap().immutables.get(target).cloned()
+    }
+
     pub fn swarm_size(&self, ih_hex: &str) -> usize {
         self.state
             .lock()

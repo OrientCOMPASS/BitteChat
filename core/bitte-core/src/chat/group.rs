@@ -13,6 +13,13 @@ pub const MANIFEST_VERSION: i64 = 1;
 pub const MAX_GROUP_NAME_LEN: usize = 96;
 pub const MAX_AVATAR_LEN: usize = 8 * 1024;
 
+/// One side of a DM channel: ed25519 identity + x25519 exchange key.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DmParty {
+    pub k: PubKey,
+    pub x: [u8; 32],
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GroupManifest {
     pub gid: Sha1Hash,
@@ -24,6 +31,9 @@ pub struct GroupManifest {
     pub creator_name: String,
     pub head_pk: PubKey,
     pub head_seed: Seed,
+    /// present for private (DM) channels: both parties' identity+exchange keys
+    #[serde(default)]
+    pub dm: Option<(DmParty, DmParty)>,
 }
 
 mod serde_bytes_b64 {
@@ -69,7 +79,34 @@ impl GroupManifest {
             creator_name: creator_name.chars().take(32).collect(),
             head_pk: head.public_key(),
             head_seed: head.seed,
+            dm: None,
         })
+    }
+
+    pub fn is_dm(&self) -> bool {
+        self.dm.is_some()
+    }
+
+    /// The DM peer that is not `me`.
+    pub fn dm_peer(&self, me: &PubKey) -> Option<&DmParty> {
+        let (a, b) = self.dm.as_ref()?;
+        if &a.k == me {
+            Some(b)
+        } else if &b.k == me {
+            Some(a)
+        } else {
+            None
+        }
+    }
+
+    /// Deterministic channel id for a DM between two ed25519 identities.
+    pub fn dm_gid(a: &PubKey, b: &PubKey) -> Sha1Hash {
+        let (lo, hi) = if a <= b { (a, b) } else { (b, a) };
+        let mut buf = Vec::with_capacity(64 + 8);
+        buf.extend_from_slice(lo);
+        buf.extend_from_slice(hi);
+        buf.extend_from_slice(b"bc-dm-1");
+        crate::crypto::sha1(&buf)
     }
 
     pub fn head_identity(&self) -> Identity {
@@ -102,6 +139,18 @@ impl GroupManifest {
         head.insert("k", Value::Str(self.head_pk.to_vec()));
         head.insert("s", Value::Str(self.head_seed.to_vec()));
         d.insert("head", head);
+        if let Some((a, b)) = &self.dm {
+            let mut dm = Value::dict();
+            let mut pa = Value::dict();
+            pa.insert("k", Value::Str(a.k.to_vec()));
+            pa.insert("x", Value::Str(a.x.to_vec()));
+            let mut pb = Value::dict();
+            pb.insert("k", Value::Str(b.k.to_vec()));
+            pb.insert("x", Value::Str(b.x.to_vec()));
+            dm.insert("a", pa);
+            dm.insert("b", pb);
+            d.insert("dm", dm);
+        }
         bencode::encode(&d)
     }
 
@@ -152,6 +201,30 @@ impl GroupManifest {
         if derived.public_key() != head_pk {
             return Err(CoreError::Invalid("head key/seed mismatch".into()));
         }
+        let dm = match v.get("dm") {
+            Some(dmv) => {
+                let pa = dmv
+                    .get("a")
+                    .ok_or_else(|| CoreError::Invalid("dm missing a".into()))?;
+                let pb = dmv
+                    .get("b")
+                    .ok_or_else(|| CoreError::Invalid("dm missing b".into()))?;
+                let parse = |p: &Value, tag: &str| -> Result<DmParty> {
+                    let k = pk32(p.get_bytes("k"), tag)?;
+                    let xb = p
+                        .get_bytes("x")
+                        .ok_or_else(|| CoreError::Invalid(format!("dm {tag} missing x")))?;
+                    if xb.len() != 32 {
+                        return Err(CoreError::Invalid(format!("dm {tag} bad x")));
+                    }
+                    let mut x = [0u8; 32];
+                    x.copy_from_slice(xb);
+                    Ok(DmParty { k, x })
+                };
+                Some((parse(pa, "a")?, parse(pb, "b")?))
+            }
+            None => None,
+        };
         Ok(GroupManifest {
             gid,
             name,
@@ -161,6 +234,7 @@ impl GroupManifest {
             creator_name,
             head_pk,
             head_seed,
+            dm,
         })
     }
 }

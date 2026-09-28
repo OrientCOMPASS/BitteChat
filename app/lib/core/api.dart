@@ -142,6 +142,9 @@ class BitteApi extends ChangeNotifier {
   Map<String, dynamic> joinGroup(String magnet) =>
       call('chat.join_group', {'magnet': magnet.trim()});
 
+  Map<String, dynamic> startDm(String authorPk) =>
+      call('chat.start_dm', {'author_pk': authorPk});
+
   void leaveGroup(String groupId, {bool deleteHistory = false}) => call(
       'chat.leave_group',
       {'group_id': groupId, 'delete_history': deleteHistory});

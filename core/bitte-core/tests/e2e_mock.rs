@@ -510,6 +510,122 @@ fn e2e_group_rename_propagates() {
 }
 
 #[test]
+fn e2e_dm_encrypted_end_to_end() {
+    let bus = MockBus::new();
+    let (a, _ta) = spawn_node(&bus);
+    let (b, _tb) = spawn_node(&bus);
+
+    // shared group first (DM keys travel in message `x` fields)
+    let created = call(&a, "chat.create_group", json!({"name": "同群"}));
+    let gid = created["group_id"].as_str().unwrap().to_string();
+    let magnet = created["invite_magnet"].as_str().unwrap().to_string();
+    call(&b, "chat.join_group", json!({"magnet": magnet}));
+    wait_until(&[&a, &b], T, || {
+        if msg_count(&b, &gid) >= 1 {
+            Some(())
+        } else {
+            None
+        }
+    });
+    call(
+        &b,
+        "chat.send",
+        json!({"group_id": gid, "text": "hi from b"}),
+    );
+    wait_until(&[&a, &b], T, || {
+        if texts(&a, &gid).contains(&"hi from b".to_string()) {
+            Some(())
+        } else {
+            None
+        }
+    });
+
+    // A learns B's identity from the shared group and opens a DM
+    let r = call(&a, "chat.messages", json!({"group_id": gid}));
+    let b_pk = r["messages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| m["author_name"].as_str() != Some("旅人-ignore"))
+        .map(|m| m["author_pk"].as_str().unwrap().to_string())
+        .unwrap();
+    let a_pk = call(&a, "sys.identity.get", json!({}))["pk"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let b_pk = if b_pk == a_pk {
+        // pick the other author explicitly
+        r["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|m| m["author_pk"].as_str().unwrap() != a_pk.as_str())
+            .unwrap()["author_pk"]
+            .as_str()
+            .unwrap()
+            .to_string()
+    } else {
+        b_pk
+    };
+    let dm = call(&a, "chat.start_dm", json!({"author_pk": b_pk}));
+    let dgid = dm["group_id"].as_str().unwrap().to_string();
+    assert_eq!(dm["dm"], json!(true));
+
+    // B auto-joins through the dm_invite system message
+    wait_until(&[&a, &b], T, || {
+        let groups = call(&b, "chat.groups", json!({}));
+        let g = groups["groups"]
+            .as_array()?
+            .iter()
+            .find(|g| g["group_id"].as_str() == Some(dgid.as_str()))?;
+        if g["dm"] == json!(true) {
+            Some(())
+        } else {
+            None
+        }
+    });
+
+    // A sends a secret; B reads it decrypted
+    call(
+        &a,
+        "chat.send",
+        json!({"group_id": dgid, "text": "secret hello"}),
+    );
+    wait_until(&[&a, &b], T, || {
+        if texts(&b, &dgid).contains(&"secret hello".to_string()) {
+            Some(())
+        } else {
+            None
+        }
+    });
+    // and A's own view decrypts too
+    assert!(texts(&a, &dgid).contains(&"secret hello".to_string()));
+
+    // on the wire / in the DHT the payload must be sealed
+    let r = call(&b, "chat.messages", json!({"group_id": dgid}));
+    let mid = r["messages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| m["kind"].as_i64() == Some(1) || m["payload"].get("Sealed").is_some())
+        .unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let mut target = [0u8; 20];
+    target.copy_from_slice(&hex::decode(&mid).unwrap());
+    let raw = bus.immutable(&target).expect("sealed item in DHT");
+    assert!(!raw.windows(12).any(|w| w == b"secret hello"));
+    let raw_str = String::from_utf8_lossy(&raw);
+    assert!(raw_str.contains("1:ei1e"), "message must carry e=1 flag");
+
+    // DM shows up with lock metadata and both parties agree on history
+    let ta = texts(&a, &dgid);
+    let tb = texts(&b, &dgid);
+    assert_eq!(ta, tb);
+}
+
+#[test]
 fn e2e_bt_page_flow() {
     let bus = MockBus::new();
     let (a, _ta) = spawn_node(&bus);

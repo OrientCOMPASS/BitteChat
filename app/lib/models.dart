@@ -179,6 +179,7 @@ class GroupSummary {
     required this.syncing,
     required this.messages,
     required this.missing,
+    this.dm = false,
     this.previewAuthor = '',
     this.previewText = '',
     this.previewTs = 0,
@@ -196,6 +197,7 @@ class GroupSummary {
   final bool syncing;
   final int messages;
   final int missing;
+  final bool dm;
   final String previewAuthor;
   final String previewText;
   final int previewTs;

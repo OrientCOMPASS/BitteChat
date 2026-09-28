@@ -292,6 +292,18 @@ impl GroupSync {
         sm: SignedMessage,
         state: i64,
     ) -> crate::Result<Option<Sha1Hash>> {
+        // DM channels only accept messages from the two parties
+        if let Some((a, b)) = &self.manifest.dm {
+            let author = match hex::decode(&sm.msg.author_pk) {
+                Ok(v) if v.len() == 32 => v,
+                _ => return Ok(None),
+            };
+            if author != a.k.to_vec() && author != b.k.to_vec() {
+                return Err(crate::CoreError::Invalid(
+                    "DM message from non-member".into(),
+                ));
+            }
+        }
         let id = sm.id;
         self.fetching.remove(&id);
         let is_new = store.insert_message(&self.gid, &sm, state)?;

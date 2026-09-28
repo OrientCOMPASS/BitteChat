@@ -433,12 +433,37 @@ impl Api {
             let _ = self.inner.engine.ext_send(&infohash, &r);
         }
         let had_new = !new_msgs.is_empty();
+        let own_pk = hex::encode(self.inner.identity.read().unwrap().public_key());
+        let mut invites = Vec::new();
+        for m in &new_msgs {
+            if let Some(magnet) = dm_invite_for_me(m, &own_pk) {
+                invites.push(magnet);
+            }
+        }
         for m in new_msgs {
             self.emit_event("chat.message_new", json!({"group": gid_hex, "message": m}));
         }
         if had_new {
             self.emit_event("chat.group_updated", json!({"group": gid_hex}));
         }
+        for magnet in invites {
+            let _ = self.chat_join_group(json!({"magnet": magnet}));
+        }
+    }
+}
+
+/// If `m` is a DM invite addressed to `own_pk`, extract the magnet.
+fn dm_invite_for_me(m: &crate::chat::ChatMessage, own_pk: &str) -> Option<String> {
+    match &m.payload {
+        crate::chat::message::Payload::System { code, detail } if code == "dm_invite" => {
+            let (recipient, magnet) = detail.split_once(' ')?;
+            if recipient == own_pk && !m.own {
+                Some(magnet.to_string())
+            } else {
+                None
+            }
+        }
+        _ => None,
     }
 }
 
