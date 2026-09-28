@@ -21,6 +21,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <functional>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -532,6 +533,14 @@ struct bc_session
     std::map<std::string, torrent_status> statuses;
     std::map<std::string, torrent_handle> handles;
 
+    // libtorrent postpones start_dht() until every bootstrap router hostname
+    // has been resolved, and session dht_* calls made before that point are
+    // SILENTLY DROPPED (no alert, no error). Queue the ops here instead of
+    // losing them; alert_loop drains the queue once is_dht_running() flips.
+    std::mutex dht_mx;
+    std::vector<std::function<void()>> dht_pending;
+    std::atomic<bool> dht_ready{false};
+
     std::atomic<std::int64_t> dht_nodes{-1};
     std::atomic<std::int64_t> has_incoming{0};
     int idx_dht_nodes = -1;
@@ -605,6 +614,45 @@ static torrent_handle find_handle(bc_session* s, std::string const& ih)
     return it->second;
 }
 
+// ---- DHT readiness queue ---------------------------------------------------
+//
+// libtorrent defers start_dht() until every dht_bootstrap_nodes hostname has
+// been resolved (m_outstanding_router_lookups). Until then, session::dht_*
+// calls are silently dropped: no alert, no error. That breaks two things:
+//   * BEP44 gets never produce their dht_immutable/mutable_item alert, so
+//     callers that marked a fetch "in flight" wait forever;
+//   * head-pointer puts issued right after app start vanish.
+// Queue the operation instead and let alert_loop (which wakes at least every
+// 500ms) run it the moment the DHT starts. Even fully offline the DHT does
+// start — failed router lookups also decrement the outstanding counter.
+
+static constexpr std::size_t DHT_QUEUE_CAP = 4096;
+
+/// Runs `op` immediately when the DHT is up; otherwise queues it for the
+/// alert loop. Returns true when the op ran synchronously.
+static bool dht_run_or_queue(bc_session* s, std::function<void()> op)
+{
+    if (s->dht_ready.load(std::memory_order_acquire))
+    {
+        op();
+        return true;
+    }
+    std::lock_guard<std::mutex> l(s->dht_mx);
+    if (s->ses->is_dht_running())
+    {
+        s->dht_ready.store(true, std::memory_order_release);
+        std::vector<std::function<void()>> q;
+        q.swap(s->dht_pending);
+        for (auto& f : q) f();
+        op();
+        return true;
+    }
+    // cap the queue: ops are best-effort and re-issued by the sync layer
+    if (s->dht_pending.size() < DHT_QUEUE_CAP)
+        s->dht_pending.push_back(std::move(op));
+    return false;
+}
+
 // ---- alert loop ------------------------------------------------------------
 
 static void alert_loop(bc_session* s)
@@ -616,6 +664,20 @@ static void alert_loop(bc_session* s)
     {
         s->ses->wait_for_alert(500ms);
         s->ses->pop_alerts(&alerts);
+
+        // flush DHT ops that arrived before the DHT finished bootstrapping
+        if (!s->dht_ready.load(std::memory_order_relaxed)
+            && s->ses->is_dht_running())
+        {
+            std::vector<std::function<void()>> q;
+            {
+                std::lock_guard<std::mutex> l(s->dht_mx);
+                if (!s->dht_ready.exchange(true, std::memory_order_acq_rel))
+                    q.swap(s->dht_pending);
+            }
+            for (auto& f : q) f();
+        }
+
         for (alert* a : alerts)
         {
             switch (a->type())
@@ -1094,7 +1156,8 @@ static json::value cmd_dht_get_immutable(bc_session* s, json::object const& o)
         return json_err("bad target");
     sha1_hash target;
     std::memcpy(target.data(), raw.data(), 20);
-    s->ses->dht_get_item(target);
+    lt::session* ses = s->ses.get();
+    dht_run_or_queue(s, [ses, target]() { ses->dht_get_item(target); });
     return json_ok();
 }
 
@@ -1105,7 +1168,15 @@ static json::value cmd_dht_put_immutable(bc_session* s, json::object const& o)
     error_code ec;
     bdecode_node const node = bdecode(value, ec);
     if (ec) return json_err(std::string("value not bencoded: ") + ec.message());
-    sha1_hash const target = s->ses->dht_put_item(entry(node));
+    entry const data(node);
+    // compute the target without touching the DHT — the exact computation
+    // session::dht_put_item() does internally (sha1 of canonical bencode),
+    // so matches_expected stays meaningful even while the put is queued
+    std::vector<char> buf;
+    bencode(std::back_inserter(buf), data);
+    sha1_hash const target = hasher(buf).final();
+    lt::session* ses = s->ses.get();
+    dht_run_or_queue(s, [ses, data]() { ses->dht_put_item(data); });
     std::string const got = hex_encode(target.data(), 20);
     std::string const expected = jstr(o, "target_hex");
     json::object r;
@@ -1122,7 +1193,10 @@ static json::value cmd_dht_get_mutable(bc_session* s, json::object const& o)
         return json_err("bad pubkey");
     std::array<char, 32> pk{};
     std::memcpy(pk.data(), raw.data(), 32);
-    s->ses->dht_get_item(pk, jstr(o, "salt"));
+    std::string const salt = jstr(o, "salt");
+    lt::session* ses = s->ses.get();
+    dht_run_or_queue(
+        s, [ses, pk, salt]() { ses->dht_get_item(pk, salt); });
     return json_ok();
 }
 
@@ -1146,17 +1220,20 @@ static json::value cmd_dht_put_mutable(bc_session* s, json::object const& o)
     std::string const salt = jstr(o, "salt");
 
     std::string value_copy(value.data(), value.size());
-    s->ses->dht_put_item(pk,
-        [value_copy, sig, seq](entry& e, std::array<char, 64>& s_out,
-            std::int64_t& seq_out, std::string const&) {
-            error_code ec;
-            bdecode_node const node
-                = bdecode(span<char const>(value_copy.data(), value_copy.size()), ec);
-            if (!ec) e = entry(node);
-            s_out = sig;
-            seq_out = seq;
-        },
-        salt);
+    lt::session* ses = s->ses.get();
+    dht_run_or_queue(s, [ses, pk, value_copy, sig, seq, salt]() {
+        ses->dht_put_item(pk,
+            [value_copy, sig, seq](entry& e, std::array<char, 64>& s_out,
+                std::int64_t& seq_out, std::string const&) {
+                error_code ec;
+                bdecode_node const node
+                    = bdecode(span<char const>(value_copy.data(), value_copy.size()), ec);
+                if (!ec) e = entry(node);
+                s_out = sig;
+                seq_out = seq;
+            },
+            salt);
+    });
     return json_ok();
 }
 
@@ -1259,8 +1336,12 @@ extern "C" bc_session* bct_create(const char* cfg_json, bc_event_fn cb, void* cb
     {
         // Keep libtorrent's own default bootstrap (dht.libtorrent.org:25401)
         // unless the caller overrides it: swapping in longer router lists was
-        // observed to stall DHT bootstrap on CI runners. Configurable via
-        // cfg key "dht_bootstrap_nodes" (comma-separated host:port list).
+        // observed to stall DHT bootstrap on CI runners — libtorrent defers
+        // start_dht() until EVERY router hostname has resolved, so one
+        // dead/slow domain delays the whole DHT. Configurable via cfg key
+        // "dht_bootstrap_nodes" (comma-separated host:port list). Ops issued
+        // before the DHT starts are queued by dht_run_or_queue() instead of
+        // being silently dropped.
         std::string const bootstrap = jstr(cfg, "dht_bootstrap_nodes");
         if (!bootstrap.empty())
         {
