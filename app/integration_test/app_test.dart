@@ -61,10 +61,9 @@ void main() {
           UiPrefs(File('${BitteApi.instance.dataDir}/ui_prefs_it.json'));
       await tester.pumpWidget(BitteChatApp(prefs: prefs));
       await tester.pumpAndSettle();
-      expect(
-        find.widgetWithText(NavigationDestination, '聊天'),
-        findsOneWidget,
-      );
+      // locale-independent: the nav bar exists with three destinations
+      expect(find.byType(NavigationBar), findsOneWidget);
+      expect(find.byType(NavigationDestination), findsNWidgets(3));
       // the freshly created group shows up in the chat list
       expect(find.textContaining('Emulator IT'), findsWidgets);
     },
