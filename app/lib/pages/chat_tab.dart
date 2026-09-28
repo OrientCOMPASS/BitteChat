@@ -147,6 +147,14 @@ class _ChatTabState extends State<ChatTab> {
     );
   }
 
+  Future<void> _openGroup(GroupSummary g) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+          builder: (_) => ChatViewPage(group: g, prefs: widget.prefs)),
+    );
+    _reload();
+  }
+
   Future<GroupSummary?> _summaryFor(String gid) async {
     try {
       final groups = _api.chatGroups();
