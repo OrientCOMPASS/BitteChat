@@ -199,7 +199,12 @@ class _BtTabState extends State<BtTab> {
       context: context,
       showDragHandle: true,
       isScrollControlled: true,
-      builder: (ctx) => TorrentDetailSheet(infohash: t.infohash, name: t.name),
+      builder: (ctx) => TorrentDetailSheet(
+        infohash: t.infohash,
+        name: t.name,
+        savePath: t.savePath,
+        magnet: t.magnet,
+      ),
     );
     _reload();
   }
@@ -455,10 +460,14 @@ class TorrentDetailSheet extends StatefulWidget {
     super.key,
     required this.infohash,
     required this.name,
+    this.savePath = '',
+    this.magnet = '',
   });
 
   final String infohash;
   final String name;
+  final String savePath;
+  final String magnet;
 
   @override
   State<TorrentDetailSheet> createState() => _TorrentDetailSheetState();
@@ -513,6 +522,12 @@ class _TorrentDetailSheetState extends State<TorrentDetailSheet> {
           Text('infohash: ${widget.infohash}',
               style: theme.textTheme.bodySmall
                   ?.copyWith(color: theme.colorScheme.outline)),
+          if (widget.savePath.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text('保存目录: ${widget.savePath}',
+                style: theme.textTheme.bodySmall
+                    ?.copyWith(color: theme.colorScheme.outline)),
+          ],
           const SizedBox(height: 16),
           Text('文件（${_files.length}）', style: theme.textTheme.titleSmall),
           if (_files.isEmpty)

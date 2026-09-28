@@ -23,10 +23,25 @@ class _HomePageState extends State<HomePage> {
   StreamSubscription<CoreEvent>? _sub;
   Timer? _timer;
 
+  StreamSubscription<CoreEvent>? _errSub;
+
   @override
   void initState() {
     super.initState();
     final api = BitteApi.instance;
+    _errSub = api.events.listen((e) {
+      if (!mounted) return;
+      String? msg;
+      if (e.type == 'torrent_error') {
+        msg = '种子出错：${e.data['error'] ?? ''}';
+      } else if (e.type == 'rss.error') {
+        msg = '订阅失败：${e.data['error'] ?? ''}';
+      }
+      if (msg != null && msg.isNotEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(msg), duration: const Duration(seconds: 4)));
+      }
+    });
     _reloadBadge();
     _sub = api.events.listen((e) {
       if (e.isChatMessage || e.isChatGroupUpdated) _reloadBadge();
@@ -36,6 +51,7 @@ class _HomePageState extends State<HomePage> {
 
   @override
   void dispose() {
+    _errSub?.cancel();
     _sub?.cancel();
     _timer?.cancel();
     super.dispose();
