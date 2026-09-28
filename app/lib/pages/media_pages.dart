@@ -12,7 +12,6 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
@@ -28,14 +27,8 @@ class VideoPlayerPage extends StatefulWidget {
   final String path;
   final String title;
 
-  @override
-  State<VideoPlayerPage> createState() => _VideoPlayerPageState();
-}
-
-class _VideoPlayerPageState extends State<VideoPlayerPage>
-    with WidgetsBindingObserver {
-  /// Test/observability hooks — the CI video test asserts on these instead
-  /// of pixel-diffing a software-rendered emulator.
+  /// Test/observability hooks — the CI real-video test asserts on these
+  /// instead of pixel-diffing a software-rendered emulator.
   @visibleForTesting
   static String? debugLastVideoParams;
   @visibleForTesting
@@ -45,6 +38,12 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
   @visibleForTesting
   static String? debugLastError;
 
+  @override
+  State<VideoPlayerPage> createState() => _VideoPlayerPageState();
+}
+
+class _VideoPlayerPageState extends State<VideoPlayerPage>
+    with WidgetsBindingObserver {
   Player? _player;
   VideoController? _videoController;
   bool _failed = false;
@@ -58,10 +57,10 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
   @override
   void initState() {
     super.initState();
-    debugMpvLogs.clear();
-    debugLastError = null;
-    debugLastVideoParams = null;
-    debugLastPosition = Duration.zero;
+    VideoPlayerPage.debugMpvLogs.clear();
+    VideoPlayerPage.debugLastError = null;
+    VideoPlayerPage.debugLastVideoParams = null;
+    VideoPlayerPage.debugLastPosition = Duration.zero;
     // hide the global wallpaper while video plays: no Opacity/filter layers
     // underneath the external video texture (a compositing-stall suspect on
     // some GPU drivers)
@@ -110,7 +109,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
       _subs.addAll([
         player.stream.error.listen((e) {
           if (e.isEmpty) return;
-          debugLastError = e;
+          VideoPlayerPage.debugLastError = e;
           appLog('mpv error: ${widget.path} -> $e');
           if (mounted) {
             setState(() {
@@ -121,14 +120,15 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
         }),
         player.stream.log.listen((l) {
           final line = 'mpv[${l.prefix}/${l.level}] ${l.text}';
-          debugMpvLogs.add(line);
-          if (debugMpvLogs.length > 500) {
-            debugMpvLogs.removeRange(0, debugMpvLogs.length - 500);
+          VideoPlayerPage.debugMpvLogs.add(line);
+          if (VideoPlayerPage.debugMpvLogs.length > 500) {
+            VideoPlayerPage.debugMpvLogs
+                .removeRange(0, VideoPlayerPage.debugMpvLogs.length - 500);
           }
           appLog(line);
         }),
         player.stream.videoParams.listen((v) {
-          debugLastVideoParams = v.toString();
+          VideoPlayerPage.debugLastVideoParams = v.toString();
           appLog('mpv video params: ${widget.path} -> ${v.toString()}');
         }),
         player.stream.playing.listen((v) {
@@ -138,7 +138,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
           if (mounted) setState(() => _completed = v);
         }),
         player.stream.position.listen((v) {
-          debugLastPosition = v;
+          VideoPlayerPage.debugLastPosition = v;
           if (mounted) setState(() => _position = v);
         }),
         player.stream.duration.listen((v) {
