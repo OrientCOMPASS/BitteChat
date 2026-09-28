@@ -13,7 +13,7 @@
 │ libbitte_core.so (Rust)                                                      │
 │  bitte-ffi        C ABI 封装、句柄注册表、事件转发线程、panic 安全             │
 │  bitte-core/api   JSON 桥: dispatch(method, params) + 事件循环 + 调度器        │
-│  bitte-core/chat  消息编解码/签名验证、DAG、群清单、同步状态机 (sync.rs)        │
+│  bitte-core/chat  消息编解码/签名验证、DAG、房间/DM 清单、同步状态机 (sync.rs)  │
 │  bitte-core/store SQLite: kv/groups/messages/heads/outbox/torrents/feeds      │
 │  bitte-core/rss   ureq+quick-xml: RSS2.0/Atom 解析、磁力/附件提取              │
 │  bitte-core/engine  BtEngine trait ──┬── mock.rs  (测试: 共享总线多实例)       │
@@ -75,11 +75,14 @@ Dart↔Rust 只走两条通道：`bc_call(method, json) -> json`（同步，命�
 ### 7. 数据目录布局 (app 私有外部存储)
 ```
 <data>/bitte.db                     SQLite (WAL)
-<data>/groups/<manifest_ih>/bitte-group.benc
-<data>/downloads/<ih>/<文件名>       附件与 BT 下载
+<data>/groups/<manifest_ih>/bitte-group.benc   仅 DM/遗留清单频道
+<data>/downloads/<ih>/<文件名>       BT 下载与聊天附件（种子群聊即普通任务）
 <data>/tmp/                          RSS 导入暂存
 ```
-群目录按清单种子 infohash 命名 → 重启后 restore_state 直接重新 add_magnet。
+**种子即群聊**：普通群聊没有专属目录——房间就是 downloads/<infohash> 下的普通 BT
+任务（gid = infohash，头签名密钥 SHA-256 派生，见 PROTOCOL §1.2）。重启后
+restore_state 从 SQLite（groups + torrents 表）直接重建运行时并重新 add_magnet，
+群名在元数据事件到达时自动跟随种子名（用户改名优先）。
 
 ## 线程一览 (Rust 侧)
 
@@ -104,9 +107,10 @@ CI 缓存 build/android-deps/{downloads,src,deps,build}（key=versions.env+脚�
 
 ## 测试策略
 
-1. **Rust 单测**（bencode 规范向量、Ed25519/BEP44 字节布局、消息验证、DAG 拓扑/合并/去重、
-   RSS 解析、store）——`cargo test -p bitte-core`，本地与 CI 秒级。
-2. **e2e mock 测试**（tests/e2e_mock.rs）：双节点全流程、离线 DHT 恢复、附件、分块、
-   篡改拒绝、BT 页生命周期。
+1. **Rust 单测**（bencode 规范向量、Ed25519/BEP44 字节布局、头密钥派生、消息验证、
+   DAG 拓扑/合并/去重、magnet/infohash 规范化、tracker 磁力合并、RSS 解析、store）
+   ——`cargo test -p bitte-core`，本地与 CI 秒级。
+2. **e2e mock 测试**（tests/e2e_mock.rs）：双节点全流程（做种进房、裸 hash 加入、
+   默认 tracker 应用、退群保留任务）、离线 DHT 恢复、附件、分块、篡改拒绝、BT 页生命周期。
 3. **CI android job**：真实交叉编译链验证 C++/链接正确性（沙盒内不构建）。
 4. **Flutter**：`flutter analyze` + widget 测试（纯 Dart 逻辑：models、桥接解析）。
