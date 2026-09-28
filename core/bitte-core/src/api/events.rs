@@ -264,6 +264,8 @@ impl Api {
                         "chat.message_new",
                         json!({"group": gid_hex, "message": sm.msg}),
                     );
+                    // DHT-fetched messages must also trigger DM auto-join
+                    self.scan_dm_invites(std::slice::from_ref(&sm.msg));
                 }
                 self.emit_event(
                     "chat.sync",
@@ -435,21 +437,53 @@ impl Api {
             let _ = self.inner.engine.ext_send(&infohash, &r);
         }
         let had_new = !new_msgs.is_empty();
-        let own_pk = self.own_pk_hex();
-        let mut invites = Vec::new();
         for m in &new_msgs {
-            if let Some(magnet) = dm_invite_for_me(m, &own_pk) {
-                invites.push(magnet);
-            }
-        }
-        for m in new_msgs {
             self.emit_event("chat.message_new", json!({"group": gid_hex, "message": m}));
         }
         if had_new {
             self.emit_event("chat.group_updated", json!({"group": gid_hex}));
         }
-        for magnet in invites {
-            let _ = self.chat_join_dm(json!({"magnet": magnet}));
+        self.scan_dm_invites(&new_msgs);
+    }
+
+    /// Check freshly ingested messages for DM invites addressed to us and
+    /// auto-join the channel. Covers BOTH ingest paths (ext push and DHT
+    /// fetch) so an invite that races in through the DHT is not missed.
+    fn scan_dm_invites(&self, msgs: &[crate::chat::ChatMessage]) {
+        let own_pk = self.own_pk_hex();
+        for m in msgs {
+            let crate::chat::message::Payload::System { code, detail } = &m.payload else {
+                continue;
+            };
+            if code != "dm_invite" {
+                continue;
+            }
+            match dm_invite_for_me(m, &own_pk) {
+                Some(magnet) => match self.chat_join_dm(json!({"magnet": magnet})) {
+                    Ok(_) => self.emit_event(
+                        "sys.log",
+                        json!({"level": "info", "msg": "dm invite accepted"}),
+                    ),
+                    Err(e) => self.emit_event(
+                        "sys.log",
+                        json!({"level": "warn", "msg": format!("dm invite join failed: {e}")}),
+                    ),
+                },
+                None => {
+                    // diagnostics: why didn't it match?
+                    let recip = detail.split(' ').next().unwrap_or("");
+                    self.emit_event(
+                        "sys.log",
+                        json!({"level": "warn", "msg": format!(
+                            "dm_invite skipped: own_pk={} recipient={} pk_match={} own_flag={}",
+                            &own_pk[..own_pk.len().min(8)],
+                            &recip[..recip.len().min(8)],
+                            recip == own_pk,
+                            m.own
+                        )}),
+                    );
+                }
+            }
         }
     }
 }

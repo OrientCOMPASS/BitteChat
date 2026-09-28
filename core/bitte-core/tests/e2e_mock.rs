@@ -2,7 +2,7 @@
 //! two independent `Api` instances behave like two users' phones.
 
 use std::sync::mpsc::Receiver;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use serde_json::{json, Value as Json};
@@ -14,6 +14,8 @@ struct Node {
     api: Api,
     events: Receiver<String>,
     path: std::path::PathBuf,
+    /// sys.log events collected by `drain` for failure diagnostics
+    logs: Arc<Mutex<Vec<String>>>,
     _engine: Arc<MockEngine>,
 }
 
@@ -34,6 +36,7 @@ fn spawn_node(bus: &MockBus) -> (Node, tempfile::TempDir) {
             api,
             events,
             path: dir.path().to_path_buf(),
+            logs: Arc::new(Mutex::new(Vec::new())),
             _engine: engine,
         },
         dir,
@@ -53,6 +56,7 @@ fn spawn_node_at(bus: &MockBus, path: &std::path::Path) -> Node {
         api,
         events,
         path: path.to_path_buf(),
+        logs: Arc::new(Mutex::new(Vec::new())),
         _engine: engine,
     }
 }
@@ -67,11 +71,17 @@ fn try_call(node: &Node, method: &str, params: Json) -> Result<Json, String> {
     node.api.dispatch(method, params).map_err(|e| e.to_string())
 }
 
-/// Drain pending events (non-blocking) as JSON values.
+/// Drain pending events (non-blocking) as JSON values; sys.log entries are
+/// kept on the node for failure diagnostics.
 fn drain(node: &Node) -> Vec<Json> {
     let mut out = Vec::new();
     while let Ok(s) = node.events.try_recv() {
         if let Ok(v) = serde_json::from_str::<Json>(&s) {
+            if v["type"].as_str() == Some("sys.log") {
+                if let Ok(mut logs) = node.logs.lock() {
+                    logs.push(v["data"]["msg"].as_str().unwrap_or("?").to_string());
+                }
+            }
             out.push(v);
         }
     }
@@ -134,7 +144,12 @@ fn dump_node(n: &Node, tag: &str) -> String {
         .dispatch("bt.list", json!({"include_chat": true}))
         .map(|b| b["torrents"].clone())
         .unwrap_or(json!("ERR"));
-    format!("[{tag}] groups={groups}\n[{tag}] torrents={bt}\n")
+    let logs = n
+        .logs
+        .lock()
+        .map(|l| l.join(" | "))
+        .unwrap_or_else(|e| format!("LOG ERR {e}"));
+    format!("[{tag}] groups={groups}\n[{tag}] torrents={bt}\n[{tag}] logs={logs}\n")
 }
 
 const T: Duration = Duration::from_secs(15);
