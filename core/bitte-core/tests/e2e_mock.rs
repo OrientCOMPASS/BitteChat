@@ -96,6 +96,47 @@ fn wait_until<T>(nodes: &[&Node], timeout: Duration, mut cond: impl FnMut() -> O
     }
 }
 
+/// Like `wait_until` but panics with a state dump for diagnosis.
+fn wait_dbg<T>(
+    nodes: &[&Node],
+    timeout: Duration,
+    label: &str,
+    dump: impl Fn() -> String,
+    mut cond: impl FnMut() -> Option<T>,
+) -> T {
+    let start = Instant::now();
+    loop {
+        for n in nodes {
+            drain(n);
+        }
+        if let Some(v) = cond() {
+            return v;
+        }
+        if start.elapsed() > timeout {
+            panic!(
+                "condition not met within {timeout:?}: {label}\nDUMP:\n{}",
+                dump()
+            );
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+/// Full chat/bt state of one node as a debug string.
+fn dump_node(n: &Node, tag: &str) -> String {
+    let groups = n
+        .api
+        .dispatch("chat.groups", json!({}))
+        .map(|g| g["groups"].clone())
+        .unwrap_or(json!("ERR"));
+    let bt = n
+        .api
+        .dispatch("bt.list", json!({"include_chat": true}))
+        .map(|b| b["torrents"].clone())
+        .unwrap_or(json!("ERR"));
+    format!("[{tag}] groups={groups}\n[{tag}] torrents={bt}\n")
+}
+
 const T: Duration = Duration::from_secs(15);
 
 fn texts(node: &Node, gid: &str) -> Vec<String> {
@@ -557,13 +598,27 @@ fn e2e_dm_encrypted_end_to_end() {
         "chat.send",
         json!({"group_id": gid, "text": "hi from b"}),
     );
-    wait_until(&[&a, &b], T, || {
-        if texts(&a, &gid).contains(&"hi from b".to_string()) {
-            Some(())
-        } else {
-            None
-        }
-    });
+    wait_dbg(
+        &[&a, &b],
+        T,
+        "A must see 'hi from b' in the shared room",
+        || {
+            format!(
+                "{}{}\nA texts={:?}\nB texts={:?}",
+                dump_node(&a, "A"),
+                dump_node(&b, "B"),
+                texts(&a, &gid),
+                texts(&b, &gid)
+            )
+        },
+        || {
+            if texts(&a, &gid).contains(&"hi from b".to_string()) {
+                Some(())
+            } else {
+                None
+            }
+        },
+    );
 
     // A learns B's identity from the shared group and opens a DM
     let r = call(&a, "chat.messages", json!({"group_id": gid}));
@@ -597,18 +652,33 @@ fn e2e_dm_encrypted_end_to_end() {
     assert_eq!(dm["dm"], json!(true));
 
     // B auto-joins through the dm_invite system message
-    wait_until(&[&a, &b], T, || {
-        let groups = call(&b, "chat.groups", json!({}));
-        let g = groups["groups"]
-            .as_array()?
-            .iter()
-            .find(|g| g["group_id"].as_str() == Some(dgid.as_str()))?;
-        if g["dm"] == json!(true) {
-            Some(())
-        } else {
-            None
-        }
-    });
+    wait_dbg(
+        &[&a, &b],
+        T,
+        "B must auto-join the DM channel via dm_invite",
+        || {
+            format!(
+                "{}{}\nA room texts={:?}\nA dm texts={:?}",
+                dump_node(&a, "A"),
+                dump_node(&b, "B"),
+                texts(&a, &gid),
+                texts(&a, &dgid)
+            )
+        },
+        || {
+            let groups = call(&b, "chat.groups", json!({}));
+            let g = groups["groups"]
+                .as_array()?
+                .iter()
+                .find(|g| g["group_id"].as_str() == Some(dgid.as_str()))?
+                .clone();
+            if g["dm"] == json!(true) {
+                Some(())
+            } else {
+                None
+            }
+        },
+    );
 
     // A sends a secret; B reads it decrypted
     call(
@@ -616,13 +686,27 @@ fn e2e_dm_encrypted_end_to_end() {
         "chat.send",
         json!({"group_id": dgid, "text": "secret hello"}),
     );
-    wait_until(&[&a, &b], T, || {
-        if texts(&b, &dgid).contains(&"secret hello".to_string()) {
-            Some(())
-        } else {
-            None
-        }
-    });
+    wait_dbg(
+        &[&a, &b],
+        T,
+        "B must see the decrypted DM text",
+        || {
+            format!(
+                "{}{}\nA dm texts={:?}\nB dm texts={:?}",
+                dump_node(&a, "A"),
+                dump_node(&b, "B"),
+                texts(&a, &dgid),
+                texts(&b, &dgid)
+            )
+        },
+        || {
+            if texts(&b, &dgid).contains(&"secret hello".to_string()) {
+                Some(())
+            } else {
+                None
+            }
+        },
+    );
     // and A's own view decrypts too
     assert!(texts(&a, &dgid).contains(&"secret hello".to_string()));
 
