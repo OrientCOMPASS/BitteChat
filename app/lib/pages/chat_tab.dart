@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../core/api.dart';
+import '../core/intent.dart';
 import '../models.dart';
 import '../widgets/avatar.dart';
 import '../widgets/time_fmt.dart';
@@ -26,6 +27,7 @@ class _ChatTabState extends State<ChatTab> {
   List<GroupSummary> _groups = [];
   StreamSubscription<CoreEvent>? _sub;
   Timer? _refreshTimer;
+  VoidCallback? _magnetListener;
 
   @override
   void initState() {
@@ -37,10 +39,20 @@ class _ChatTabState extends State<ChatTab> {
     // light polling keeps previews fresh even without events
     _refreshTimer =
         Timer.periodic(const Duration(seconds: 10), (_) => _reload());
+    _magnetListener = () {
+      final m = pendingMagnet.value;
+      if (m == null || m.isEmpty) return;
+      pendingMagnet.value = null;
+      _joinGroup(initial: m);
+    };
+    pendingMagnet.addListener(_magnetListener!);
   }
 
   @override
   void dispose() {
+    if (_magnetListener != null) {
+      pendingMagnet.removeListener(_magnetListener!);
+    }
     _sub?.cancel();
     _refreshTimer?.cancel();
     super.dispose();
@@ -80,7 +92,7 @@ class _ChatTabState extends State<ChatTab> {
     }
   }
 
-  Future<void> _joinGroup() async {
+  Future<void> _joinGroup({String initial = ''}) async {
     final magnet = await _promptText(
       context,
       title: '加入群聊',
@@ -89,6 +101,7 @@ class _ChatTabState extends State<ChatTab> {
       confirm: '加入',
       multiline: true,
       pasteButton: true,
+      initial: initial,
     );
     if (magnet == null || magnet.trim().isEmpty) return;
     try {
@@ -386,8 +399,9 @@ Future<String?> _promptText(
   String confirm = '确定',
   bool multiline = false,
   bool pasteButton = false,
+  String initial = '',
 }) async {
-  final controller = TextEditingController();
+  final controller = TextEditingController(text: initial);
   return showDialog<String>(
     context: context,
     builder: (ctx) => AlertDialog(

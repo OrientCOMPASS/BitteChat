@@ -23,10 +23,18 @@ class _RssTabState extends State<RssTab> {
   StreamSubscription<CoreEvent>? _sub;
   Timer? _pollTimer;
 
+  static bool _initialRefreshDone = false;
+
   @override
   void initState() {
     super.initState();
     _reload();
+    if (!_initialRefreshDone && _api.available) {
+      _initialRefreshDone = true;
+      try {
+        _api.rssRefresh();
+      } catch (_) {}
+    }
     _sub = _api.events.listen((e) {
       if (e.isRssUpdated) _reload();
     });

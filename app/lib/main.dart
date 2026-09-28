@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 
 import 'core/api.dart';
+import 'core/intent.dart';
 import 'pages/home.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await BitteApi.init();
+  bindIntentChannel();
   runApp(const BitteChatApp());
 }
 

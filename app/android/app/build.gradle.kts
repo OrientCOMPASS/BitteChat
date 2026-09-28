@@ -34,6 +34,13 @@ android {
         versionName = flutter.versionName
     }
 
+    packaging {
+        jniLibs {
+            // native core only ships for arm64-v8a + x86_64
+            excludes += setOf("lib/armeabi-v7a/**")
+        }
+    }
+
     buildTypes {
         release {
             // TODO: Add your own signing config for the release build.
