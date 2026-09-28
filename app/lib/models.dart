@@ -249,11 +249,12 @@ class TorrentInfo {
     required this.magnet,
     required this.savePath,
     this.groupName = '',
+    this.groupId = '',
   });
 
   final String infohash;
   final String name;
-  final int kind; // 0 normal, 1 group manifest, 2 chat attachment, 3 rss
+  final int kind; // 0 normal, 1 DM manifest, 2 chat attachment, 3 rss
   final double progress;
   final int totalBytes;
   final int downloadRate;
@@ -267,6 +268,9 @@ class TorrentInfo {
   final String magnet;
   final String savePath;
   final String groupName;
+
+  /// active chat room bound to this torrent (== infohash for torrent rooms)
+  final String groupId;
 
   bool get isChatInternal => kind == 1;
 
@@ -287,6 +291,7 @@ class TorrentInfo {
         magnet: _s(j, 'magnet'),
         savePath: _s(j, 'save_path'),
         groupName: _s(j, 'group_name'),
+        groupId: _s(j, 'group_id'),
       );
 }
 
@@ -311,6 +316,30 @@ class PeerInfo {
         client: _s(j, 'client'),
         progress: _d(j, 'progress'),
         chatCapable: _b(j, 'chat_capable'),
+      );
+}
+
+class TrackerInfo {
+  TrackerInfo({
+    required this.url,
+    required this.tier,
+    required this.verified,
+    required this.fails,
+    required this.message,
+  });
+
+  final String url;
+  final int tier;
+  final bool verified;
+  final int fails;
+  final String message;
+
+  factory TrackerInfo.fromJson(Map<String, dynamic> j) => TrackerInfo(
+        url: _s(j, 'url'),
+        tier: _i(j, 'tier'),
+        verified: _b(j, 'verified'),
+        fails: _i(j, 'fails'),
+        message: _s(j, 'message'),
       );
 }
 

@@ -159,11 +159,11 @@ class BitteApi extends ChangeNotifier {
         .toList();
   }
 
-  Map<String, dynamic> createGroup(String name) =>
-      call('chat.create_group', {'name': name});
+  Map<String, dynamic> joinGroup(String magnetOrHash) =>
+      call('chat.join_group', {'magnet': magnetOrHash.trim()});
 
-  Map<String, dynamic> joinGroup(String magnet) =>
-      call('chat.join_group', {'magnet': magnet.trim()});
+  Map<String, dynamic> joinDm(String magnet) =>
+      call('chat.join_dm', {'magnet': magnet.trim()});
 
   Map<String, dynamic> startDm(String authorPk) =>
       call('chat.start_dm', {'author_pk': authorPk});
@@ -264,6 +264,39 @@ class BitteApi extends ChangeNotifier {
       return [];
     }
   }
+
+  // ---- trackers ---------------------------------------------------------
+
+  List<String> defaultTrackers() {
+    if (!available) return [];
+    try {
+      final r = call('bt.get_default_trackers');
+      return ((r['trackers'] as List?) ?? []).map((e) => '$e').toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Map<String, dynamic> setDefaultTrackers(List<String> urls) =>
+      call('bt.set_default_trackers', {'trackers': urls});
+
+  List<TrackerInfo> btTrackers(String infohash) {
+    if (!available) return [];
+    try {
+      final r = call('bt.trackers', {'infohash': infohash});
+      return ((r['trackers'] as List?) ?? [])
+          .map((e) => TrackerInfo.fromJson(_asMapSafe(e)))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  void btAddTracker(String infohash, String url) =>
+      call('bt.add_tracker', {'infohash': infohash, 'url': url.trim()});
+
+  void btRemoveTracker(String infohash, String url) =>
+      call('bt.remove_tracker', {'infohash': infohash, 'url': url});
 
   // ---- rss -------------------------------------------------------------
 

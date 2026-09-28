@@ -161,13 +161,13 @@ abstract class AppLocalizations {
   /// No description provided for @noGroups.
   ///
   /// In zh, this message translates to:
-  /// **'还没有群聊'**
+  /// **'还没有种子群聊'**
   String get noGroups;
 
   /// No description provided for @noGroupsHint.
   ///
   /// In zh, this message translates to:
-  /// **'一个 BT 种子就是一个群。\n创建群聊，或粘贴邀请磁力链接加入。'**
+  /// **'一个种子就是一个群聊。\n添加任意 BT 种子（磁力链接 / info hash / 种子文件），即可进入它的聊天室，与同一 swarm 里的其他 BitTorrent 用户交流。'**
   String get noGroupsHint;
 
   /// No description provided for @createGroup.
@@ -371,7 +371,7 @@ abstract class AppLocalizations {
   /// No description provided for @emptyGroupHint.
   ///
   /// In zh, this message translates to:
-  /// **'群刚创建，还没有消息\n说点什么吧 👇'**
+  /// **'还没有消息\n说点什么吧 👇'**
   String get emptyGroupHint;
 
   /// No description provided for @inputHint.
@@ -443,7 +443,7 @@ abstract class AppLocalizations {
   /// No description provided for @copiedInvite.
   ///
   /// In zh, this message translates to:
-  /// **'已复制：对方在聊天页「加入群聊」粘贴即可'**
+  /// **'已复制：对方添加这个种子即可进入同一群聊'**
   String get copiedInvite;
 
   /// No description provided for @signatureInfo.
@@ -581,7 +581,7 @@ abstract class AppLocalizations {
   /// No description provided for @leaveGroupHint.
   ///
   /// In zh, this message translates to:
-  /// **'将停止做种群清单，本地聊天记录默认保留。'**
+  /// **'将停止做种频道清单，本地聊天记录默认保留。'**
   String get leaveGroupHint;
 
   /// No description provided for @leave.
@@ -665,7 +665,7 @@ abstract class AppLocalizations {
   /// No description provided for @addMagnet.
   ///
   /// In zh, this message translates to:
-  /// **'添加磁力链接'**
+  /// **'添加种子'**
   String get addMagnet;
 
   /// No description provided for @importTorrent.
@@ -1499,13 +1499,13 @@ abstract class AppLocalizations {
   /// No description provided for @fabGroup.
   ///
   /// In zh, this message translates to:
-  /// **'群聊'**
+  /// **'种子群聊'**
   String get fabGroup;
 
   /// No description provided for @inviteLink.
   ///
   /// In zh, this message translates to:
-  /// **'邀请链接'**
+  /// **'邀请链接（频道磁力）'**
   String get inviteLink;
 
   /// No description provided for @copyInviteLink.
@@ -1645,6 +1645,162 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'更换头像'**
   String get setAvatar;
+
+  /// No description provided for @enterRoomTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'进入种子群聊'**
+  String get enterRoomTitle;
+
+  /// No description provided for @roomInputLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'磁力链接 / info hash'**
+  String get roomInputLabel;
+
+  /// No description provided for @magnetHashHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'magnet:?xt=urn:btih:… 或 40 位 info hash'**
+  String get magnetHashHint;
+
+  /// No description provided for @enterRoom.
+  ///
+  /// In zh, this message translates to:
+  /// **'进入群聊'**
+  String get enterRoom;
+
+  /// No description provided for @enterRoomNew.
+  ///
+  /// In zh, this message translates to:
+  /// **'进入该种子的群聊'**
+  String get enterRoomNew;
+
+  /// No description provided for @addTorrentRoom.
+  ///
+  /// In zh, this message translates to:
+  /// **'添加种子进入群聊'**
+  String get addTorrentRoom;
+
+  /// No description provided for @addTorrentRoomDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'粘贴磁力链接或 info hash：添加种子并进入它的聊天室'**
+  String get addTorrentRoomDesc;
+
+  /// No description provided for @importTorrentRoomDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择 .torrent 文件：添加任务并进入它的群聊'**
+  String get importTorrentRoomDesc;
+
+  /// No description provided for @roomEntered.
+  ///
+  /// In zh, this message translates to:
+  /// **'已进入群聊「{name}」'**
+  String roomEntered(Object name);
+
+  /// No description provided for @torrentRoomKind.
+  ///
+  /// In zh, this message translates to:
+  /// **'种子群聊 · 该种子的所有 BitTorrent 用户共享'**
+  String get torrentRoomKind;
+
+  /// No description provided for @dmChannelKind.
+  ///
+  /// In zh, this message translates to:
+  /// **'端到端加密私聊频道'**
+  String get dmChannelKind;
+
+  /// No description provided for @infohashLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'种子 infohash'**
+  String get infohashLabel;
+
+  /// No description provided for @roomInviteTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'邀请 = 分享这个种子'**
+  String get roomInviteTitle;
+
+  /// No description provided for @roomInviteHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'把磁力链接或 info hash 发给别人，对方添加该种子后即可进入同一群聊'**
+  String get roomInviteHint;
+
+  /// No description provided for @leaveRoomHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'只解除群聊绑定，种子任务保留在种子页。'**
+  String get leaveRoomHint;
+
+  /// No description provided for @network.
+  ///
+  /// In zh, this message translates to:
+  /// **'网络'**
+  String get network;
+
+  /// No description provided for @defaultTrackers.
+  ///
+  /// In zh, this message translates to:
+  /// **'默认 Tracker 列表'**
+  String get defaultTrackers;
+
+  /// No description provided for @defaultTrackersNone.
+  ///
+  /// In zh, this message translates to:
+  /// **'未设置（仅 DHT/PEX 发现节点）'**
+  String get defaultTrackersNone;
+
+  /// No description provided for @defaultTrackersSet.
+  ///
+  /// In zh, this message translates to:
+  /// **'已设置 {n} 个 · 自动附加到新任务'**
+  String defaultTrackersSet(Object n);
+
+  /// No description provided for @defaultTrackersHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'每行一个 announce 地址（http/https/udp）。会自动附加到每个新种子（含聊天附件）并立即应用到现有任务；在 DHT 不畅的网络里能显著提升连通性。'**
+  String get defaultTrackersHint;
+
+  /// No description provided for @trackersApplied.
+  ///
+  /// In zh, this message translates to:
+  /// **'已保存并应用到 {n} 个任务'**
+  String trackersApplied(Object n);
+
+  /// No description provided for @trackers.
+  ///
+  /// In zh, this message translates to:
+  /// **'Tracker（{n}）'**
+  String trackers(Object n);
+
+  /// No description provided for @addTracker.
+  ///
+  /// In zh, this message translates to:
+  /// **'添加 Tracker'**
+  String get addTracker;
+
+  /// No description provided for @trackerUrl.
+  ///
+  /// In zh, this message translates to:
+  /// **'Tracker 地址'**
+  String get trackerUrl;
+
+  /// No description provided for @noTrackersHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'无 tracker：依赖 DHT/PEX 发现节点。可在设置 → 网络 中配置默认 Tracker 列表'**
+  String get noTrackersHint;
+
+  /// No description provided for @trackerFails.
+  ///
+  /// In zh, this message translates to:
+  /// **'失败 {n} 次'**
+  String trackerFails(Object n);
 }
 
 class _AppLocalizationsDelegate

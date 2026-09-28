@@ -19,6 +19,7 @@ class VideoPlayerPage extends StatefulWidget {
 class _VideoPlayerPageState extends State<VideoPlayerPage> {
   VideoPlayerController? _controller;
   bool _failed = false;
+  String? _error;
 
   @override
   void initState() {
@@ -34,15 +35,36 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
         await c.dispose();
         return;
       }
+      c.addListener(_onValue);
       setState(() => _controller = c);
       await c.play();
-    } catch (_) {
-      if (mounted) setState(() => _failed = true);
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _failed = true;
+          _error = '$e';
+        });
+      }
+    }
+  }
+
+  void _onValue() {
+    final c = _controller;
+    if (c == null || !mounted) return;
+    final err = c.value.errorDescription;
+    if (err != null && err.isNotEmpty && !_failed) {
+      setState(() {
+        _failed = true;
+        _error = err;
+      });
+    } else if (!_failed) {
+      setState(() {});
     }
   }
 
   @override
   void dispose() {
+    _controller?.removeListener(_onValue);
     _controller?.dispose();
     super.dispose();
   }
@@ -59,8 +81,23 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
       ),
       body: _failed
           ? Center(
-              child:
-                  Text(L.t.videoFail, style: TextStyle(color: Colors.white70)))
+              child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(L.t.videoFail, style: TextStyle(color: Colors.white70)),
+                  if (_error != null) ...[
+                    SizedBox(height: 8),
+                    Text(_error!,
+                        textAlign: TextAlign.center,
+                        maxLines: 4,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: Colors.white38, fontSize: 12)),
+                  ],
+                ],
+              ),
+            ))
           : c == null
               ? Center(child: CircularProgressIndicator())
               : Center(

@@ -78,7 +78,7 @@ class _HomePageState extends State<HomePage> {
         index: _index,
         children: [
           ChatTab(onOpenSettings: _openSettings, prefs: widget.prefs),
-          const BtTab(),
+          BtTab(prefs: widget.prefs),
           const RssTab(),
         ],
       ),

@@ -1,7 +1,9 @@
 // On-device (emulator or real) end-to-end test against the REAL libtorrent
-// engine and the REAL DHT: boots the core, creates a group, sends a message
-// and waits for the BEP44 put confirmation, then verifies the UI renders on
-// top of the live core.
+// engine and the REAL DHT: boots the core, creates + seeds a real torrent,
+// enters its chat room by BARE INFOHASH (a torrent IS a room), sends a
+// message and waits for the BEP44 put confirmation, exercises the tracker
+// settings against the live session, then verifies the UI renders on top of
+// the live core.
 //
 // Run: flutter test integration_test/app_test.dart -d <device>
 
@@ -19,7 +21,7 @@ void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
   testWidgets(
-    'real libtorrent core: group + message + DHT confirmation + UI',
+    'real libtorrent core: torrent room + message + DHT confirmation + UI',
     (tester) async {
       await BitteApi.init();
       final api = BitteApi.instance;
@@ -31,15 +33,29 @@ void main() {
       final info = api.sysInfo();
       expect(info['engine'], 'libtorrent');
 
-      // full chat pipeline: create group -> send -> DHT immutable put confirm
+      // create + seed a real torrent: its infohash IS the chat room id
       final stamp = DateTime.now().millisecondsSinceEpoch;
-      final groupName = 'Emulator IT $stamp';
-      final created = api.createGroup(groupName);
-      final gid = created['group_id'] as String;
-      expect(gid.length, 40);
+      final f = File('${api.dataDir}/EmulatorIT$stamp.bin');
+      await f.writeAsString('integration payload $stamp');
+      final seeded = api.call('bt.create_seed', {'path': f.path});
+      final ih = seeded['infohash'] as String;
+      expect(ih.length, 40);
+      expect((seeded['magnet'] as String).startsWith('magnet:?xt=urn:btih:'),
+          isTrue);
+
+      // enter the room with a BARE INFOHASH (hash-only input support)
+      final room = api.joinGroup(ih);
+      final gid = room['group_id'] as String;
+      expect(gid, ih);
+
+      // default trackers apply to the live torrent through the C++ ABI
+      api.setDefaultTrackers(['udp://tracker.opentrackr.org:1337/announce']);
+      final tr = api.call('bt.trackers', {'infohash': ih});
       expect(
-        (created['invite_magnet'] as String).startsWith('magnet:?xt=urn:btih:'),
+        ((tr['trackers'] as List?) ?? [])
+            .any((t) => '${t['url']}'.contains('opentrackr')),
         isTrue,
+        reason: 'default tracker must be registered on the live session',
       );
 
       api.sendText(gid, 'integration hello');
@@ -56,6 +72,14 @@ void main() {
       expect(confirmed, isTrue,
           reason: 'sent message must reach DHT-confirmed state');
 
+      // the torrent stays a regular BT task with the room bound to it
+      final torrents = api.torrents();
+      expect(
+        torrents.any((t) => t.infohash == ih && t.groupId == ih),
+        isTrue,
+        reason: 'room torrent must stay visible on the BT page',
+      );
+
       // UI renders on top of the live core
       final prefs =
           UiPrefs(File('${BitteApi.instance.dataDir}/ui_prefs_it.json'));
@@ -64,8 +88,9 @@ void main() {
       // locale-independent: the nav bar exists with three destinations
       expect(find.byType(NavigationBar), findsOneWidget);
       expect(find.byType(NavigationDestination), findsNWidgets(3));
-      // the freshly created group shows up in the chat list
-      expect(find.textContaining('Emulator IT'), findsWidgets);
+      // the freshly entered room shows up in the chat list (named after the
+      // torrent, i.e. the seeded file)
+      expect(find.textContaining('EmulatorIT'), findsWidgets);
     },
     timeout: const Timeout(Duration(minutes: 5)),
   );

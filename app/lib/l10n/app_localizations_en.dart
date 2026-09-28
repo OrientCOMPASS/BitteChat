@@ -41,11 +41,11 @@ class AppLocalizationsEn extends AppLocalizations {
       'Native core unavailable: install the CI-built APK';
 
   @override
-  String get noGroups => 'No groups yet';
+  String get noGroups => 'No torrent rooms yet';
 
   @override
   String get noGroupsHint =>
-      'One torrent = one group.\nCreate a group or join with an invite magnet.';
+      'Every torrent is a chat room.\nAdd any BT torrent (magnet link / info hash / .torrent file) to enter its room and talk with the other BitTorrent users in the same swarm.';
 
   @override
   String get createGroup => 'Create group';
@@ -157,7 +157,7 @@ class AppLocalizationsEn extends AppLocalizations {
       'Every message is signed and links its parents; tampering is rejected by the network';
 
   @override
-  String get emptyGroupHint => 'The group is new and empty\nSay something 👇';
+  String get emptyGroupHint => 'No messages yet\nSay something 👇';
 
   @override
   String get inputHint =>
@@ -198,7 +198,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get copiedId => 'Message ID copied';
 
   @override
-  String get copiedInvite => 'Copied: peer can paste it via Join group';
+  String get copiedInvite =>
+      'Copied: anyone adding this torrent enters the same room';
 
   @override
   String get signatureInfo => 'Signature info';
@@ -286,7 +287,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get leaveGroupHint =>
-      'Stops seeding the manifest; local history is kept.';
+      'Stops seeding the channel manifest; local history is kept.';
 
   @override
   String get leave => 'Leave';
@@ -331,7 +332,7 @@ class AppLocalizationsEn extends AppLocalizations {
       'Use the + button to add magnets or .torrent files';
 
   @override
-  String get addMagnet => 'Add magnet link';
+  String get addMagnet => 'Add torrent';
 
   @override
   String get importTorrent => 'Import .torrent file';
@@ -791,10 +792,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get errTextEmpty => 'Empty or too long (≤32KB)';
 
   @override
-  String get fabGroup => 'Groups';
+  String get fabGroup => 'Torrent room';
 
   @override
-  String get inviteLink => 'Invite link';
+  String get inviteLink => 'Invite link (channel magnet)';
 
   @override
   String get copyInviteLink => 'Copy invite magnet';
@@ -878,4 +879,100 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get setAvatar => 'Change avatar';
+
+  @override
+  String get enterRoomTitle => 'Enter torrent chat room';
+
+  @override
+  String get roomInputLabel => 'Magnet link / info hash';
+
+  @override
+  String get magnetHashHint =>
+      'magnet:?xt=urn:btih:… or a bare 40-hex info hash';
+
+  @override
+  String get enterRoom => 'Enter chat room';
+
+  @override
+  String get enterRoomNew => 'Enter this torrent\'s chat room';
+
+  @override
+  String get addTorrentRoom => 'Add torrent & enter chat';
+
+  @override
+  String get addTorrentRoomDesc =>
+      'Paste a magnet link or info hash: adds the torrent and opens its chat room';
+
+  @override
+  String get importTorrentRoomDesc =>
+      'Pick a .torrent file: adds the task and enters its chat room';
+
+  @override
+  String roomEntered(Object name) {
+    return 'Entered chat room “$name”';
+  }
+
+  @override
+  String get torrentRoomKind =>
+      'Torrent chat room · shared with every BitTorrent peer of this torrent';
+
+  @override
+  String get dmChannelKind => 'End-to-end encrypted DM channel';
+
+  @override
+  String get infohashLabel => 'Torrent infohash';
+
+  @override
+  String get roomInviteTitle => 'Invite = share this torrent';
+
+  @override
+  String get roomInviteHint =>
+      'Send the magnet link or info hash to anyone; adding the torrent enters the same room';
+
+  @override
+  String get leaveRoomHint =>
+      'Only unbinds the chat room; the torrent task stays on the Torrents page.';
+
+  @override
+  String get network => 'Network';
+
+  @override
+  String get defaultTrackers => 'Default trackers';
+
+  @override
+  String get defaultTrackersNone => 'Not set (DHT/PEX discovery only)';
+
+  @override
+  String defaultTrackersSet(Object n) {
+    return '$n configured · auto-applied to new tasks';
+  }
+
+  @override
+  String get defaultTrackersHint =>
+      'One announce URL per line (http/https/udp). Auto-appended to every new torrent (chat attachments included) and applied to existing tasks immediately; greatly improves connectivity where DHT alone struggles.';
+
+  @override
+  String trackersApplied(Object n) {
+    return 'Saved and applied to $n tasks';
+  }
+
+  @override
+  String trackers(Object n) {
+    return 'Trackers ($n)';
+  }
+
+  @override
+  String get addTracker => 'Add tracker';
+
+  @override
+  String get trackerUrl => 'Tracker URL';
+
+  @override
+  String get noTrackersHint =>
+      'No trackers: relying on DHT/PEX. Configure default trackers under Settings → Network';
+
+  @override
+  String trackerFails(Object n) {
+    return '$n fails';
+  }
 }

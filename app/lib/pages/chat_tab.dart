@@ -1,7 +1,8 @@
-// 聊天页：群组列表 + 创建/加入群聊
+// 聊天页：种子群聊列表 —— 一个种子就是一个群，添加种子即进入它的聊天室
 
 import 'dart:async';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -47,7 +48,7 @@ class _ChatTabState extends State<ChatTab> {
       final m = pendingMagnet.value;
       if (m == null || m.isEmpty) return;
       pendingMagnet.value = null;
-      _joinGroup(initial: m);
+      _enterRoomDirect(m);
     };
     pendingMagnet.addListener(_magnetListener!);
   }
@@ -78,62 +79,93 @@ class _ChatTabState extends State<ChatTab> {
     _reload();
   }
 
-  Future<void> _createGroup() async {
-    final name = await _promptText(
-      context,
-      title: L.t.createGroup,
-      label: L.t.groupName,
-      hint: L.t.groupNameHint,
-      confirm: L.t.create,
-    );
-    if (name == null || name.trim().isEmpty) return;
-    if (!mounted) return;
+  Future<GroupSummary?> _summaryFor(String gid) async {
     try {
-      final r = _api.createGroup(name.trim());
-      _reload();
-      await _showInviteSheet(r['invite_magnet'] as String? ?? '');
-    } catch (e) {
-      if (mounted) showError(context, e);
-    }
+      final groups = _api.chatGroups();
+      for (final g in groups) {
+        if (g.id == gid) return g;
+      }
+    } catch (_) {}
+    return null;
   }
 
-  Future<void> _joinGroup({String initial = ''}) async {
-    final magnet = await _promptText(
+  Future<void> _openRoomById(String gid) async {
+    final summary = await _summaryFor(gid) ??
+        GroupSummary(
+          id: gid,
+          name: '${L.t.groupChat} ${gid.substring(0, 8)}',
+          avatarB64: '',
+          inviteMagnet: 'magnet:?xt=urn:btih:$gid',
+          unread: 0,
+          lastTs: 0,
+          online: 0,
+          syncing: false,
+          messages: 0,
+          missing: 0,
+        );
+    if (!mounted) return;
+    await _openGroup(summary);
+  }
+
+  /// Prompt for a magnet link / bare infohash, add the torrent and enter
+  /// its chat room right away.
+  Future<void> _enterRoom() async {
+    final input = await _promptText(
       context,
-      title: L.t.joinGroup,
-      label: L.t.inviteMagnet,
-      hint: L.t.magnetHint,
-      confirm: L.t.join,
+      title: L.t.enterRoomTitle,
+      label: L.t.roomInputLabel,
+      hint: L.t.magnetHashHint,
+      confirm: L.t.enterRoom,
       multiline: true,
       pasteButton: true,
-      initial: initial,
     );
-    if (magnet == null || magnet.trim().isEmpty) return;
+    if (input == null || input.trim().isEmpty) return;
+    await _enterRoomDirect(input.trim());
+  }
+
+  Future<void> _enterRoomDirect(String input) async {
     try {
-      final r = _api.joinGroup(magnet.trim());
-      if (!mounted) return;
-      if (r['already'] == true) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(L.t.alreadyInGroup)));
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(L.t.fetchingManifest),
-          duration: Duration(seconds: 4),
-        ));
-      }
+      final r = _api.joinGroup(input);
+      final gid = r['group_id'] as String? ?? '';
       _reload();
+      if (gid.isEmpty) return;
+      if (r['dm'] == true) {
+        // pasted a DM channel invite — open the DM
+        await _openRoomById(gid);
+        return;
+      }
+      final already = r['already'] == true;
+      if (mounted && !already) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(L.t.roomEntered('${r['name'] ?? ''}'))),
+        );
+      }
+      await _openRoomById(gid);
     } catch (e) {
       if (mounted) showError(context, e);
     }
   }
 
-  Future<void> _showInviteSheet(String magnet) async {
-    if (!mounted) return;
-    await showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (ctx) => InviteSheet(magnet: magnet),
-    );
+  /// Import a .torrent file: it becomes a BT task and we enter its room.
+  Future<void> _importTorrentRoom() async {
+    try {
+      final files = await FilePicker.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['torrent'],
+      );
+      if (files.isEmpty) return;
+      final file = files.single;
+      final bytes = await file.xFile.readAsBytes();
+      if (!mounted) return;
+      try {
+        final added = _api.btAddFile(bytes, name: file.name);
+        final ih = added['infohash'] as String? ?? '';
+        if (ih.isEmpty) return;
+        await _enterRoomDirect(ih);
+      } catch (e) {
+        if (mounted) showError(context, e);
+      }
+    } catch (_) {}
   }
 
   @override
@@ -158,14 +190,14 @@ class _ChatTabState extends State<ChatTab> {
                   subtitle: L.t.noGroupsHint,
                   actions: [
                     FilledButton.icon(
-                      onPressed: _createGroup,
-                      icon: Icon(Icons.add),
-                      label: Text(L.t.createGroup),
+                      onPressed: _enterRoom,
+                      icon: Icon(Icons.add_link),
+                      label: Text(L.t.addTorrentRoom),
                     ),
                     OutlinedButton.icon(
-                      onPressed: _joinGroup,
-                      icon: Icon(Icons.link),
-                      label: Text(L.t.joinGroup),
+                      onPressed: _importTorrentRoom,
+                      icon: Icon(Icons.upload_file),
+                      label: Text(L.t.importTorrent),
                     ),
                   ],
                 )
@@ -203,21 +235,21 @@ class _ChatTabState extends State<ChatTab> {
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              leading: Icon(Icons.group_add),
-              title: Text(L.t.createGroup),
-              subtitle: Text(L.t.createGroupDesc),
+              leading: Icon(Icons.add_link),
+              title: Text(L.t.addTorrentRoom),
+              subtitle: Text(L.t.addTorrentRoomDesc),
               onTap: () {
                 Navigator.pop(ctx);
-                _createGroup();
+                _enterRoom();
               },
             ),
             ListTile(
-              leading: Icon(Icons.add_link),
-              title: Text(L.t.joinGroup),
-              subtitle: Text(L.t.joinViaPaste),
+              leading: Icon(Icons.upload_file),
+              title: Text(L.t.importTorrent),
+              subtitle: Text(L.t.importTorrentRoomDesc),
               onTap: () {
                 Navigator.pop(ctx);
-                _joinGroup();
+                _importTorrentRoom();
               },
             ),
             SizedBox(height: 8),

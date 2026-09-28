@@ -29,6 +29,7 @@ class _SettingsPageState extends State<SettingsPage> {
   Map<String, dynamic> _info = {};
   List<FilterRule> _rules = [];
   List<IdentityInfo> _identities = [];
+  List<String> _defaultTrackers = [];
 
   @override
   void initState() {
@@ -43,7 +44,67 @@ class _SettingsPageState extends State<SettingsPage> {
       _info = _api.sysInfo();
       _rules = _api.filterRules();
       _identities = _api.identities();
+      _defaultTrackers = _api.defaultTrackers();
     });
+  }
+
+  Future<void> _editDefaultTrackers() async {
+    final controller = TextEditingController(text: _defaultTrackers.join('\n'));
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(L.t.defaultTrackers),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(L.t.defaultTrackersHint,
+                  style: Theme.of(ctx)
+                      .textTheme
+                      .bodySmall
+                      ?.copyWith(color: Theme.of(ctx).colorScheme.outline)),
+              const SizedBox(height: 12),
+              TextField(
+                controller: controller,
+                maxLines: 8,
+                style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+                decoration: InputDecoration(
+                  hintText:
+                      'udp://tracker.opentrackr.org:1337/announce\nhttps://tracker.example.org/announce',
+                  border: const OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(L.t.cancel)),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true), child: Text(L.t.save)),
+        ],
+      ),
+    );
+    if (saved != true) return;
+    final urls = controller.text
+        .split('\n')
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .toList();
+    try {
+      final r = _api.setDefaultTrackers(urls);
+      _reload();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content:
+                Text(L.t.trackersApplied((r['applied_to'] as int?) ?? 0))));
+      }
+    } catch (e) {
+      if (mounted) showError(context, e);
+    }
   }
 
   void _saveRules() {
@@ -619,6 +680,26 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
             ),
           const Divider(),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Text(L.t.network, style: theme.textTheme.titleSmall),
+          ),
+          ListTile(
+            leading: Icon(Icons.hub_outlined),
+            title: Text(L.t.defaultTrackers),
+            subtitle: Text(_defaultTrackers.isEmpty
+                ? L.t.defaultTrackersNone
+                : L.t.defaultTrackersSet(_defaultTrackers.length)),
+            trailing: Icon(Icons.edit_outlined, size: 18),
+            onTap: _editDefaultTrackers,
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Text(L.t.defaultTrackersHint,
+                style: theme.textTheme.bodySmall
+                    ?.copyWith(color: theme.colorScheme.outline)),
+          ),
+          const Divider(),
           ListTile(
             leading: Icon(Icons.info_outline),
             title: Text(L.t.coreVersion),
@@ -646,7 +727,7 @@ class _SettingsPageState extends State<SettingsPage> {
           AboutListTile(
             icon: Icon(Icons.favorite_outline),
             applicationName: 'BitteChat',
-            applicationVersion: '0.4.5',
+            applicationVersion: '${_info['version'] ?? '0.5.0'}',
             aboutBoxChildren: [
               Text(
                 '${L.t.aboutDesc}${L.t.aboutDesc2}'

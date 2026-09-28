@@ -2,7 +2,6 @@
 
 import 'dart:async';
 import 'dart:io';
-import 'dart:ui';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -376,8 +375,8 @@ class _ChatViewPageState extends State<ChatViewPage> {
       ),
       body: Stack(
         children: [
-          if (widget.prefs?.wallpaperPath != null)
-            _Wallpaper(prefs: widget.prefs!),
+          // the app-wide wallpaper is rendered globally (see main.dart),
+          // transparent scaffolds let it show through everywhere
           Column(
             children: [
               Expanded(
@@ -1083,6 +1082,9 @@ class _GroupDetailSheetState extends State<GroupDetailSheet> {
     final peers = (d['peers'] as List?) ?? [];
     final heads = (d['heads'] as List?) ?? [];
     final creator = _asMap(d['creator']);
+    final kind = (d['kind'] as String?) ?? 'torrent';
+    final isDm = kind == 'dm';
+    final creatorName = (creator['name'] as String?) ?? '';
     return DraggableScrollableSheet(
       expand: false,
       initialChildSize: 0.72,
@@ -1105,8 +1107,11 @@ class _GroupDetailSheetState extends State<GroupDetailSheet> {
                     Text((group['name'] as String?) ?? L.t.groupChat,
                         style: theme.textTheme.titleMedium),
                     Text(
-                      L.t.createdBy(formatFull((group['created'] as int?) ?? 0),
-                          (creator['name'] as String?) ?? '?'),
+                      creatorName.isNotEmpty
+                          ? L.t.createdBy(
+                              formatFull((group['created'] as int?) ?? 0),
+                              creatorName)
+                          : (isDm ? L.t.dmChannelKind : L.t.torrentRoomKind),
                       style: theme.textTheme.bodySmall
                           ?.copyWith(color: theme.colorScheme.outline),
                     ),
@@ -1126,10 +1131,18 @@ class _GroupDetailSheetState extends State<GroupDetailSheet> {
           _StatRow(label: L.t.headSeq, value: '${d['head_seq'] ?? 0}'),
           _StatRow(label: L.t.members, value: '${peers.length}'),
           _StatRow(
-              label: L.t.manifestTorrent,
-              value: shortHash('${d['manifest_infohash'] ?? ''}', 16)),
+              label: isDm ? L.t.manifestTorrent : L.t.infohashLabel,
+              value: shortHash(
+                  '${d['infohash'] ?? d['manifest_infohash'] ?? ''}', 16)),
           SizedBox(height: 16),
-          Text(L.t.inviteLink, style: theme.textTheme.titleSmall),
+          Text(isDm ? L.t.inviteLink : L.t.roomInviteTitle,
+              style: theme.textTheme.titleSmall),
+          if (!isDm) ...[
+            SizedBox(height: 4),
+            Text(L.t.roomInviteHint,
+                style: theme.textTheme.bodySmall
+                    ?.copyWith(color: theme.colorScheme.outline)),
+          ],
           SizedBox(height: 8),
           if (magnet.isNotEmpty)
             Center(
@@ -1232,7 +1245,7 @@ class _GroupDetailSheetState extends State<GroupDetailSheet> {
                 context: context,
                 builder: (ctx) => AlertDialog(
                   title: Text(L.t.leaveGroupQ),
-                  content: Text(L.t.leaveGroupHint),
+                  content: Text(isDm ? L.t.leaveGroupHint : L.t.leaveRoomHint),
                   actions: [
                     TextButton(
                         onPressed: () => Navigator.pop(ctx, false),
@@ -1283,92 +1296,6 @@ class _StatRow extends StatelessWidget {
           Text(value, style: theme.textTheme.bodyMedium),
         ],
       ),
-    );
-  }
-}
-
-/// 建群后展示的邀请弹层（二维码 + 复制）
-class InviteSheet extends StatelessWidget {
-  const InviteSheet({super.key, required this.magnet});
-  final String magnet;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(L.t.groupCreated, style: theme.textTheme.titleMedium),
-          SizedBox(height: 8),
-          Text(
-            L.t.inviteHint,
-            textAlign: TextAlign.center,
-            style: theme.textTheme.bodySmall
-                ?.copyWith(color: theme.colorScheme.outline),
-          ),
-          SizedBox(height: 16),
-          if (magnet.isNotEmpty)
-            Container(
-              padding: const EdgeInsets.all(10),
-              color: Colors.white,
-              child: QrImageView(
-                  data: magnet, size: 200, backgroundColor: Colors.white),
-            ),
-          SizedBox(height: 12),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              OutlinedButton.icon(
-                icon: Icon(Icons.copy, size: 18),
-                label: Text(L.t.copyLink),
-                onPressed: () async {
-                  await Clipboard.setData(ClipboardData(text: magnet));
-                  if (context.mounted) {
-                    Navigator.pop(context);
-                  }
-                },
-              ),
-              SizedBox(width: 12),
-              FilledButton(
-                onPressed: () => Navigator.pop(context),
-                child: Text(L.t.done),
-              ),
-            ],
-          ),
-          SizedBox(height: 16),
-        ],
-      ),
-    );
-  }
-}
-
-class _Wallpaper extends StatelessWidget {
-  const _Wallpaper({required this.prefs});
-
-  final UiPrefs prefs;
-
-  @override
-  Widget build(BuildContext context) {
-    final path = prefs.wallpaperPath;
-    if (path == null) return const SizedBox.shrink();
-    Widget img = Image.file(
-      File(path),
-      fit: BoxFit.cover,
-      width: double.infinity,
-      height: double.infinity,
-      errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-    );
-    if (prefs.wallpaperBlur) {
-      img = ImageFiltered(
-        imageFilter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
-        child: img,
-      );
-    }
-    return Positioned.fill(
-      child:
-          Opacity(opacity: prefs.wallpaperOpacity.clamp(0.03, 1.0), child: img),
     );
   }
 }

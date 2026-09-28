@@ -1,4 +1,5 @@
-// BT 页：种子列表 + 添加磁力链 + 统计
+// BT 页：种子列表 + 添加磁力链/infohash + Tracker 管理 + 统计
+// 一个种子就是一个群聊：任意任务可直接进入它的聊天室。
 
 import 'dart:async';
 
@@ -7,12 +8,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../core/api.dart';
+import '../core/prefs.dart';
 import '../models.dart';
+import 'chat_view.dart';
 import 'home.dart';
 import '../core/l10n.dart';
 
 class BtTab extends StatefulWidget {
-  const BtTab({super.key});
+  const BtTab({super.key, required this.prefs});
+
+  final UiPrefs prefs;
 
   @override
   State<BtTab> createState() => _BtTabState();
@@ -54,6 +59,38 @@ class _BtTabState extends State<BtTab> {
     } catch (_) {}
   }
 
+  Future<void> _enterChat(TorrentInfo t) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final invite = t.magnet.isNotEmpty ? t.magnet : t.infohash;
+      final r = _api.joinGroup(invite);
+      final gid = r['group_id'] as String? ?? '';
+      if (gid.isEmpty || !mounted) return;
+      GroupSummary? summary;
+      for (final g in _api.chatGroups()) {
+        if (g.id == gid) summary = g;
+      }
+      summary ??= GroupSummary(
+        id: gid,
+        name: (r['name'] as String?) ?? t.name,
+        avatarB64: '',
+        inviteMagnet:
+            invite.startsWith('magnet:') ? invite : 'magnet:?xt=urn:btih:$gid',
+        unread: 0,
+        lastTs: 0,
+        online: 0,
+        syncing: false,
+        messages: 0,
+        missing: 0,
+      );
+      await Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => ChatViewPage(group: summary!, prefs: widget.prefs)));
+      _reload();
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('$e')));
+    }
+  }
+
   Future<void> _addMagnet() async {
     final controller = TextEditingController();
     final magnet = await showDialog<String>(
@@ -65,7 +102,7 @@ class _BtTabState extends State<BtTab> {
           autofocus: true,
           maxLines: 4,
           decoration: InputDecoration(
-            hintText: L.t.magnetHint,
+            hintText: L.t.magnetHashHint,
             border: OutlineInputBorder(),
           ),
         ),
@@ -185,6 +222,7 @@ class _BtTabState extends State<BtTab> {
                     itemBuilder: (_, i) => _TorrentTile(
                       torrent: _torrents[i],
                       onTap: () => _openDetail(_torrents[i]),
+                      onEnterChat: () => _enterChat(_torrents[i]),
                       onControl: (op, {bool deleteFiles = false}) {
                         try {
                           _api.btControl(_torrents[i].infohash, op,
@@ -397,11 +435,13 @@ class _TorrentTile extends StatelessWidget {
     required this.torrent,
     required this.onControl,
     required this.onCopyMagnet,
+    required this.onEnterChat,
     this.onTap,
   });
 
   final TorrentInfo torrent;
   final VoidCallback? onTap;
+  final VoidCallback onEnterChat;
   final void Function(String op, {bool deleteFiles}) onControl;
   final VoidCallback onCopyMagnet;
 
@@ -455,10 +495,20 @@ class _TorrentTile extends StatelessWidget {
                 ? theme.colorScheme.onTertiaryContainer
                 : theme.colorScheme.onPrimaryContainer),
       ),
-      title: Text(t.name,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontWeight: FontWeight.w500)),
+      title: Row(
+        children: [
+          Flexible(
+            child: Text(t.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontWeight: FontWeight.w500)),
+          ),
+          if (t.groupId.isNotEmpty) ...[
+            SizedBox(width: 6),
+            Icon(Icons.forum, size: 14, color: theme.colorScheme.primary),
+          ],
+        ],
+      ),
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -487,6 +537,8 @@ class _TorrentTile extends StatelessWidget {
         onSelected: (op) {
           if (op == 'copy') {
             onCopyMagnet();
+          } else if (op == 'chat') {
+            onEnterChat();
           } else if (op == 'delete') {
             _confirmDelete(context);
           } else {
@@ -494,6 +546,18 @@ class _TorrentTile extends StatelessWidget {
           }
         },
         itemBuilder: (ctx) => [
+          if (t.kind == 0 || t.kind == 3)
+            PopupMenuItem(
+              value: 'chat',
+              child: Row(
+                children: [
+                  Icon(Icons.forum_outlined,
+                      size: 18, color: Theme.of(ctx).colorScheme.primary),
+                  SizedBox(width: 8),
+                  Text(t.groupId.isNotEmpty ? L.t.enterRoom : L.t.enterRoomNew),
+                ],
+              ),
+            ),
           if (t.paused)
             PopupMenuItem(value: 'resume', child: Text(L.t.resume))
           else
@@ -563,6 +627,7 @@ class _TorrentDetailSheetState extends State<TorrentDetailSheet> {
   late final BitteApi _api = BitteApi.instance;
   List<Map<String, dynamic>> _files = [];
   List<PeerInfo> _peers = [];
+  List<TrackerInfo> _trackers = [];
   Timer? _timer;
 
   @override
@@ -583,13 +648,57 @@ class _TorrentDetailSheetState extends State<TorrentDetailSheet> {
     try {
       final f = _api.call('bt.files', {'infohash': widget.infohash});
       final peers = _api.btPeers(widget.infohash);
+      final trackers = _api.btTrackers(widget.infohash);
       setState(() {
         _files = ((f['files'] as List?) ?? [])
             .map((e) => Map<String, dynamic>.from(e as Map))
             .toList();
         _peers = peers;
+        _trackers = trackers;
       });
     } catch (_) {}
+  }
+
+  Future<void> _addTrackerDialog() async {
+    final controller = TextEditingController();
+    final url = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(L.t.addTracker),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: InputDecoration(
+            labelText: L.t.trackerUrl,
+            hintText: 'udp://tracker.example.org:1337/announce',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx), child: Text(L.t.cancel)),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+              child: Text(L.t.add)),
+        ],
+      ),
+    );
+    if (url == null || url.isEmpty) return;
+    try {
+      _api.btAddTracker(widget.infohash, url);
+      _load();
+    } catch (e) {
+      if (mounted) showError(context, e);
+    }
+  }
+
+  Future<void> _removeTracker(TrackerInfo tr) async {
+    try {
+      _api.btRemoveTracker(widget.infohash, tr.url);
+      _load();
+    } catch (e) {
+      if (mounted) showError(context, e);
+    }
   }
 
   @override
@@ -650,6 +759,52 @@ class _TorrentDetailSheetState extends State<TorrentDetailSheet> {
               ),
             );
           }),
+          SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                  child: Text(L.t.trackers(_trackers.length),
+                      style: theme.textTheme.titleSmall)),
+              TextButton.icon(
+                icon: Icon(Icons.add, size: 18),
+                label: Text(L.t.addTracker),
+                onPressed: _addTrackerDialog,
+              ),
+            ],
+          ),
+          if (_trackers.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Text(L.t.noTrackersHint,
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: theme.colorScheme.outline)),
+            ),
+          ..._trackers.map((tr) => ListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(
+                  tr.verified ? Icons.verified_outlined : Icons.hub_outlined,
+                  size: 18,
+                  color: tr.fails > 2
+                      ? theme.colorScheme.error
+                      : theme.colorScheme.primary,
+                ),
+                title: Text(tr.url,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall),
+                subtitle: Text(
+                  'tier ${tr.tier}'
+                  '${tr.fails > 0 ? ' · ${L.t.trackerFails(tr.fails)}' : ''}'
+                  '${tr.message.isNotEmpty ? ' · ${tr.message}' : ''}',
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: theme.colorScheme.outline),
+                ),
+                trailing: IconButton(
+                  icon: Icon(Icons.delete_outline, size: 18),
+                  onPressed: () => _removeTracker(tr),
+                ),
+              )),
           SizedBox(height: 12),
           Text(L.t.peersCount(_peers.length),
               style: theme.textTheme.titleSmall),

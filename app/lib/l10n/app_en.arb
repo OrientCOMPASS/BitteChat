@@ -10,8 +10,8 @@
  "coreUnavailable": "Native core unavailable (demo mode)",
  "coreUnavailableShort": "Native core unavailable (demo mode)",
  "installApkHint": "Native core unavailable: install the CI-built APK",
- "noGroups": "No groups yet",
- "noGroupsHint": "One torrent = one group.\nCreate a group or join with an invite magnet.",
+ "noGroups": "No torrent rooms yet",
+ "noGroupsHint": "Every torrent is a chat room.\nAdd any BT torrent (magnet link / info hash / .torrent file) to enter its room and talk with the other BitTorrent users in the same swarm.",
  "createGroup": "Create group",
  "joinGroup": "Join group",
  "groupName": "Group name",
@@ -45,7 +45,7 @@
  "groupDetail": "Group details",
  "genesisTitle": "The hash chain of \"{name}\" starts here",
  "genesisSub": "Every message is signed and links its parents; tampering is rejected by the network",
- "emptyGroupHint": "The group is new and empty\nSay something 👇",
+ "emptyGroupHint": "No messages yet\nSay something 👇",
  "inputHint": "Say something… (messages are signed into the hash chain)",
  "sendFileTip": "Send file (seed)",
  "sending": "Seeding and sending…",
@@ -57,7 +57,7 @@
  "copyMessageId": "Copy message ID (SHA-1)",
  "copied": "Copied",
  "copiedId": "Message ID copied",
- "copiedInvite": "Copied: peer can paste it via Join group",
+ "copiedInvite": "Copied: anyone adding this torrent enters the same room",
  "signatureInfo": "Signature info",
  "sigDetail": "Author key {pk}\nState {state}",
  "sigConfirmed": "confirmed (stored in DHT)",
@@ -80,7 +80,7 @@
  "renameBroadcast": "Broadcast as a signed system message",
  "leaveGroup": "Leave group (keep local history)",
  "leaveGroupQ": "Leave group?",
- "leaveGroupHint": "Stops seeding the manifest; local history is kept.",
+ "leaveGroupHint": "Stops seeding the channel manifest; local history is kept.",
  "leave": "Leave",
  "members": "Online members",
  "manifestTorrent": "Manifest torrent",
@@ -94,7 +94,7 @@
  "createdBy": "Created {date} · by {name}",
  "noBtTasks": "No tasks",
  "noBtTasksHint": "Use the + button to add magnets or .torrent files",
- "addMagnet": "Add magnet link",
+ "addMagnet": "Add torrent",
  "importTorrent": "Import .torrent file",
  "added": "Added",
  "addedTorrentFile": "Torrent file added",
@@ -490,8 +490,8 @@
  "errManifestProtected": "This is a group manifest; leave the group from the Chats tab instead",
  "errNoResource": "This entry has no downloadable resource",
  "errTextEmpty": "Empty or too long (≤32KB)",
- "fabGroup": "Groups",
- "inviteLink": "Invite link",
+ "fabGroup": "Torrent room",
+ "inviteLink": "Invite link (channel magnet)",
  "copyInviteLink": "Copy invite magnet",
  "groupChat": "Group chat",
  "identities": "Identities",
@@ -549,5 +549,66 @@
  "errIdentityActive": "Cannot delete the active identity",
  "errIdentityLast": "At least one identity must remain",
  "errNameLen2": "Nickname must be 1..32 characters",
- "setAvatar": "Change avatar"
+ "setAvatar": "Change avatar",
+ "enterRoomTitle": "Enter torrent chat room",
+ "roomInputLabel": "Magnet link / info hash",
+ "magnetHashHint": "magnet:?xt=urn:btih:… or a bare 40-hex info hash",
+ "enterRoom": "Enter chat room",
+ "enterRoomNew": "Enter this torrent's chat room",
+ "addTorrentRoom": "Add torrent & enter chat",
+ "addTorrentRoomDesc": "Paste a magnet link or info hash: adds the torrent and opens its chat room",
+ "importTorrentRoomDesc": "Pick a .torrent file: adds the task and enters its chat room",
+ "roomEntered": "Entered chat room “{name}”",
+ "@roomEntered": {
+  "placeholders": {
+   "name": {
+    "type": "Object"
+   }
+  }
+ },
+ "torrentRoomKind": "Torrent chat room · shared with every BitTorrent peer of this torrent",
+ "dmChannelKind": "End-to-end encrypted DM channel",
+ "infohashLabel": "Torrent infohash",
+ "roomInviteTitle": "Invite = share this torrent",
+ "roomInviteHint": "Send the magnet link or info hash to anyone; adding the torrent enters the same room",
+ "leaveRoomHint": "Only unbinds the chat room; the torrent task stays on the Torrents page.",
+ "network": "Network",
+ "defaultTrackers": "Default trackers",
+ "defaultTrackersNone": "Not set (DHT/PEX discovery only)",
+ "defaultTrackersSet": "{n} configured · auto-applied to new tasks",
+ "@defaultTrackersSet": {
+  "placeholders": {
+   "n": {
+    "type": "Object"
+   }
+  }
+ },
+ "defaultTrackersHint": "One announce URL per line (http/https/udp). Auto-appended to every new torrent (chat attachments included) and applied to existing tasks immediately; greatly improves connectivity where DHT alone struggles.",
+ "trackersApplied": "Saved and applied to {n} tasks",
+ "@trackersApplied": {
+  "placeholders": {
+   "n": {
+    "type": "Object"
+   }
+  }
+ },
+ "trackers": "Trackers ({n})",
+ "@trackers": {
+  "placeholders": {
+   "n": {
+    "type": "Object"
+   }
+  }
+ },
+ "addTracker": "Add tracker",
+ "trackerUrl": "Tracker URL",
+ "noTrackersHint": "No trackers: relying on DHT/PEX. Configure default trackers under Settings → Network",
+ "trackerFails": "{n} fails",
+ "@trackerFails": {
+  "placeholders": {
+   "n": {
+    "type": "Object"
+   }
+  }
+ }
 }

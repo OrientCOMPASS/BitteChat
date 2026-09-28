@@ -40,10 +40,11 @@ class AppLocalizationsZh extends AppLocalizations {
   String get installApkHint => '原生核心不可用：请安装 CI 构建的 APK';
 
   @override
-  String get noGroups => '还没有群聊';
+  String get noGroups => '还没有种子群聊';
 
   @override
-  String get noGroupsHint => '一个 BT 种子就是一个群。\n创建群聊，或粘贴邀请磁力链接加入。';
+  String get noGroupsHint =>
+      '一个种子就是一个群聊。\n添加任意 BT 种子（磁力链接 / info hash / 种子文件），即可进入它的聊天室，与同一 swarm 里的其他 BitTorrent 用户交流。';
 
   @override
   String get createGroup => '创建群聊';
@@ -151,7 +152,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get genesisSub => '每条消息都经作者签名并链接前序消息，任何篡改都会被网络拒绝';
 
   @override
-  String get emptyGroupHint => '群刚创建，还没有消息\n说点什么吧 👇';
+  String get emptyGroupHint => '还没有消息\n说点什么吧 👇';
 
   @override
   String get inputHint => '说点什么……（消息将签名并写入哈希链）';
@@ -191,7 +192,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get copiedId => '已复制消息 ID';
 
   @override
-  String get copiedInvite => '已复制：对方在聊天页「加入群聊」粘贴即可';
+  String get copiedInvite => '已复制：对方添加这个种子即可进入同一群聊';
 
   @override
   String get signatureInfo => '签名信息';
@@ -278,7 +279,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get leaveGroupQ => '退出群聊？';
 
   @override
-  String get leaveGroupHint => '将停止做种群清单，本地聊天记录默认保留。';
+  String get leaveGroupHint => '将停止做种频道清单，本地聊天记录默认保留。';
 
   @override
   String get leave => '退出';
@@ -322,7 +323,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get noBtTasksHint => '点击右下角按钮添加磁力链接或种子文件';
 
   @override
-  String get addMagnet => '添加磁力链接';
+  String get addMagnet => '添加种子';
 
   @override
   String get importTorrent => '导入种子文件 (.torrent)';
@@ -773,10 +774,10 @@ class AppLocalizationsZh extends AppLocalizations {
   String get errTextEmpty => '空消息或过长（≤32KB）';
 
   @override
-  String get fabGroup => '群聊';
+  String get fabGroup => '种子群聊';
 
   @override
-  String get inviteLink => '邀请链接';
+  String get inviteLink => '邀请链接（频道磁力）';
 
   @override
   String get copyInviteLink => '复制磁力邀请链接';
@@ -856,4 +857,94 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get setAvatar => '更换头像';
+
+  @override
+  String get enterRoomTitle => '进入种子群聊';
+
+  @override
+  String get roomInputLabel => '磁力链接 / info hash';
+
+  @override
+  String get magnetHashHint => 'magnet:?xt=urn:btih:… 或 40 位 info hash';
+
+  @override
+  String get enterRoom => '进入群聊';
+
+  @override
+  String get enterRoomNew => '进入该种子的群聊';
+
+  @override
+  String get addTorrentRoom => '添加种子进入群聊';
+
+  @override
+  String get addTorrentRoomDesc => '粘贴磁力链接或 info hash：添加种子并进入它的聊天室';
+
+  @override
+  String get importTorrentRoomDesc => '选择 .torrent 文件：添加任务并进入它的群聊';
+
+  @override
+  String roomEntered(Object name) {
+    return '已进入群聊「$name」';
+  }
+
+  @override
+  String get torrentRoomKind => '种子群聊 · 该种子的所有 BitTorrent 用户共享';
+
+  @override
+  String get dmChannelKind => '端到端加密私聊频道';
+
+  @override
+  String get infohashLabel => '种子 infohash';
+
+  @override
+  String get roomInviteTitle => '邀请 = 分享这个种子';
+
+  @override
+  String get roomInviteHint => '把磁力链接或 info hash 发给别人，对方添加该种子后即可进入同一群聊';
+
+  @override
+  String get leaveRoomHint => '只解除群聊绑定，种子任务保留在种子页。';
+
+  @override
+  String get network => '网络';
+
+  @override
+  String get defaultTrackers => '默认 Tracker 列表';
+
+  @override
+  String get defaultTrackersNone => '未设置（仅 DHT/PEX 发现节点）';
+
+  @override
+  String defaultTrackersSet(Object n) {
+    return '已设置 $n 个 · 自动附加到新任务';
+  }
+
+  @override
+  String get defaultTrackersHint =>
+      '每行一个 announce 地址（http/https/udp）。会自动附加到每个新种子（含聊天附件）并立即应用到现有任务；在 DHT 不畅的网络里能显著提升连通性。';
+
+  @override
+  String trackersApplied(Object n) {
+    return '已保存并应用到 $n 个任务';
+  }
+
+  @override
+  String trackers(Object n) {
+    return 'Tracker（$n）';
+  }
+
+  @override
+  String get addTracker => '添加 Tracker';
+
+  @override
+  String get trackerUrl => 'Tracker 地址';
+
+  @override
+  String get noTrackersHint =>
+      '无 tracker：依赖 DHT/PEX 发现节点。可在设置 → 网络 中配置默认 Tracker 列表';
+
+  @override
+  String trackerFails(Object n) {
+    return '失败 $n 次';
+  }
 }
