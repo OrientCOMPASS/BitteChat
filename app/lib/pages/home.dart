@@ -9,9 +9,12 @@ import 'bt_tab.dart';
 import 'chat_tab.dart';
 import 'rss_tab.dart';
 import 'settings_page.dart';
+import '../core/prefs.dart';
 
 class HomePage extends StatefulWidget {
-  const HomePage({super.key});
+  const HomePage({super.key, required this.prefs});
+
+  final UiPrefs prefs;
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -73,7 +76,7 @@ class _HomePageState extends State<HomePage> {
       body: IndexedStack(
         index: _index,
         children: [
-          ChatTab(onOpenSettings: _openSettings),
+          ChatTab(onOpenSettings: _openSettings, prefs: widget.prefs),
           const BtTab(),
           const RssTab(),
         ],
@@ -113,7 +116,7 @@ class _HomePageState extends State<HomePage> {
 
   void _openSettings() {
     Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const SettingsPage()),
+      MaterialPageRoute(builder: (_) => SettingsPage(prefs: widget.prefs)),
     );
   }
 }

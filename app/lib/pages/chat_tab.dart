@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import '../core/api.dart';
 import '../core/bridge.dart';
 import '../core/intent.dart';
+import '../core/prefs.dart';
 import '../models.dart';
 import '../widgets/avatar.dart';
 import '../widgets/time_fmt.dart';
@@ -15,9 +16,10 @@ import 'chat_view.dart';
 import 'home.dart';
 
 class ChatTab extends StatefulWidget {
-  const ChatTab({super.key, this.onOpenSettings});
+  const ChatTab({super.key, this.onOpenSettings, required this.prefs});
 
   final VoidCallback? onOpenSettings;
+  final UiPrefs prefs;
 
   @override
   State<ChatTab> createState() => _ChatTabState();
@@ -69,7 +71,8 @@ class _ChatTabState extends State<ChatTab> {
 
   Future<void> _openGroup(GroupSummary g) async {
     await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => ChatViewPage(group: g)),
+      MaterialPageRoute(
+          builder: (_) => ChatViewPage(group: g, prefs: widget.prefs)),
     );
     _reload();
   }

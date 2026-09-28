@@ -54,7 +54,9 @@ void main() {
           reason: 'sent message must reach DHT-confirmed state');
 
       // UI renders on top of the live core
-      await tester.pumpWidget(const BitteChatApp());
+      final prefs =
+          UiPrefs(File('${BitteApi.instance.dataDir}/ui_prefs_it.json'));
+      await tester.pumpWidget(BitteChatApp(prefs: prefs));
       await tester.pumpAndSettle();
       expect(
         find.widgetWithText(NavigationDestination, '聊天'),

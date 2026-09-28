@@ -2,17 +2,21 @@
 
 import 'package:bittechat/core/api.dart';
 import 'package:bittechat/main.dart';
+import 'package:bittechat/core/prefs.dart';
 import 'package:bittechat/models.dart';
 import 'package:bittechat/pages/chat_view.dart';
 import 'package:bittechat/widgets/avatar.dart';
 import 'package:bittechat/widgets/time_fmt.dart';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   testWidgets('app boots in demo mode without native core', (tester) async {
-    await BitteApi.init();
-    await tester.pumpWidget(const BitteChatApp());
+    final api = await BitteApi.init();
+    final prefs = UiPrefs(File('${api.dataDir}/ui_prefs_test.json'));
+    await tester.pumpWidget(BitteChatApp(prefs: prefs));
     await tester.pumpAndSettle();
     expect(find.widgetWithText(NavigationDestination, '聊天'), findsOneWidget);
     expect(find.widgetWithText(NavigationDestination, '种子'), findsOneWidget);

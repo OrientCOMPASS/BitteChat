@@ -2,53 +2,68 @@ import 'package:flutter/material.dart';
 
 import 'core/api.dart';
 import 'core/intent.dart';
+import 'core/prefs.dart';
 import 'pages/home.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await BitteApi.init();
+  final api = await BitteApi.init();
   bindIntentChannel();
-  runApp(const BitteChatApp());
+  final prefs = await UiPrefs.load(api.dataDir);
+  runApp(BitteChatApp(prefs: prefs));
 }
 
-class BitteChatApp extends StatelessWidget {
-  const BitteChatApp({super.key});
+class BitteChatApp extends StatefulWidget {
+  const BitteChatApp({super.key, required this.prefs});
+
+  final UiPrefs prefs;
+
+  @override
+  State<BitteChatApp> createState() => _BitteChatAppState();
+}
+
+class _BitteChatAppState extends State<BitteChatApp> {
+  @override
+  void initState() {
+    super.initState();
+    widget.prefs.addListener(_onChange);
+  }
+
+  @override
+  void dispose() {
+    widget.prefs.removeListener(_onChange);
+    super.dispose();
+  }
+
+  void _onChange() => setState(() {});
+
+  ThemeData _theme(Brightness brightness) {
+    final seed = widget.prefs.effectiveSeed();
+    return ThemeData(
+      useMaterial3: true,
+      colorScheme:
+          ColorScheme.fromSeed(seedColor: seed, brightness: brightness),
+      fontFamilyFallback: const [
+        'Noto Sans CJK SC',
+        'PingFang SC',
+        'sans-serif'
+      ],
+      listTileTheme: const ListTileThemeData(dense: false),
+      appBarTheme: const AppBarTheme(centerTitle: false),
+      snackBarTheme:
+          const SnackBarThemeData(behavior: SnackBarBehavior.floating),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    const seed = Color(0xFF2E7CF6);
     return MaterialApp(
       title: 'BitteChat',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(seedColor: seed),
-        fontFamilyFallback: const [
-          'Noto Sans CJK SC',
-          'PingFang SC',
-          'sans-serif'
-        ],
-        listTileTheme: const ListTileThemeData(dense: false),
-        appBarTheme: const AppBarTheme(centerTitle: false),
-        snackBarTheme:
-            const SnackBarThemeData(behavior: SnackBarBehavior.floating),
-      ),
-      darkTheme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: seed,
-          brightness: Brightness.dark,
-        ),
-        fontFamilyFallback: const [
-          'Noto Sans CJK SC',
-          'PingFang SC',
-          'sans-serif'
-        ],
-        appBarTheme: const AppBarTheme(centerTitle: false),
-        snackBarTheme:
-            const SnackBarThemeData(behavior: SnackBarBehavior.floating),
-      ),
-      home: const HomePage(),
+      theme: _theme(Brightness.light),
+      darkTheme: _theme(Brightness.dark),
+      themeMode: widget.prefs.materialThemeMode(),
+      home: HomePage(prefs: widget.prefs),
     );
   }
 }

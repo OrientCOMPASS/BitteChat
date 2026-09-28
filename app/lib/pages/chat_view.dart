@@ -2,6 +2,7 @@
 
 import 'dart:async';
 import 'dart:io';
+import 'dart:ui';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -10,6 +11,7 @@ import 'package:intl/intl.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../core/api.dart';
+import '../core/prefs.dart';
 import '../core/files.dart';
 import '../models.dart';
 import '../widgets/audio_row.dart';
@@ -19,9 +21,10 @@ import '../widgets/time_fmt.dart';
 import 'home.dart';
 
 class ChatViewPage extends StatefulWidget {
-  const ChatViewPage({super.key, required this.group});
+  const ChatViewPage({super.key, required this.group, this.prefs});
 
   final GroupSummary group;
+  final UiPrefs? prefs;
 
   @override
   State<ChatViewPage> createState() => _ChatViewPageState();
@@ -330,58 +333,65 @@ class _ChatViewPageState extends State<ChatViewPage> {
           ),
         ],
       ),
-      body: Column(
+      body: Stack(
         children: [
-          Expanded(
-            child: _messages.isEmpty
-                ? Center(
-                    child: Text(
-                      '群刚创建，还没有消息\n说点什么吧 👇',
-                      textAlign: TextAlign.center,
-                      style: theme.textTheme.bodyLarge
-                          ?.copyWith(color: theme.colorScheme.outline),
-                    ),
-                  )
-                : GestureDetector(
-                    onTap: () => FocusScope.of(context).unfocus(),
-                    child: ListView.builder(
-                      controller: _scroll,
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 8),
-                      itemCount: _messages.length + 1,
-                      itemBuilder: (context, i) {
-                        if (i == 0) {
-                          return _GenesisHeader(groupName: widget.group.name);
-                        }
-                        final m = _messages[i - 1];
-                        final showAuthor = i == 1 ||
-                            !_messages[i - 2].own != !m.own ||
-                            m.ts - _messages[i - 2].ts > 5 * 60 * 1000 ||
-                            _isNewDay(_messages[i - 2].ts, m.ts);
-                        final showDay =
-                            i == 1 || _isNewDay(_messages[i - 2].ts, m.ts);
-                        return Column(
-                          children: [
-                            if (showDay) DayDivider(ts: m.ts),
-                            GestureDetector(
-                              onLongPress: () => _longPressMessage(m),
-                              child: MessageBubble(
-                                message: m,
-                                showAuthor: showAuthor,
-                                onDownload: () => _downloadAttachment(m),
-                              ),
-                            ),
-                          ],
-                        );
-                      },
-                    ),
-                  ),
-          ),
-          _InputBar(
-            controller: _input,
-            sending: _sending,
-            onSend: _send,
-            onAttach: _pickAndSendFile,
+          if (widget.prefs?.wallpaperPath != null)
+            _Wallpaper(prefs: widget.prefs!),
+          Column(
+            children: [
+              Expanded(
+                child: _messages.isEmpty
+                    ? Center(
+                        child: Text(
+                          '群刚创建，还没有消息\n说点什么吧 👇',
+                          textAlign: TextAlign.center,
+                          style: theme.textTheme.bodyLarge
+                              ?.copyWith(color: theme.colorScheme.outline),
+                        ),
+                      )
+                    : GestureDetector(
+                        onTap: () => FocusScope.of(context).unfocus(),
+                        child: ListView.builder(
+                          controller: _scroll,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 8),
+                          itemCount: _messages.length + 1,
+                          itemBuilder: (context, i) {
+                            if (i == 0) {
+                              return _GenesisHeader(
+                                  groupName: widget.group.name);
+                            }
+                            final m = _messages[i - 1];
+                            final showAuthor = i == 1 ||
+                                !_messages[i - 2].own != !m.own ||
+                                m.ts - _messages[i - 2].ts > 5 * 60 * 1000 ||
+                                _isNewDay(_messages[i - 2].ts, m.ts);
+                            final showDay =
+                                i == 1 || _isNewDay(_messages[i - 2].ts, m.ts);
+                            return Column(
+                              children: [
+                                if (showDay) DayDivider(ts: m.ts),
+                                GestureDetector(
+                                  onLongPress: () => _longPressMessage(m),
+                                  child: MessageBubble(
+                                    message: m,
+                                    showAuthor: showAuthor,
+                                    onDownload: () => _downloadAttachment(m),
+                                  ),
+                                ),
+                              ],
+                            );
+                          },
+                        ),
+                      ),
+              ),
+              _InputBar(
+                controller: _input,
+                sending: _sending,
+                onSend: _send,
+                onAttach: _pickAndSendFile,
+              ),
+            ],
           ),
         ],
       ),
@@ -1270,6 +1280,35 @@ class InviteSheet extends StatelessWidget {
           const SizedBox(height: 16),
         ],
       ),
+    );
+  }
+}
+
+class _Wallpaper extends StatelessWidget {
+  const _Wallpaper({required this.prefs});
+
+  final UiPrefs prefs;
+
+  @override
+  Widget build(BuildContext context) {
+    final path = prefs.wallpaperPath;
+    if (path == null) return const SizedBox.shrink();
+    Widget img = Image.file(
+      File(path),
+      fit: BoxFit.cover,
+      width: double.infinity,
+      height: double.infinity,
+      errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+    );
+    if (prefs.wallpaperBlur) {
+      img = ImageFiltered(
+        imageFilter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
+        child: img,
+      );
+    }
+    return Positioned.fill(
+      child:
+          Opacity(opacity: prefs.wallpaperOpacity.clamp(0.03, 1.0), child: img),
     );
   }
 }
