@@ -269,10 +269,7 @@ jobs:
           ram-size: 4096M
           disable-animations: true
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -camera-back none
-          script: |
-            cd app
-            flutter pub get
-            flutter test integration_test/app_test.dart -d emulator-5554 --reporter expanded
+          script: cd app && flutter pub get && flutter test integration_test/app_test.dart -d emulator-5554 --reporter expanded
 
   # ------------------------------------------------------------------
   # Release on tag

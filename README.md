@@ -6,8 +6,8 @@ Flutter (Android) 前端 + Rust 核心 + [libtorrent](https://www.libtorrent.org
 
 | 页签 | 功能 |
 |------|------|
-| 💬 聊天 | 创建/加入群聊（磁力链即邀请）、收发文字与文件、消息哈希链同步 |
-| 🧲 种子 | 标准 BT 客户端：磁力链/种子文件下载、做种、文件优先级、 peer 列表、限速 |
+| 💬 聊天 | 创建/加入/改名群聊（磁力链即邀请、QR/系统 magnet 意图唤起）、收发文字与文件（图片缩略+全屏预览）、长按复制/验签信息、消息哈希链同步、未读角标 |
+| 🧲 种子 | 标准 BT 客户端：磁力链/种子文件下载、做种、文件优先级、peer 列表（标记聊天能力）、任务详情、全局限速 |
 | 📰 订阅 | RSS/Atom 订阅阅读，条目中的磁力链/种子附件一键转入 BT 下载 |
 
 ## 核心概念
@@ -39,6 +39,7 @@ Flutter (Android) 前端 + Rust 核心 + [libtorrent](https://www.libtorrent.org
 
 - **core-test**：`cargo fmt` / `clippy -D warnings` / 49 个单元与端到端测试（两个 Mock 引擎实例模拟双用户全流程：建群、入群、离线 DHT 同步、附件传输、长文分块、篡改拒绝）。
 - **app-analyze**：`flutter analyze` + `flutter test`。
+- **emulator-smoke**（非阻断）：Android 模拟器安装真实构建，跑 `integration_test`：真 libtorrent 引擎启动 → 建群 → 发消息 → 等待 BEP44 DHT 确认 → UI 渲染校验。
 - **android**：交叉编译 OpenSSL 3.5.5、libtorrent 2.1.2（NDK, arm64-v8a + x86_64）→ Rust `libbitte_core.so` → `flutter build apk --release`（通用 APK，abiFilters 限定 arm64-v8a/x86_64），APK 作为 artifact 上传；打 `v*` tag 自动发布 Release。
 
 本地复现原生构建（需要 NDK + Rust android targets + cargo-ndk）：
@@ -60,4 +61,5 @@ cd app && flutter build apk --release --split-per-abi
 - [x] v0.1 核心协议 + Rust 全逻辑 + CI（49 个 Rust 测试）
 - [x] v0.2 libtorrent 2.1.2 Android 交叉编译链 + APK 产出
 - [x] v0.3 Flutter 三页签 UI 完整接入（16 个 Dart 测试、analyze 0 issue）
-- [ ] v0.4 打磨：前台服务保活、消息搜索、armeabi-v7a、目录做种、多语言
+- [x] v0.4 打磨：群改名协议、限速设置、图片预览、magnet 意图、长按菜单、模拟器集成测试
+- [ ] v0.5+：前台服务保活、消息搜索、armeabi-v7a、目录做种、多语言
