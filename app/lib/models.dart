@@ -235,7 +235,7 @@ class GroupSummary {
       dm: _b(j, 'dm'),
       awaitingAccept: _b(j, 'awaiting_accept'),
       dmRequest: _b(j, 'dm_request'),
-      peerPk: _s(j, 'peer_pk'),'  
+      peerPk: _s(j, 'peer_pk'),
       previewAuthor: _s(pv, 'author_name'),
       previewText: _s(pv, 'text', ''),
       previewTs: _i(pv, 'ts'),
