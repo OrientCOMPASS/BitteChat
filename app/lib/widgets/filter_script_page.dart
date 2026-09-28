@@ -84,7 +84,9 @@ class _FilterScriptPageState extends State<FilterScriptPage> {
       );
       if (files.isEmpty) return;
       final p = files.single.path;
-      if (p == null) return;
+      if (p == null) {
+        return;
+      }
       final content = await File(p).readAsString();
       jsonDecode(content); // validate before touching the editor
       setState(() {

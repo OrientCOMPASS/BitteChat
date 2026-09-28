@@ -124,6 +124,171 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
+  void _saveRules() {
+    try {
+      _api.setFilterRules(_rules);
+      _reload();
+    } catch (e) {
+      showError(context, e);
+    }
+  }
+
+  Future<void> _editRule(FilterRule? existing) async {
+    final rule = existing ??
+        FilterRule(
+          id: DateTime.now().millisecondsSinceEpoch % 1000000,
+          enabled: true,
+          field: 'text',
+          mode: 'contains',
+          value: '',
+        );
+    final valueCtrl = TextEditingController(text: rule.value);
+    String field = rule.field;
+    String mode = rule.mode;
+    bool caseSensitive = rule.caseSensitive;
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheet) => AlertDialog(
+          title: Text(existing == null ? L.t.addRule : L.t.editRule),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DropdownButtonFormField<String>(
+                initialValue: field,
+                items: [
+                  DropdownMenuItem(value: 'text', child: Text(L.t.fieldText)),
+                  DropdownMenuItem(
+                      value: 'author_name', child: Text(L.t.fieldName)),
+                  DropdownMenuItem(
+                      value: 'author_pk', child: Text(L.t.fieldPk)),
+                ],
+                onChanged: (v) => setSheet(() => field = v!),
+              ),
+              DropdownButtonFormField<String>(
+                initialValue: mode,
+                items: [
+                  DropdownMenuItem(
+                      value: 'contains', child: Text(L.t.modeContains)),
+                  DropdownMenuItem(
+                      value: 'equals', child: Text(L.t.modeEquals)),
+                  DropdownMenuItem(value: 'regex', child: Text(L.t.modeRegex)),
+                ],
+                onChanged: (v) => setSheet(() => mode = v!),
+              ),
+              TextField(
+                controller: valueCtrl,
+                decoration: InputDecoration(
+                    labelText: L.t.matchValue, border: OutlineInputBorder()),
+              ),
+              SwitchListTile(
+                value: caseSensitive,
+                title: Text(L.t.caseSensitive),
+                onChanged: (v) => setSheet(() => caseSensitive = v),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: Text(L.t.cancel)),
+            FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: Text(L.t.save)),
+          ],
+        ),
+      ),
+    );
+    if (saved != true) return;
+    rule.field = field;
+    rule.mode = mode;
+    rule.caseSensitive = caseSensitive;
+    rule.value = valueCtrl.text;
+    if (existing == null) _rules.add(rule);
+    _saveRules();
+  }
+
+  Future<void> _pickSeedSource(BuildContext context) async {
+    final labels = {
+      SeedSource.brand: (L.t.seedBrand, Icons.branding_watermark_outlined),
+      SeedSource.wallpaper: (L.t.seedWallpaper, Icons.wallpaper),
+      SeedSource.custom: (L.t.seedCustom, Icons.palette_outlined),
+    };
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final s in SeedSource.values)
+              ListTile(
+                leading: Icon(labels[s]!.$2),
+                title: Text(labels[s]!.$1),
+                trailing: widget.prefs.seedSource == s
+                    ? Icon(Icons.check_circle,
+                        color: Theme.of(ctx).colorScheme.primary)
+                    : null,
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  widget.prefs.seedSource = s;
+                  if (s == SeedSource.custom) {
+                    await _pickCustomColor(context);
+                    return;
+                  }
+                  await widget.prefs.save();
+                },
+              ),
+            SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pickCustomColor(BuildContext context) async {
+    final swatches = [
+      0xFF2E7CF6,
+      0xFFE5484D,
+      0xFF30A46C,
+      0xFFF5D90A,
+      0xFF8E4EC6,
+      0xFFE93D82,
+      0xFF0090FF,
+      0xFF12A594,
+      0xFFFF6E27,
+      0xFF64748B,
+    ];
+    final picked = await showDialog<int>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(L.t.pickColor),
+        content: Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: [
+            for (final c in swatches)
+              GestureDetector(
+                onTap: () => Navigator.pop(ctx, c),
+                child: Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: Color(c),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (picked != null) {
+      widget.prefs.customColor = picked;
+      await widget.prefs.save();
+    }
+  }
+
   Future<void> _pickWallpaper(BuildContext context) async {
     final messenger = ScaffoldMessenger.of(context);
     try {
