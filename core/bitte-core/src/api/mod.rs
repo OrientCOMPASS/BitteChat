@@ -121,6 +121,7 @@ impl Api {
             shutdown: RwLock::new(false),
         });
         let api = Api { inner };
+        api.apply_persisted_limits();
         api.restore_state()?;
         api.spawn_event_loop(engine_events);
         api.spawn_scheduler();
@@ -180,6 +181,8 @@ impl Api {
             "bt.file_priorities" => self.bt_file_priorities(p),
             "bt.peers" => self.bt_peers(p),
             "bt.stats" => self.bt_stats(),
+            "bt.set_limits" => self.bt_set_limits(p),
+            "bt.get_limits" => self.bt_get_limits(),
 
             "chat.groups" => self.chat_groups(),
             "chat.create_group" => self.chat_create_group(p),
@@ -189,6 +192,7 @@ impl Api {
             "chat.send" => self.chat_send(p),
             "chat.send_file" => self.chat_send_file(p),
             "chat.mark_read" => self.chat_mark_read(p),
+            "chat.rename_group" => self.chat_rename_group(p),
             "chat.sync" => self.chat_sync(p),
             "chat.group_detail" => self.chat_group_detail(p),
 
@@ -319,6 +323,19 @@ impl Api {
             }
         }
         Ok(())
+    }
+
+    fn apply_persisted_limits(&self) {
+        let st = self.inner.state.lock().unwrap();
+        let raw = st.store.kv_get("limits").ok().flatten();
+        drop(st);
+        if let Some(raw) = raw {
+            if let Ok(v) = serde_json::from_slice::<serde_json::Value>(&raw) {
+                let up = v.get("up").and_then(|x| x.as_i64()).unwrap_or(0);
+                let down = v.get("down").and_then(|x| x.as_i64()).unwrap_or(0);
+                let _ = self.inner.engine.set_limits(up, down);
+            }
+        }
     }
 
     /// Kick the join pipeline for a manifest torrent that just got metadata.

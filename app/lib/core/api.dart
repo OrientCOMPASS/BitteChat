@@ -158,6 +158,9 @@ class BitteApi extends ChangeNotifier {
   void markRead(String groupId) =>
       call('chat.mark_read', {'group_id': groupId});
 
+  void renameGroup(String groupId, String name) =>
+      call('chat.rename_group', {'group_id': groupId, 'name': name});
+
   void syncGroup(String groupId) {
     try {
       call('chat.sync', {'group_id': groupId});
@@ -207,6 +210,19 @@ class BitteApi extends ChangeNotifier {
         'delete_files': deleteFiles,
         'force': force,
       });
+
+  ({int up, int down}) btLimits() {
+    if (!available) return (up: 0, down: 0);
+    try {
+      final r = call('bt.get_limits');
+      return (up: (r['up'] as int?) ?? 0, down: (r['down'] as int?) ?? 0);
+    } catch (_) {
+      return (up: 0, down: 0);
+    }
+  }
+
+  void btSetLimits({int up = 0, int down = 0}) =>
+      call('bt.set_limits', {'up': up, 'down': down});
 
   List<PeerInfo> btPeers(String infohash) {
     if (!available) return [];

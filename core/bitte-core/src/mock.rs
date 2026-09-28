@@ -623,6 +623,10 @@ impl BtEngine for MockEngine {
         Ok(n)
     }
 
+    fn set_limits(&self, _upload: i64, _download: i64) -> Result<()> {
+        Ok(())
+    }
+
     fn session_stats(&self) -> Result<SessionStats> {
         // lock order: mine -> bus (same as torrent_states) to avoid deadlock
         let num_torrents = self.mine.lock().unwrap().len() as i64;

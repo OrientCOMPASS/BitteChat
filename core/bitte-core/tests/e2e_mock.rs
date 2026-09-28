@@ -424,6 +424,58 @@ fn e2e_tampered_item_rejected() {
 }
 
 #[test]
+fn e2e_group_rename_propagates() {
+    let bus = MockBus::new();
+    let (a, _ta) = spawn_node(&bus);
+    let (b, _tb) = spawn_node(&bus);
+    let created = call(&a, "chat.create_group", json!({"name": "旧名字"}));
+    let gid = created["group_id"].as_str().unwrap().to_string();
+    let magnet = created["invite_magnet"].as_str().unwrap().to_string();
+    call(&b, "chat.join_group", json!({"magnet": magnet}));
+    wait_until(&[&a, &b], T, || {
+        if msg_count(&b, &gid) >= 1 {
+            Some(())
+        } else {
+            None
+        }
+    });
+
+    call(
+        &a,
+        "chat.rename_group",
+        json!({"group_id": gid, "name": "新群名"}),
+    );
+
+    // B must converge on the renamed display name through the signed
+    // rename system message
+    wait_until(&[&a, &b], T, || {
+        let groups = call(&b, "chat.groups", json!({}));
+        let g = groups["groups"]
+            .as_array()?
+            .iter()
+            .find(|g| g["group_id"].as_str() == Some(gid.as_str()))?
+            .clone();
+        if g["name"].as_str() == Some("新群名") {
+            Some(())
+        } else {
+            None
+        }
+    });
+
+    // rename message is visible in history as a system entry
+    let r = call(&b, "chat.messages", json!({"group_id": gid}));
+    let has_rename = r["messages"].as_array().unwrap().iter().any(|m| {
+        m["payload"]
+            .as_object()
+            .and_then(|p| p.get("System"))
+            .and_then(|s| s.get("code"))
+            .and_then(|c| c.as_str())
+            == Some("rename")
+    });
+    assert!(has_rename);
+}
+
+#[test]
 fn e2e_bt_page_flow() {
     let bus = MockBus::new();
     let (a, _ta) = spawn_node(&bus);

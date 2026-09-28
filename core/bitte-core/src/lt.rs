@@ -364,6 +364,14 @@ impl BtEngine for LibtorrentEngine {
         Ok(v.get("sent").and_then(|s| s.as_i64()).unwrap_or(0) as u32)
     }
 
+    fn set_limits(&self, upload: i64, download: i64) -> Result<()> {
+        self.call(
+            "set_limits",
+            json!({"up_limit": upload, "down_limit": download}),
+        )?;
+        Ok(())
+    }
+
     fn session_stats(&self) -> Result<SessionStats> {
         let v = self.call("stats", json!({}))?;
         Ok(SessionStats {

@@ -539,6 +539,26 @@ impl Api {
         }))
     }
 
+    pub fn chat_rename_group(&self, p: Json) -> Result<Json> {
+        let gid_hex = jstr(&p, "group_id")?.to_string();
+        let name = jstr(&p, "name")?.trim().to_string();
+        if name.is_empty() || name.len() > crate::chat::group::MAX_GROUP_NAME_LEN {
+            return Err(CoreError::Invalid("群名长度需在 1..96 字节".into()));
+        }
+        // local immediate update; peers converge via the signed system msg
+        {
+            let mut st = self.inner.state.lock().unwrap();
+            let gid = hex20(&gid_hex)?;
+            st.store.group_set_name(&gid, &name)?;
+            if let Some(rt) = st.groups.get_mut(&gid_hex) {
+                rt.row.name = name.clone();
+            }
+        }
+        self.send_system_message(&gid_hex, "rename", &name);
+        self.emit_event("chat.group_updated", json!({"group": gid_hex}));
+        Ok(json!({"ok": true, "name": name}))
+    }
+
     pub fn chat_mark_read(&self, p: Json) -> Result<Json> {
         let gid_hex = jstr(&p, "group_id")?.to_string();
         let gid = hex20(&gid_hex)?;

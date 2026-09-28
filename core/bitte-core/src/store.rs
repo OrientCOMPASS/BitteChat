@@ -218,6 +218,14 @@ impl Store {
         Ok(())
     }
 
+    pub fn group_set_name(&self, gid: &Sha1Hash, name: &str) -> Result<()> {
+        self.conn.execute(
+            "UPDATE groups SET name=?2 WHERE id=?1",
+            params![gid.to_vec(), name],
+        )?;
+        Ok(())
+    }
+
     pub fn group_set_left(&self, gid: &Sha1Hash, left: bool) -> Result<()> {
         self.conn.execute(
             "UPDATE groups SET left_flag=?2 WHERE id=?1",

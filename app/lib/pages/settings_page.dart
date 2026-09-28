@@ -18,6 +18,9 @@ class _SettingsPageState extends State<SettingsPage> {
   late final BitteApi _api = BitteApi.instance;
   Identity? _identity;
   Map<String, dynamic> _info = {};
+  final _upCtrl = TextEditingController();
+  final _downCtrl = TextEditingController();
+  bool _limitsLoaded = false;
 
   @override
   void initState() {
@@ -30,7 +33,35 @@ class _SettingsPageState extends State<SettingsPage> {
     setState(() {
       _identity = _api.identity();
       _info = _api.sysInfo();
+      if (!_limitsLoaded) {
+        final l = _api.btLimits();
+        _upCtrl.text = l.up > 0 ? '${l.up ~/ 1024}' : '';
+        _downCtrl.text = l.down > 0 ? '${l.down ~/ 1024}' : '';
+        _limitsLoaded = true;
+      }
     });
+  }
+
+  void _saveLimits() {
+    int parse(TextEditingController c) {
+      final v = int.tryParse(c.text.trim()) ?? 0;
+      return v <= 0 ? 0 : v * 1024;
+    }
+
+    try {
+      _api.btSetLimits(up: parse(_upCtrl), down: parse(_downCtrl));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('限速已应用')));
+    } catch (e) {
+      showError(context, e);
+    }
+  }
+
+  @override
+  void dispose() {
+    _upCtrl.dispose();
+    _downCtrl.dispose();
+    super.dispose();
   }
 
   Future<void> _editName() async {
@@ -110,6 +141,42 @@ class _SettingsPageState extends State<SettingsPage> {
                   ?.copyWith(color: theme.colorScheme.outline),
             ),
           ),
+          const Divider(),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            child: Text('传输限速（KB/s，留空或 0 为不限速）',
+                style: theme.textTheme.titleSmall),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _upCtrl,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                        labelText: '上传', border: OutlineInputBorder()),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: TextField(
+                    controller: _downCtrl,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                        labelText: '下载', border: OutlineInputBorder()),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                FilledButton(
+                  onPressed: _saveLimits,
+                  child: const Text('保存'),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
           const Divider(),
           const AboutListTile(
             icon: Icon(Icons.favorite_outline),

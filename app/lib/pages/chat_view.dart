@@ -1,6 +1,7 @@
 // 群聊视图：消息流（哈希链 DAG 的线性化展示）+ 输入框 + 群详情/邀请
 
 import 'dart:async';
+import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -32,6 +33,7 @@ class _ChatViewPageState extends State<ChatViewPage> {
   StreamSubscription<CoreEvent>? _sub;
   Map<String, dynamic> _detail = {};
   Timer? _detailTimer;
+  bool _showJump = false;
 
   String get _gid => widget.group.id;
 
@@ -56,6 +58,7 @@ class _ChatViewPageState extends State<ChatViewPage> {
       if (mounted) _loadDetail(silent: true);
     });
     _loadDetail(silent: true);
+    _scroll.addListener(_onScroll);
   }
 
   @override
@@ -72,9 +75,12 @@ class _ChatViewPageState extends State<ChatViewPage> {
     if (!mounted) return;
     try {
       final msgs = _api.chatMessages(_gid, limit: 500);
+      final stick = markRead || _nearBottom();
       setState(() => _messages = msgs);
       if (markRead) _api.markRead(_gid);
-      WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
+      if (stick) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
+      }
     } catch (_) {}
   }
 
@@ -85,10 +91,63 @@ class _ChatViewPageState extends State<ChatViewPage> {
     } catch (_) {}
   }
 
+  void _onScroll() {
+    final show =
+        _scroll.position.maxScrollExtent - _scroll.position.pixels > 240;
+    if (show != _showJump && mounted) setState(() => _showJump = show);
+  }
+
   void _scrollToBottom() {
     if (_scroll.hasClients) {
       _scroll.jumpTo(_scroll.position.maxScrollExtent);
     }
+  }
+
+  bool _nearBottom() =>
+      !_scroll.hasClients ||
+      _scroll.position.maxScrollExtent - _scroll.position.pixels < 160;
+
+  void _longPressMessage(ChatMessage m) {
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (m.payloadKind == MsgPayloadKind.text)
+              ListTile(
+                leading: const Icon(Icons.copy),
+                title: const Text('复制消息内容'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  Clipboard.setData(ClipboardData(text: m.text));
+                  ScaffoldMessenger.of(context)
+                      .showSnackBar(const SnackBar(content: Text('已复制')));
+                },
+              ),
+            ListTile(
+              leading: const Icon(Icons.fingerprint),
+              title: const Text('复制消息 ID（SHA-1）'),
+              subtitle: Text(shortHash(m.id, 16)),
+              onTap: () {
+                Navigator.pop(ctx);
+                Clipboard.setData(ClipboardData(text: m.id));
+                ScaffoldMessenger.of(context)
+                    .showSnackBar(const SnackBar(content: Text('已复制消息 ID')));
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.verified_user),
+              title: const Text('签名信息'),
+              subtitle: Text('作者公钥 ${shortHash(m.authorPk, 16)}\n'
+                  '状态 ${m.state == 1 ? "已确认（DHT 已存储）" : "待确认"}'),
+              onTap: () => Navigator.pop(ctx),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
   }
 
   void _send() {
@@ -237,10 +296,13 @@ class _ChatViewPageState extends State<ChatViewPage> {
                         return Column(
                           children: [
                             if (showDay) DayDivider(ts: m.ts),
-                            MessageBubble(
-                              message: m,
-                              showAuthor: showAuthor,
-                              onDownload: () => _downloadAttachment(m),
+                            GestureDetector(
+                              onLongPress: () => _longPressMessage(m),
+                              child: MessageBubble(
+                                message: m,
+                                showAuthor: showAuthor,
+                                onDownload: () => _downloadAttachment(m),
+                              ),
                             ),
                           ],
                         );
@@ -256,6 +318,13 @@ class _ChatViewPageState extends State<ChatViewPage> {
           ),
         ],
       ),
+      floatingActionButton: _showJump
+          ? FloatingActionButton.small(
+              heroTag: 'jump-bottom',
+              onPressed: _scrollToBottom,
+              child: const Icon(Icons.keyboard_double_arrow_down),
+            )
+          : null,
     );
   }
 }
@@ -475,74 +544,116 @@ class _TextBody extends StatelessWidget {
   }
 }
 
+bool _isImageName(String name, String mime) {
+  final n = name.toLowerCase();
+  return mime.startsWith('image/') ||
+      n.endsWith('.png') ||
+      n.endsWith('.jpg') ||
+      n.endsWith('.jpeg') ||
+      n.endsWith('.webp') ||
+      n.endsWith('.gif') ||
+      n.endsWith('.bmp');
+}
+
 class _AttachmentBody extends StatelessWidget {
   const _AttachmentBody({required this.message, this.onDownload});
   final ChatMessage message;
   final VoidCallback? onDownload;
+
+  void _openViewer(BuildContext context, String path) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => Dialog.fullscreen(
+        child: Stack(
+          children: [
+            Center(
+              child: InteractiveViewer(
+                child: Image.file(File(path), fit: BoxFit.contain),
+              ),
+            ),
+            Positioned(
+              top: 12,
+              right: 12,
+              child: IconButton.filled(
+                onPressed: () => Navigator.pop(ctx),
+                icon: const Icon(Icons.close),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final att = message.attachment!;
     final have = message.haveFile;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(_fileIcon(att.name),
-                size: 28, color: theme.colorScheme.primary),
-            const SizedBox(width: 8),
-            Flexible(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(att.name,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.w600)),
-                  Text(
-                    '${formatBytes(att.size)} · ${have ? '已下载' : att.infohash.substring(0, 8)}',
-                    style: theme.textTheme.bodySmall
-                        ?.copyWith(color: theme.colorScheme.outline),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 6),
-        if (have)
+    final imagePath =
+        (have && message.localPath != null) ? message.localPath! : null;
+    final isImage = imagePath != null && _isImageName(att.name, att.mime);
+    return GestureDetector(
+      onTap: isImage ? () => _openViewer(context, imagePath) : null,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.check_circle,
-                  size: 16, color: theme.colorScheme.tertiary),
-              const SizedBox(width: 4),
+              Icon(_fileIcon(att.name),
+                  size: 28, color: theme.colorScheme.primary),
+              const SizedBox(width: 8),
               Flexible(
-                child: Text(message.localPath ?? '',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.labelSmall),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(att.name,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.w600)),
+                    Text(
+                      '${formatBytes(att.size)} · ${have ? '已下载' : att.infohash.substring(0, 8)}',
+                      style: theme.textTheme.bodySmall
+                          ?.copyWith(color: theme.colorScheme.outline),
+                    ),
+                  ],
+                ),
               ),
             ],
-          )
-        else
-          Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton.icon(
-              onPressed: onDownload,
-              icon: const Icon(Icons.download, size: 18),
-              label: const Text('通过 BT 下载'),
-              style: TextButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                visualDensity: VisualDensity.compact,
+          ),
+          const SizedBox(height: 6),
+          if (have)
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.check_circle,
+                    size: 16, color: theme.colorScheme.tertiary),
+                const SizedBox(width: 4),
+                Flexible(
+                  child: Text(message.localPath ?? '',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.labelSmall),
+                ),
+              ],
+            )
+          else
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: onDownload,
+                icon: const Icon(Icons.download, size: 18),
+                label: const Text('通过 BT 下载'),
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  visualDensity: VisualDensity.compact,
+                ),
               ),
             ),
-          ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -794,6 +905,46 @@ class _GroupDetailSheetState extends State<GroupDetailSheet> {
               );
             }),
           ],
+          const SizedBox(height: 8),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.edit_outlined),
+            title: const Text('修改群名'),
+            subtitle: const Text('以签名系统消息广播给全群'),
+            onTap: () async {
+              final controller =
+                  TextEditingController(text: (group['name'] as String?) ?? '');
+              final name = await showDialog<String>(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  title: const Text('修改群名'),
+                  content: TextField(
+                    controller: controller,
+                    autofocus: true,
+                    maxLength: 32,
+                    decoration:
+                        const InputDecoration(border: OutlineInputBorder()),
+                  ),
+                  actions: [
+                    TextButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        child: const Text('取消')),
+                    FilledButton(
+                        onPressed: () =>
+                            Navigator.pop(ctx, controller.text.trim()),
+                        child: const Text('保存')),
+                  ],
+                ),
+              );
+              if (name == null || name.isEmpty) return;
+              try {
+                _api.renameGroup(widget.groupId, name);
+                _refresh();
+              } catch (e) {
+                if (context.mounted) showError(context, e);
+              }
+            },
+          ),
           const SizedBox(height: 16),
           OutlinedButton.icon(
             style: OutlinedButton.styleFrom(

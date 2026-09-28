@@ -300,6 +300,15 @@ impl GroupSync {
         }
         match self.dag.insert(id, sm.msg.clone(), sm.bytes.clone())? {
             crate::chat::dag::InsertOutcome::New => {
+                // group rename propagates through signed system messages
+                if sm.msg.kind == crate::chat::message::MsgKind::System as i64 {
+                    if let crate::chat::message::Payload::System { code, detail } = &sm.msg.payload
+                    {
+                        if code == "rename" && !detail.is_empty() {
+                            let _ = store.group_set_name(&self.gid, detail);
+                        }
+                    }
+                }
                 let _ = store.missing_replace(&self.gid, &self.dag.missing());
                 if self.pending_puts.remove(&id) {
                     // our own message confirmed round-trip

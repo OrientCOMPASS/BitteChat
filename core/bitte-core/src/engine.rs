@@ -156,6 +156,9 @@ pub trait BtEngine: Send + Sync {
     fn ext_send(&self, infohash: &str, payload: &[u8]) -> Result<u32>;
 
     fn session_stats(&self) -> Result<SessionStats>;
+
+    /// Rate limits in bytes/sec; 0 = unlimited.
+    fn set_limits(&self, upload: i64, download: i64) -> Result<()>;
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

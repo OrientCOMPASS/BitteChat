@@ -3,7 +3,7 @@
 use base64::Engine as _;
 use serde_json::{json, Value as Json};
 
-use crate::api::{jbool, jstr, Api};
+use crate::api::{jbool, ji64, jstr, Api};
 use crate::store::TorrentRow;
 use crate::{CoreError, Result};
 
@@ -313,6 +313,30 @@ impl Api {
     pub fn bt_stats(&self) -> Result<Json> {
         let stats = self.inner.engine.session_stats()?;
         Ok(serde_json::to_value(stats).unwrap_or(json!({})))
+    }
+
+    pub fn bt_get_limits(&self) -> Result<Json> {
+        let st = self.inner.state.lock().unwrap();
+        let raw = st.store.kv_get("limits").ok().flatten();
+        drop(st);
+        let v = raw
+            .and_then(|r| serde_json::from_slice::<Json>(&r).ok())
+            .unwrap_or_else(|| json!({"up": 0, "down": 0}));
+        let mut o = v.as_object().cloned().unwrap_or_default();
+        o.insert("ok".to_string(), json!(true));
+        Ok(Json::Object(o))
+    }
+
+    pub fn bt_set_limits(&self, p: Json) -> Result<Json> {
+        let up = ji64(&p, "up", 0).max(0);
+        let down = ji64(&p, "down", 0).max(0);
+        self.inner.engine.set_limits(up, down)?;
+        let st = self.inner.state.lock().unwrap();
+        st.store.kv_set(
+            "limits",
+            &serde_json::to_vec(&json!({"up": up, "down": down})).unwrap_or_default(),
+        )?;
+        Ok(json!({"ok": true, "up": up, "down": down}))
     }
 
     /// Periodic broadcast used by the scheduler.
