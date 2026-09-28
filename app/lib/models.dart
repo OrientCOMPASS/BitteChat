@@ -504,3 +504,30 @@ class FilterRule {
     return '${fields[field] ?? field} ${modes[mode] ?? mode} "$value"';
   }
 }
+
+class IdentityInfo {
+  IdentityInfo({
+    required this.id,
+    required this.name,
+    required this.pk,
+    required this.avatarB64,
+    required this.created,
+    required this.active,
+  });
+
+  final int id;
+  final String name;
+  final String pk;
+  final String avatarB64;
+  final int created;
+  final bool active;
+
+  factory IdentityInfo.fromJson(Map<String, dynamic> j) => IdentityInfo(
+        id: _i(j, 'id'),
+        name: _s(j, 'name'),
+        pk: _s(j, 'pk'),
+        avatarB64: _s(j, 'avatar_b64'),
+        created: _i(j, 'created'),
+        active: _b(j, 'active'),
+      );
+}

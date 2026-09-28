@@ -5,12 +5,12 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../core/api.dart';
+import '../core/l10n.dart';
 import 'bt_tab.dart';
 import 'chat_tab.dart';
 import 'rss_tab.dart';
 import 'settings_page.dart';
 import '../core/prefs.dart';
-import '../core/l10n.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key, required this.prefs});

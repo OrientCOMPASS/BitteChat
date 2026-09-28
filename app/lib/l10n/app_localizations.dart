@@ -1519,6 +1519,132 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'群聊'**
   String get groupChat;
+
+  /// No description provided for @identities.
+  ///
+  /// In zh, this message translates to:
+  /// **'身份档案'**
+  String get identities;
+
+  /// No description provided for @identitiesHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'每个昵称绑定一把私钥：改名=新身份。删除后私钥不可恢复。'**
+  String get identitiesHint;
+
+  /// No description provided for @currentIdentity.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前身份'**
+  String get currentIdentity;
+
+  /// No description provided for @createIdentity.
+  ///
+  /// In zh, this message translates to:
+  /// **'新建身份'**
+  String get createIdentity;
+
+  /// No description provided for @newIdentityName.
+  ///
+  /// In zh, this message translates to:
+  /// **'新身份昵称'**
+  String get newIdentityName;
+
+  /// No description provided for @createIdentityWarn.
+  ///
+  /// In zh, this message translates to:
+  /// **'将生成全新的 Ed25519 私钥：新消息以新身份署名，旧身份历史保留。'**
+  String get createIdentityWarn;
+
+  /// No description provided for @switchIdentity.
+  ///
+  /// In zh, this message translates to:
+  /// **'切换身份'**
+  String get switchIdentity;
+
+  /// No description provided for @switchIdentityQ.
+  ///
+  /// In zh, this message translates to:
+  /// **'切换到「{name}」？'**
+  String switchIdentityQ(Object name);
+
+  /// No description provided for @switchIdentityHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'切换后，新消息将以该身份的私钥署名（相当于以另一个昵称发言）。'**
+  String get switchIdentityHint;
+
+  /// No description provided for @switched.
+  ///
+  /// In zh, this message translates to:
+  /// **'已切换为「{name}」'**
+  String switched(Object name);
+
+  /// No description provided for @deleteIdentity.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除身份'**
+  String get deleteIdentity;
+
+  /// No description provided for @deleteIdentityQ.
+  ///
+  /// In zh, this message translates to:
+  /// **'永久删除身份「{name}」？'**
+  String deleteIdentityQ(Object name);
+
+  /// No description provided for @deleteIdentityWarn.
+  ///
+  /// In zh, this message translates to:
+  /// **'私钥将被销毁且不可恢复；该身份的历史消息仍在链上但无法再以它发言。'**
+  String get deleteIdentityWarn;
+
+  /// No description provided for @identityCreated.
+  ///
+  /// In zh, this message translates to:
+  /// **'身份「{name}」已创建（未启用）'**
+  String identityCreated(Object name);
+
+  /// No description provided for @identityCreatedSwitch.
+  ///
+  /// In zh, this message translates to:
+  /// **'身份「{name}」已创建并启用'**
+  String identityCreatedSwitch(Object name);
+
+  /// No description provided for @identityDeleted.
+  ///
+  /// In zh, this message translates to:
+  /// **'身份已删除'**
+  String get identityDeleted;
+
+  /// No description provided for @activeMark.
+  ///
+  /// In zh, this message translates to:
+  /// **'使用中'**
+  String get activeMark;
+
+  /// No description provided for @errIdentityActive.
+  ///
+  /// In zh, this message translates to:
+  /// **'不能删除正在使用的身份'**
+  String get errIdentityActive;
+
+  /// No description provided for @errIdentityLast.
+  ///
+  /// In zh, this message translates to:
+  /// **'至少保留一个身份'**
+  String get errIdentityLast;
+
+  /// No description provided for @errNameLen2.
+  ///
+  /// In zh, this message translates to:
+  /// **'昵称长度需在 1..32 字符'**
+  String get errNameLen2;
+
+  /// No description provided for @setAvatar.
+  ///
+  /// In zh, this message translates to:
+  /// **'更换头像'**
+  String get setAvatar;
 }
 
 class _AppLocalizationsDelegate

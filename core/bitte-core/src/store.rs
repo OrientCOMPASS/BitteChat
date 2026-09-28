@@ -96,6 +96,14 @@ CREATE TABLE IF NOT EXISTS torrents (
   group_id BLOB,
   added INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS identities (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  seed BLOB NOT NULL,
+  avatar TEXT NOT NULL DEFAULT '',
+  created INTEGER NOT NULL,
+  active INTEGER NOT NULL DEFAULT 0
+);
 CREATE TABLE IF NOT EXISTS feeds (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   url TEXT NOT NULL UNIQUE,
@@ -165,6 +173,119 @@ impl Store {
             conn.execute("ALTER TABLE messages ADD COLUMN x BLOB", [])?;
         }
         Ok(Store { conn })
+    }
+
+    // ---- identities ----------------------------------------------------
+
+    /// One-time migration of the legacy single-identity kv layout.
+    pub fn identities_migrate_legacy(
+        &self,
+        legacy_seed: &[u8; 32],
+        legacy_name: &str,
+        legacy_avatar: &str,
+        now: i64,
+    ) -> Result<i64> {
+        let n: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM identities", [], |r| r.get(0))?;
+        if n > 0 {
+            return Ok(self.identities_active_id()?.unwrap_or(1));
+        }
+        self.conn.execute(
+            "INSERT INTO identities(name, seed, avatar, created, active) VALUES(?1,?2,?3,?4,1)",
+            params![legacy_name, legacy_seed.to_vec(), legacy_avatar, now],
+        )?;
+        Ok(self.conn.last_insert_rowid())
+    }
+
+    pub fn identities_all(&self) -> Result<Vec<IdentityRow>> {
+        let mut st = self
+            .conn
+            .prepare("SELECT id,name,seed,avatar,created,active FROM identities ORDER BY id ASC")?;
+        let rows = st.query_map([], |r| {
+            Ok(IdentityRow {
+                id: r.get(0)?,
+                name: r.get(1)?,
+                seed: r.get(2)?,
+                avatar: r.get(3)?,
+                created: r.get(4)?,
+                active: r.get::<_, i64>(5)? != 0,
+            })
+        })?;
+        let mut out = Vec::new();
+        for r in rows {
+            out.push(r?);
+        }
+        Ok(out)
+    }
+
+    pub fn identities_active_id(&self) -> Result<Option<i64>> {
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT id FROM identities WHERE active=1 LIMIT 1",
+                [],
+                |r| r.get(0),
+            )
+            .optional()?)
+    }
+
+    pub fn identity_get(&self, id: i64) -> Result<Option<IdentityRow>> {
+        let mut st = self
+            .conn
+            .prepare("SELECT id,name,seed,avatar,created,active FROM identities WHERE id=?1")?;
+        let mut rows = st.query_map(params![id], |r| {
+            Ok(IdentityRow {
+                id: r.get(0)?,
+                name: r.get(1)?,
+                seed: r.get(2)?,
+                avatar: r.get(3)?,
+                created: r.get(4)?,
+                active: r.get::<_, i64>(5)? != 0,
+            })
+        })?;
+        match rows.next() {
+            Some(r) => Ok(Some(r?)),
+            None => Ok(None),
+        }
+    }
+
+    pub fn identity_insert(
+        &self,
+        name: &str,
+        seed: &[u8; 32],
+        avatar: &str,
+        now: i64,
+    ) -> Result<i64> {
+        self.conn.execute(
+            "INSERT INTO identities(name,seed,avatar,created,active) VALUES(?1,?2,?3,?4,0)",
+            params![name, seed.to_vec(), avatar, now],
+        )?;
+        Ok(self.conn.last_insert_rowid())
+    }
+
+    pub fn identity_set_active(&self, id: i64) -> Result<()> {
+        self.conn
+            .execute("UPDATE identities SET active=0 WHERE active=1", [])?;
+        self.conn
+            .execute("UPDATE identities SET active=1 WHERE id=?1", params![id])?;
+        Ok(())
+    }
+
+    pub fn identity_delete(&self, id: i64) -> Result<()> {
+        self.conn.execute(
+            "DELETE FROM identities WHERE id=?1 AND active=0",
+            params![id],
+        )?;
+        Ok(())
+    }
+
+    pub fn identity_set_avatar(&self, id: i64, avatar: &str) -> Result<()> {
+        self.conn.execute(
+            "UPDATE identities SET avatar=?2 WHERE id=?1",
+            params![id, avatar],
+        )?;
+        Ok(())
     }
 
     // ---- kv ------------------------------------------------------------
@@ -844,6 +965,16 @@ impl Store {
             None => Ok(None),
         }
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct IdentityRow {
+    pub id: i64,
+    pub name: String,
+    pub seed: Vec<u8>,
+    pub avatar: String,
+    pub created: i64,
+    pub active: bool,
 }
 
 #[derive(Debug, Clone)]

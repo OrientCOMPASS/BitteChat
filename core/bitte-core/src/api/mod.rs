@@ -15,7 +15,6 @@ use std::path::PathBuf;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex, RwLock};
 
-use serde::{Deserialize, Serialize};
 use serde_json::{json, Value as Json};
 
 use crate::chat::sync::GroupSync;
@@ -29,10 +28,12 @@ pub mod chat;
 pub mod events;
 pub mod rss;
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct Profile {
+/// The currently active identity (private key + display profile).
+#[derive(Clone)]
+pub struct ActiveIdentity {
+    pub row_id: i64,
+    pub identity: Identity,
     pub name: String,
-    #[serde(default)]
     pub avatar_b64: String,
 }
 
@@ -57,8 +58,7 @@ pub struct Inner {
     pub data_dir: PathBuf,
     pub engine: Arc<dyn BtEngine>,
     pub state: Mutex<CoreState>,
-    pub identity: RwLock<Identity>,
-    pub profile: RwLock<Profile>,
+    pub active: RwLock<ActiveIdentity>,
     pub emit: Sender<String>,
     pub active_group: RwLock<Option<String>>,
     pub shutdown: RwLock<bool>,
@@ -81,28 +81,50 @@ impl Api {
         std::fs::create_dir_all(data_dir.join("downloads"))?;
         let store = Store::open(&data_dir.join("bitte.db"))?;
 
-        // identity bootstrap
-        let identity = match store.kv_get("identity_seed")? {
+        // identity bootstrap: migrate legacy kv layout into identities table
+        let legacy_seed: [u8; 32] = match store.kv_get("identity_seed")? {
             Some(seed) if seed.len() == 32 => {
                 let mut s = [0u8; 32];
                 s.copy_from_slice(&seed);
-                Identity::from_seed(s)
+                s
             }
-            _ => {
-                let id = Identity::generate();
-                store.kv_set("identity_seed", &id.seed)?;
-                id
-            }
+            _ => crate::crypto::new_seed(),
         };
-        let mut profile: Profile = match store.kv_get("profile")? {
-            Some(b) => serde_json::from_slice(&b).unwrap_or_default(),
-            None => Profile::default(),
-        };
-        if profile.name.is_empty() {
-            let pk = identity.public_key();
-            profile.name = format!("旅人-{}", hex::encode(pk)[..4].to_uppercase());
-            store.kv_set("profile", &serde_json::to_vec(&profile).unwrap_or_default())?;
+        let legacy_profile: serde_json::Value = store
+            .kv_get("profile")?
+            .and_then(|b| serde_json::from_slice(&b).ok())
+            .unwrap_or_else(|| json!({}));
+        let mut legacy_name = legacy_profile
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let legacy_avatar = legacy_profile
+            .get("avatar_b64")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        if legacy_name.is_empty() {
+            let pk = Identity::from_seed(legacy_seed).public_key();
+            legacy_name = format!("旅人-{}", hex::encode(pk)[..4].to_uppercase());
         }
+        let now = crate::now_ms();
+        store.identities_migrate_legacy(&legacy_seed, &legacy_name, &legacy_avatar, now)?;
+        store.kv_set("identity_seed", &legacy_seed)?;
+        let active_id = store
+            .identities_active_id()?
+            .ok_or_else(|| CoreError::Internal("no active identity".into()))?;
+        let row = store
+            .identity_get(active_id)?
+            .ok_or_else(|| CoreError::Internal("active identity row missing".into()))?;
+        let mut seed32 = [0u8; 32];
+        seed32.copy_from_slice(&row.seed);
+        let active = ActiveIdentity {
+            row_id: row.id,
+            identity: Identity::from_seed(seed32),
+            name: row.name,
+            avatar_b64: row.avatar,
+        };
 
         let (emit, events) = channel::<String>();
         let inner = Arc::new(Inner {
@@ -114,8 +136,7 @@ impl Api {
                 by_ih: HashMap::new(),
                 pending_joins: HashMap::new(),
             }),
-            identity: RwLock::new(identity),
-            profile: RwLock::new(profile),
+            active: RwLock::new(active),
             emit,
             active_group: RwLock::new(None),
             shutdown: RwLock::new(false),
@@ -156,11 +177,15 @@ impl Api {
     }
 
     pub fn own_pk_hex(&self) -> String {
-        hex::encode(self.inner.identity.read().unwrap().public_key())
+        hex::encode(self.inner.active.read().unwrap().identity.public_key())
     }
 
-    pub fn profile(&self) -> Profile {
-        self.inner.profile.read().unwrap().clone()
+    pub fn profile_name(&self) -> String {
+        self.inner.active.read().unwrap().name.clone()
+    }
+
+    pub fn profile_avatar(&self) -> String {
+        self.inner.active.read().unwrap().avatar_b64.clone()
     }
 
     /// Main JSON entry point.
@@ -169,7 +194,11 @@ impl Api {
         match method {
             "sys.info" => self.sys_info(),
             "sys.identity.get" => self.identity_get(),
-            "sys.identity.set" => self.identity_set(p),
+            "sys.identity.list" => self.identity_list(),
+            "sys.identity.create" => self.identity_create(p),
+            "sys.identity.switch" => self.identity_switch(p),
+            "sys.identity.delete" => self.identity_delete(p),
+            "sys.identity.set_avatar" => self.identity_set_avatar(p),
             "sys.set_active_group" => self.set_active_group(p),
 
             "bt.add" => self.bt_add(p),
@@ -224,40 +253,119 @@ impl Api {
     }
 
     fn identity_get(&self) -> Result<Json> {
-        let p = self.profile();
-        let id = self.inner.identity.read().unwrap().clone();
-        let xs = crate::crypto::x_secret_from_seed(&id.seed);
+        let a = self.inner.active.read().unwrap().clone();
+        let xs = crate::crypto::x_secret_from_seed(&a.identity.seed);
         Ok(json!({
-            "name": p.name,
-            "avatar_b64": p.avatar_b64,
-            "pk": self.own_pk_hex(),
+            "id": a.row_id,
+            "name": a.name,
+            "avatar_b64": a.avatar_b64,
+            "pk": hex::encode(a.identity.public_key()),
             "x": hex::encode(crate::crypto::x_public(&xs)),
         }))
     }
 
-    fn identity_set(&self, p: Json) -> Result<Json> {
-        let new_profile = {
-            let mut prof = self.inner.profile.write().unwrap();
-            if let Some(n) = p.get("name").and_then(|v| v.as_str()) {
-                let n = n.trim();
-                if n.is_empty() || n.chars().count() > 32 {
-                    return Err(CoreError::Invalid("name must be 1..32 chars".into()));
-                }
-                prof.name = n.to_string();
-            }
-            if let Some(a) = p.get("avatar_b64").and_then(|v| v.as_str()) {
-                if a.len() > 16 * 1024 {
-                    return Err(CoreError::Invalid("avatar too large".into()));
-                }
-                prof.avatar_b64 = a.to_string();
-            }
-            prof.clone()
-        };
+    fn identity_list(&self) -> Result<Json> {
         let st = self.inner.state.lock().unwrap();
-        st.store.kv_set(
-            "profile",
-            &serde_json::to_vec(&new_profile).unwrap_or_default(),
-        )?;
+        let rows = st.store.identities_all()?;
+        let out: Vec<Json> = rows
+            .iter()
+            .map(|r| {
+                let mut seed = [0u8; 32];
+                seed.copy_from_slice(&r.seed);
+                let id = Identity::from_seed(seed);
+                let xs = crate::crypto::x_secret_from_seed(&seed);
+                json!({
+                    "id": r.id,
+                    "name": r.name,
+                    "avatar_b64": r.avatar,
+                    "pk": hex::encode(id.public_key()),
+                    "x": hex::encode(crate::crypto::x_public(&xs)),
+                    "created": r.created,
+                    "active": r.active,
+                })
+            })
+            .collect();
+        Ok(json!({"identities": out}))
+    }
+
+    /// Create a NEW identity (new keypair). Renaming is intentionally not
+    /// supported: a nickname is bound to its key, so changing it means a
+    /// new identity.
+    fn identity_create(&self, p: Json) -> Result<Json> {
+        let name = crate::api::jstr(&p, "name")?.trim().to_string();
+        if name.is_empty() || name.chars().count() > 32 {
+            return Err(CoreError::Invalid("IDENTITY_NAME_LEN".into()));
+        }
+        let avatar = p
+            .get("avatar_b64")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        if avatar.len() > 16 * 1024 {
+            return Err(CoreError::Invalid("avatar too large".into()));
+        }
+        let seed = crate::crypto::new_seed();
+        let st = self.inner.state.lock().unwrap();
+        let id = st
+            .store
+            .identity_insert(&name, &seed, &avatar, crate::now_ms())?;
+        let ident = Identity::from_seed(seed);
+        Ok(json!({
+            "id": id,
+            "pk": hex::encode(ident.public_key()),
+        }))
+    }
+
+    fn identity_switch(&self, p: Json) -> Result<Json> {
+        let id = crate::api::ji64(&p, "id", 0);
+        let st = self.inner.state.lock().unwrap();
+        let row = st
+            .store
+            .identity_get(id)?
+            .ok_or_else(|| CoreError::NotFound("identity".into()))?;
+        st.store.identity_set_active(id)?;
+        let mut seed = [0u8; 32];
+        seed.copy_from_slice(&row.seed);
+        drop(st);
+        let mut a = self.inner.active.write().unwrap();
+        a.row_id = row.id;
+        a.identity = Identity::from_seed(seed);
+        a.name = row.name;
+        a.avatar_b64 = row.avatar;
+        Ok(json!({"ok": true, "pk": hex::encode(a.identity.public_key())}))
+    }
+
+    fn identity_delete(&self, p: Json) -> Result<Json> {
+        let id = crate::api::ji64(&p, "id", 0);
+        let st = self.inner.state.lock().unwrap();
+        let row = st
+            .store
+            .identity_get(id)?
+            .ok_or_else(|| CoreError::NotFound("identity".into()))?;
+        if row.active {
+            return Err(CoreError::Invalid("IDENTITY_ACTIVE".into()));
+        }
+        if st.store.identities_all()?.len() <= 1 {
+            return Err(CoreError::Invalid("IDENTITY_LAST".into()));
+        }
+        st.store.identity_delete(id)?;
+        Ok(json!({"ok": true}))
+    }
+
+    fn identity_set_avatar(&self, p: Json) -> Result<Json> {
+        let avatar = p
+            .get("avatar_b64")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        if avatar.len() > 16 * 1024 {
+            return Err(CoreError::Invalid("avatar too large".into()));
+        }
+        let row_id = self.inner.active.read().unwrap().row_id;
+        let st = self.inner.state.lock().unwrap();
+        st.store.identity_set_avatar(row_id, &avatar)?;
+        drop(st);
+        self.inner.active.write().unwrap().avatar_b64 = avatar;
         Ok(json!({"ok": true}))
     }
 
@@ -524,8 +632,8 @@ impl Api {
             Err(_) => return,
         };
         let (identity, profile_name) = {
-            let id = self.inner.identity.read().unwrap().clone();
-            let pn = self.inner.profile.read().unwrap().name.clone();
+            let id = self.inner.active.read().unwrap().identity.clone();
+            let pn = self.inner.active.read().unwrap().name.clone();
             (id, pn)
         };
         let now = crate::now_ms();

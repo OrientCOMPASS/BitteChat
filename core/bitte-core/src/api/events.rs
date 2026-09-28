@@ -209,7 +209,7 @@ impl Api {
 
     fn on_immutable_item(&self, target: Sha1Hash, found: bool, value: Vec<u8>) {
         let now = crate::now_ms();
-        let own_pk = { hex::encode(self.inner.identity.read().unwrap().public_key()) };
+        let own_pk = self.own_pk_hex();
         let mut guard = self.inner.state.lock().unwrap();
         let st = &mut *guard;
         // which group is waiting for this?
@@ -433,7 +433,7 @@ impl Api {
             let _ = self.inner.engine.ext_send(&infohash, &r);
         }
         let had_new = !new_msgs.is_empty();
-        let own_pk = hex::encode(self.inner.identity.read().unwrap().public_key());
+        let own_pk = self.own_pk_hex();
         let mut invites = Vec::new();
         for m in &new_msgs {
             if let Some(magnet) = dm_invite_for_me(m, &own_pk) {

@@ -493,5 +493,61 @@
  "fabGroup": "群聊",
  "inviteLink": "邀请链接",
  "copyInviteLink": "复制磁力邀请链接",
- "groupChat": "群聊"
+ "groupChat": "群聊",
+ "identities": "身份档案",
+ "identitiesHint": "每个昵称绑定一把私钥：改名=新身份。删除后私钥不可恢复。",
+ "currentIdentity": "当前身份",
+ "createIdentity": "新建身份",
+ "newIdentityName": "新身份昵称",
+ "createIdentityWarn": "将生成全新的 Ed25519 私钥：新消息以新身份署名，旧身份历史保留。",
+ "switchIdentity": "切换身份",
+ "switchIdentityQ": "切换到「{name}」？",
+ "@switchIdentityQ": {
+  "placeholders": {
+   "name": {
+    "type": "Object"
+   }
+  }
+ },
+ "switchIdentityHint": "切换后，新消息将以该身份的私钥署名（相当于以另一个昵称发言）。",
+ "switched": "已切换为「{name}」",
+ "@switched": {
+  "placeholders": {
+   "name": {
+    "type": "Object"
+   }
+  }
+ },
+ "deleteIdentity": "删除身份",
+ "deleteIdentityQ": "永久删除身份「{name}」？",
+ "@deleteIdentityQ": {
+  "placeholders": {
+   "name": {
+    "type": "Object"
+   }
+  }
+ },
+ "deleteIdentityWarn": "私钥将被销毁且不可恢复；该身份的历史消息仍在链上但无法再以它发言。",
+ "identityCreated": "身份「{name}」已创建（未启用）",
+ "@identityCreated": {
+  "placeholders": {
+   "name": {
+    "type": "Object"
+   }
+  }
+ },
+ "identityCreatedSwitch": "身份「{name}」已创建并启用",
+ "@identityCreatedSwitch": {
+  "placeholders": {
+   "name": {
+    "type": "Object"
+   }
+  }
+ },
+ "identityDeleted": "身份已删除",
+ "activeMark": "使用中",
+ "errIdentityActive": "不能删除正在使用的身份",
+ "errIdentityLast": "至少保留一个身份",
+ "errNameLen2": "昵称长度需在 1..32 字符",
+ "setAvatar": "更换头像"
 }

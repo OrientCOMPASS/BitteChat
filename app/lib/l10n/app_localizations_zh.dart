@@ -783,4 +783,77 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get groupChat => '群聊';
+
+  @override
+  String get identities => '身份档案';
+
+  @override
+  String get identitiesHint => '每个昵称绑定一把私钥：改名=新身份。删除后私钥不可恢复。';
+
+  @override
+  String get currentIdentity => '当前身份';
+
+  @override
+  String get createIdentity => '新建身份';
+
+  @override
+  String get newIdentityName => '新身份昵称';
+
+  @override
+  String get createIdentityWarn => '将生成全新的 Ed25519 私钥：新消息以新身份署名，旧身份历史保留。';
+
+  @override
+  String get switchIdentity => '切换身份';
+
+  @override
+  String switchIdentityQ(Object name) {
+    return '切换到「$name」？';
+  }
+
+  @override
+  String get switchIdentityHint => '切换后，新消息将以该身份的私钥署名（相当于以另一个昵称发言）。';
+
+  @override
+  String switched(Object name) {
+    return '已切换为「$name」';
+  }
+
+  @override
+  String get deleteIdentity => '删除身份';
+
+  @override
+  String deleteIdentityQ(Object name) {
+    return '永久删除身份「$name」？';
+  }
+
+  @override
+  String get deleteIdentityWarn => '私钥将被销毁且不可恢复；该身份的历史消息仍在链上但无法再以它发言。';
+
+  @override
+  String identityCreated(Object name) {
+    return '身份「$name」已创建（未启用）';
+  }
+
+  @override
+  String identityCreatedSwitch(Object name) {
+    return '身份「$name」已创建并启用';
+  }
+
+  @override
+  String get identityDeleted => '身份已删除';
+
+  @override
+  String get activeMark => '使用中';
+
+  @override
+  String get errIdentityActive => '不能删除正在使用的身份';
+
+  @override
+  String get errIdentityLast => '至少保留一个身份';
+
+  @override
+  String get errNameLen2 => '昵称长度需在 1..32 字符';
+
+  @override
+  String get setAvatar => '更换头像';
 }

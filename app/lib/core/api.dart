@@ -104,11 +104,33 @@ class BitteApi extends ChangeNotifier {
     }
   }
 
-  void setIdentity({String? name, String? avatarB64}) {
-    call('sys.identity.set', {
-      if (name != null) 'name': name,
-      if (avatarB64 != null) 'avatar_b64': avatarB64,
-    });
+  List<IdentityInfo> identities() {
+    if (!available) return [];
+    try {
+      final r = call('sys.identity.list');
+      return ((r['identities'] as List?) ?? [])
+          .map((e) => IdentityInfo.fromJson(_asMapSafe(e)))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Map<String, dynamic> createIdentity(String name) =>
+      call('sys.identity.create', {'name': name});
+
+  void switchIdentity(int id) {
+    call('sys.identity.switch', {'id': id});
+    notifyListeners();
+  }
+
+  void deleteIdentity(int id) {
+    call('sys.identity.delete', {'id': id});
+    notifyListeners();
+  }
+
+  void setAvatar(String avatarB64) {
+    call('sys.identity.set_avatar', {'avatar_b64': avatarB64});
     notifyListeners();
   }
 

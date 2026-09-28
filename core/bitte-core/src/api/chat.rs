@@ -41,15 +41,14 @@ pub fn group_summary_from_row(row: &GroupRow) -> Json {
 
 impl Api {
     fn identity_snapshot(&self) -> (Identity, String) {
-        let id = self.inner.identity.read().unwrap().clone();
-        let pn = self.inner.profile.read().unwrap().name.clone();
-        (id, pn)
+        let a = self.inner.active.read().unwrap();
+        (a.identity.clone(), a.name.clone())
     }
 
     /// Symmetric channel key for a DM manifest (None for plain groups).
     pub fn dm_channel_key(&self, manifest: &GroupManifest) -> Option<[u8; 32]> {
         let (a, b) = manifest.dm.as_ref()?;
-        let identity = self.inner.identity.read().unwrap().clone();
+        let identity = self.inner.active.read().unwrap().identity.clone();
         let own_pk = identity.public_key();
         let peer = if a.k == own_pk {
             b
@@ -152,7 +151,7 @@ impl Api {
     pub fn chat_start_dm(&self, p: Json) -> Result<Json> {
         let their_pk_hex = jstr(&p, "author_pk")?.to_string();
         let their_pk = crate::api::hex32(&their_pk_hex)?;
-        let identity = self.inner.identity.read().unwrap().clone();
+        let identity = self.inner.active.read().unwrap().identity.clone();
         let own_pk = identity.public_key();
         if their_pk == own_pk {
             return Err(CoreError::Invalid("不能和自己私聊".into()));
@@ -178,7 +177,7 @@ impl Api {
         let own_x = crate::crypto::x_public(&own_xs);
         let head = Identity::generate();
         let mut manifest =
-            GroupManifest::new(&their_name, &self.profile().name, &identity, &head, vec![])?;
+            GroupManifest::new(&their_name, &self.profile_name(), &identity, &head, vec![])?;
         manifest.gid = gid;
         let (a, b) = if own_pk <= their_pk {
             (
@@ -591,11 +590,7 @@ impl Api {
             ));
         }
 
-        let (identity, profile_name) = {
-            let id = self.inner.identity.read().unwrap().clone();
-            let pn = self.inner.profile.read().unwrap().name.clone();
-            (id, pn)
-        };
+        let (identity, profile_name) = self.identity_snapshot();
         let gid = hex20(&gid_hex)?;
         let now = crate::now_ms();
 

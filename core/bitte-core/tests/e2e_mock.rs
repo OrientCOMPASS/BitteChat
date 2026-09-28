@@ -761,6 +761,74 @@ fn e2e_filter_rules_block_and_validate() {
 }
 
 #[test]
+fn e2e_identity_profiles() {
+    let bus = MockBus::new();
+    let (a, _ta) = spawn_node(&bus);
+    let (b, _tb) = spawn_node(&bus);
+
+    // baseline identity
+    let id0 = call(&a, "sys.identity.get", json!({}));
+    let pk0 = id0["pk"].as_str().unwrap().to_string();
+    let list = call(&a, "sys.identity.list", json!({}));
+    assert_eq!(list["identities"].as_array().unwrap().len(), 1);
+    assert!(list["identities"][0]["active"].as_bool().unwrap());
+
+    // deleting the active identity is rejected
+    let err = try_call(&a, "sys.identity.delete", json!({"id": 1}));
+    assert!(err.is_err());
+
+    // create a new identity (new nickname == new keypair, per design)
+    let created = call(&a, "sys.identity.create", json!({"name": "新身份"}));
+    let id1 = created["id"].as_i64().unwrap();
+    assert_ne!(created["pk"].as_str().unwrap(), pk0);
+
+    // switch: subsequent messages are signed with the new key
+    call(&a, "sys.identity.switch", json!({"id": id1}));
+    let now_id = call(&a, "sys.identity.get", json!({}));
+    assert_eq!(
+        now_id["pk"].as_str().unwrap(),
+        created["pk"].as_str().unwrap()
+    );
+    assert_eq!(now_id["name"].as_str().unwrap(), "新身份");
+
+    let created_g = call(&a, "chat.create_group", json!({"name": "身份测试群"}));
+    let gid = created_g["group_id"].as_str().unwrap().to_string();
+    let magnet = created_g["invite_magnet"].as_str().unwrap().to_string();
+    call(
+        &a,
+        "chat.send",
+        json!({"group_id": gid, "text": "signed by id1"}),
+    );
+    let r = call(&a, "chat.messages", json!({"group_id": gid}));
+    let msg = r["messages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| m["payload"]["Text"]["text"].as_str() == Some("signed by id1"))
+        .unwrap()
+        .clone();
+    assert_eq!(
+        msg["author_pk"].as_str().unwrap(),
+        created["pk"].as_str().unwrap()
+    );
+
+    // B still receives & verifies it (signature is self-contained)
+    call(&b, "chat.join_group", json!({"magnet": magnet}));
+    wait_until(&[&a, &b], T, || {
+        if texts(&b, &gid).contains(&"signed by id1".to_string()) {
+            Some(())
+        } else {
+            None
+        }
+    });
+
+    // delete the now-inactive old identity
+    call(&a, "sys.identity.delete", json!({"id": 1}));
+    let list = call(&a, "sys.identity.list", json!({}));
+    assert_eq!(list["identities"].as_array().unwrap().len(), 1);
+}
+
+#[test]
 fn dispatch_errors_are_graceful() {
     let bus = MockBus::new();
     let (a, _ta) = spawn_node(&bus);

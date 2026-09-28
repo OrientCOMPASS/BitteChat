@@ -493,5 +493,61 @@
  "fabGroup": "Groups",
  "inviteLink": "Invite link",
  "copyInviteLink": "Copy invite magnet",
- "groupChat": "Group chat"
+ "groupChat": "Group chat",
+ "identities": "Identities",
+ "identitiesHint": "Each nickname binds one private key: renaming means a NEW identity. Deleted keys cannot be recovered.",
+ "currentIdentity": "Current identity",
+ "createIdentity": "New identity",
+ "newIdentityName": "New identity nickname",
+ "createIdentityWarn": "A brand-new Ed25519 key is generated: future messages sign as the new identity; the old one's history stays.",
+ "switchIdentity": "Switch identity",
+ "switchIdentityQ": "Switch to \"{name}\"?",
+ "@switchIdentityQ": {
+  "placeholders": {
+   "name": {
+    "type": "Object"
+   }
+  }
+ },
+ "switchIdentityHint": "After switching, new messages are signed with that identity's key (like speaking under another nickname).",
+ "switched": "Switched to \"{name}\"",
+ "@switched": {
+  "placeholders": {
+   "name": {
+    "type": "Object"
+   }
+  }
+ },
+ "deleteIdentity": "Delete identity",
+ "deleteIdentityQ": "Permanently delete identity \"{name}\"?",
+ "@deleteIdentityQ": {
+  "placeholders": {
+   "name": {
+    "type": "Object"
+   }
+  }
+ },
+ "deleteIdentityWarn": "The private key is destroyed and cannot be recovered. Past messages remain on-chain but you can no longer post as it.",
+ "identityCreated": "Identity \"{name}\" created (not active)",
+ "@identityCreated": {
+  "placeholders": {
+   "name": {
+    "type": "Object"
+   }
+  }
+ },
+ "identityCreatedSwitch": "Identity \"{name}\" created and activated",
+ "@identityCreatedSwitch": {
+  "placeholders": {
+   "name": {
+    "type": "Object"
+   }
+  }
+ },
+ "identityDeleted": "Identity deleted",
+ "activeMark": "active",
+ "errIdentityActive": "Cannot delete the active identity",
+ "errIdentityLast": "At least one identity must remain",
+ "errNameLen2": "Nickname must be 1..32 characters",
+ "setAvatar": "Change avatar"
 }

@@ -102,6 +102,23 @@ void main() {
   });
 
   group('RssItem.fromJson', () {
+    test('IdentityInfo parses', () {
+      final i = IdentityInfo.fromJson({
+        'id': 3,
+        'name': 'neo',
+        'pk': 'aa' * 32,
+        'avatar_b64': 'eA==',
+        'created': 1,
+        'active': true,
+      });
+      expect(i.id, 3);
+      expect(i.name, 'neo');
+      expect(i.active, true);
+      expect(i.avatarB64, 'eA==');
+    });
+  });
+
+  group('RssItem.fromJson', () {
     test('parses flags', () {
       final i = RssItem.fromJson({
         'id': 5,

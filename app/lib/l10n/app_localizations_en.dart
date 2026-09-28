@@ -801,4 +801,81 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get groupChat => 'Group chat';
+
+  @override
+  String get identities => 'Identities';
+
+  @override
+  String get identitiesHint =>
+      'Each nickname binds one private key: renaming means a NEW identity. Deleted keys cannot be recovered.';
+
+  @override
+  String get currentIdentity => 'Current identity';
+
+  @override
+  String get createIdentity => 'New identity';
+
+  @override
+  String get newIdentityName => 'New identity nickname';
+
+  @override
+  String get createIdentityWarn =>
+      'A brand-new Ed25519 key is generated: future messages sign as the new identity; the old one\'s history stays.';
+
+  @override
+  String get switchIdentity => 'Switch identity';
+
+  @override
+  String switchIdentityQ(Object name) {
+    return 'Switch to \"$name\"?';
+  }
+
+  @override
+  String get switchIdentityHint =>
+      'After switching, new messages are signed with that identity\'s key (like speaking under another nickname).';
+
+  @override
+  String switched(Object name) {
+    return 'Switched to \"$name\"';
+  }
+
+  @override
+  String get deleteIdentity => 'Delete identity';
+
+  @override
+  String deleteIdentityQ(Object name) {
+    return 'Permanently delete identity \"$name\"?';
+  }
+
+  @override
+  String get deleteIdentityWarn =>
+      'The private key is destroyed and cannot be recovered. Past messages remain on-chain but you can no longer post as it.';
+
+  @override
+  String identityCreated(Object name) {
+    return 'Identity \"$name\" created (not active)';
+  }
+
+  @override
+  String identityCreatedSwitch(Object name) {
+    return 'Identity \"$name\" created and activated';
+  }
+
+  @override
+  String get identityDeleted => 'Identity deleted';
+
+  @override
+  String get activeMark => 'active';
+
+  @override
+  String get errIdentityActive => 'Cannot delete the active identity';
+
+  @override
+  String get errIdentityLast => 'At least one identity must remain';
+
+  @override
+  String get errNameLen2 => 'Nickname must be 1..32 characters';
+
+  @override
+  String get setAvatar => 'Change avatar';
 }

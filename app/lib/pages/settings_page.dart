@@ -2,6 +2,7 @@
 
 import 'package:flutter/material.dart';
 
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
@@ -27,6 +28,7 @@ class _SettingsPageState extends State<SettingsPage> {
   Identity? _identity;
   Map<String, dynamic> _info = {};
   List<FilterRule> _rules = [];
+  List<IdentityInfo> _identities = [];
 
   @override
   void initState() {
@@ -40,6 +42,7 @@ class _SettingsPageState extends State<SettingsPage> {
       _identity = _api.identity();
       _info = _api.sysInfo();
       _rules = _api.filterRules();
+      _identities = _api.identities();
     });
   }
 
@@ -229,30 +232,147 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
-  Future<void> _editName() async {
-    final controller = TextEditingController(text: _identity?.name ?? '');
+  Future<void> _createIdentity() async {
+    final controller = TextEditingController();
     final name = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(L.t.editName),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          maxLength: 32,
-          decoration: InputDecoration(border: OutlineInputBorder()),
+        title: Text(L.t.createIdentity),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(L.t.identitiesHint,
+                style: Theme.of(ctx)
+                    .textTheme
+                    .bodySmall
+                    ?.copyWith(color: Theme.of(ctx).colorScheme.error)),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              maxLength: 32,
+              decoration: InputDecoration(
+                  labelText: L.t.newIdentityName,
+                  border: const OutlineInputBorder()),
+            ),
+          ],
         ),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx), child: Text(L.t.cancel)),
           FilledButton(
-              onPressed: () => Navigator.pop(ctx, controller.text),
-              child: Text(L.t.save)),
+              onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+              child: Text(L.t.create)),
         ],
       ),
     );
-    if (name == null || name.trim().isEmpty) return;
+    if (name == null || name.isEmpty) return;
     try {
-      _api.setIdentity(name: name.trim());
+      final r = _api.createIdentity(name);
+      final id = (r['id'] as num).toInt();
+      if (!mounted) return;
+      final activate = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text(L.t.identityCreated(name)),
+          content: Text(L.t.switchIdentityHint),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: Text(L.t.cancel)),
+            FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: Text(L.t.switchIdentity)),
+          ],
+        ),
+      );
+      if (activate == true) {
+        _api.switchIdentity(id);
+        if (mounted) {
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text(L.t.switched(name))));
+        }
+      }
+      _reload();
+    } catch (e) {
+      if (mounted) showError(context, e);
+    }
+  }
+
+  Future<void> _switchIdentity(IdentityInfo i) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(L.t.switchIdentityQ(i.name)),
+        content: Text(L.t.switchIdentityHint),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(L.t.cancel)),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(L.t.switchIdentity)),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      _api.switchIdentity(i.id);
+      _reload();
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(L.t.switched(i.name))));
+      }
+    } catch (e) {
+      if (mounted) showError(context, e);
+    }
+  }
+
+  Future<void> _deleteIdentity(IdentityInfo i) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(L.t.deleteIdentityQ(i.name)),
+        content: Text(L.t.deleteIdentityWarn),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(L.t.cancel)),
+          FilledButton(
+            style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(ctx).colorScheme.error),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(L.t.deleteIdentity),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      _api.deleteIdentity(i.id);
+      _reload();
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(L.t.identityDeleted)));
+      }
+    } catch (e) {
+      if (mounted) showError(context, e);
+    }
+  }
+
+  Future<void> _setAvatar() async {
+    try {
+      final files = await FilePicker.pickFiles(type: FileType.image);
+      if (files.isEmpty) return;
+      final p = files.single.path;
+      if (p == null) return;
+      final bytes = await File(p).readAsBytes();
+      if (bytes.length > 10 * 1024) {
+        if (mounted) showError(context, Exception('avatar <= 10KB'));
+        return;
+      }
+      _api.setAvatar(base64Encode(bytes));
       _reload();
     } catch (e) {
       if (mounted) showError(context, e);
@@ -270,18 +390,81 @@ class _SettingsPageState extends State<SettingsPage> {
           SizedBox(height: 8),
           if (id != null)
             ListTile(
-              leading: KeyAvatar(keyHex: id.pk, name: id.name, size: 48),
+              leading: identityAvatar(id),
               title: Text(id.name,
                   style: const TextStyle(fontWeight: FontWeight.w600)),
-              subtitle: Text(L.t.pubkeyLabel(
-                  id.pk.length > 16 ? '${id.pk.substring(0, 16)}…' : id.pk)),
-              trailing: Icon(Icons.edit),
-              onTap: _editName,
+              subtitle: Text(L.t.pubkeyLabel(shortPk(id.pk))),
+              trailing: TextButton.icon(
+                icon: const Icon(Icons.image_outlined, size: 18),
+                label: Text(L.t.setAvatar),
+                onPressed: _setAvatar,
+              ),
             )
           else
             ListTile(
               leading: Icon(Icons.person_off),
               title: Text(L.t.coreUnavailableShort),
+            ),
+          const Divider(),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Row(
+              children: [
+                Expanded(
+                    child: Text(L.t.identities,
+                        style: theme.textTheme.titleSmall)),
+                TextButton.icon(
+                  icon: const Icon(Icons.person_add_alt, size: 18),
+                  label: Text(L.t.createIdentity),
+                  onPressed: _createIdentity,
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Text(L.t.identitiesHint,
+                style: theme.textTheme.bodySmall
+                    ?.copyWith(color: theme.colorScheme.outline)),
+          ),
+          for (final i in _identities)
+            ListTile(
+              leading: identityAvatar(
+                  Identity(name: i.name, pk: i.pk, avatarB64: i.avatarB64)),
+              title: Row(
+                children: [
+                  Flexible(child: Text(i.name)),
+                  if (i.active) ...[
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 1),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.primaryContainer,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(L.t.activeMark,
+                          style: theme.textTheme.labelSmall),
+                    ),
+                  ],
+                ],
+              ),
+              subtitle: Text(L.t.pubkeyLabel(shortPk(i.pk))),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (!i.active)
+                    TextButton(
+                      onPressed: () => _switchIdentity(i),
+                      child: Text(L.t.switchIdentity),
+                    ),
+                  if (!i.active)
+                    IconButton(
+                      icon: const Icon(Icons.delete_outline, size: 18),
+                      onPressed: () => _deleteIdentity(i),
+                    ),
+                ],
+              ),
             ),
           const Divider(),
           Padding(
@@ -463,7 +646,7 @@ class _SettingsPageState extends State<SettingsPage> {
           AboutListTile(
             icon: Icon(Icons.favorite_outline),
             applicationName: 'BitteChat',
-            applicationVersion: '0.4.0',
+            applicationVersion: '0.4.5',
             aboutBoxChildren: [
               Text(
                 '${L.t.aboutDesc}${L.t.aboutDesc2}'
@@ -475,4 +658,19 @@ class _SettingsPageState extends State<SettingsPage> {
       ),
     );
   }
+}
+
+String shortPk(String pk) => pk.length > 16 ? '${pk.substring(0, 16)}…' : pk;
+
+Widget identityAvatar(Identity id) {
+  if (id.avatarB64.isNotEmpty) {
+    try {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Image.memory(base64Decode(id.avatarB64),
+            width: 48, height: 48, fit: BoxFit.cover),
+      );
+    } catch (_) {}
+  }
+  return KeyAvatar(keyHex: id.pk, name: id.name, size: 48);
 }
