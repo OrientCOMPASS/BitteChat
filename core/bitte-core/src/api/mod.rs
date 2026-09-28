@@ -196,6 +196,8 @@ impl Api {
             "chat.rename_group" => self.chat_rename_group(p),
             "chat.sync" => self.chat_sync(p),
             "chat.start_dm" => self.chat_start_dm(p),
+            "filter.rules" => self.filter_rules(),
+            "filter.set_rules" => self.filter_set_rules(p),
             "chat.group_detail" => self.chat_group_detail(p),
 
             "rss.feeds" => self.rss_feeds(),
@@ -257,6 +259,51 @@ impl Api {
             &serde_json::to_vec(&new_profile).unwrap_or_default(),
         )?;
         Ok(json!({"ok": true}))
+    }
+
+    pub fn filter_rules(&self) -> Result<Json> {
+        let st = self.inner.state.lock().unwrap();
+        let raw = st.store.kv_get("filter_rules")?;
+        let rules: Vec<crate::filter::FilterRule> = match raw {
+            Some(b) => serde_json::from_slice(&b).unwrap_or_default(),
+            None => vec![],
+        };
+        Ok(json!({"rules": rules}))
+    }
+
+    pub fn filter_set_rules(&self, p: Json) -> Result<Json> {
+        let arr = p
+            .get("rules")
+            .and_then(|r| r.as_array())
+            .ok_or_else(|| CoreError::Invalid("missing rules array".into()))?;
+        let mut rules: Vec<crate::filter::FilterRule> = Vec::new();
+        for (i, r) in arr.iter().enumerate() {
+            let rule: crate::filter::FilterRule = serde_json::from_value(r.clone())
+                .map_err(|e| CoreError::Invalid(format!("rule {i}: {e}")))?;
+            crate::filter::validate_rule(&rule)
+                .map_err(|e| CoreError::Invalid(format!("rule {i}: {e}")))?;
+            rules.push(rule);
+        }
+        if rules.len() > 100 {
+            return Err(CoreError::Invalid("too many rules (max 100)".into()));
+        }
+        let st = self.inner.state.lock().unwrap();
+        st.store.kv_set(
+            "filter_rules",
+            &serde_json::to_vec(&rules).unwrap_or_default(),
+        )?;
+        Ok(json!({"ok": true, "count": rules.len()}))
+    }
+
+    /// Rules snapshot for the message pipeline.
+    pub fn filter_rules_cached(&self) -> Vec<crate::filter::FilterRule> {
+        let st = self.inner.state.lock().unwrap();
+        st.store
+            .kv_get("filter_rules")
+            .ok()
+            .flatten()
+            .and_then(|b| serde_json::from_slice(&b).ok())
+            .unwrap_or_default()
     }
 
     fn set_active_group(&self, p: Json) -> Result<Json> {

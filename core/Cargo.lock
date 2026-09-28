@@ -106,6 +106,7 @@ dependencies = [
  "log",
  "quick-xml",
  "rand",
+ "regex",
  "rusqlite",
  "serde",
  "serde_json",

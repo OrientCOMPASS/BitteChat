@@ -8,8 +8,8 @@ import 'package:file_picker/file_picker.dart';
 
 import '../core/api.dart';
 import '../core/prefs.dart';
-import '../widgets/avatar.dart';
 import '../models.dart';
+import '../widgets/avatar.dart';
 import 'home.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -25,6 +25,7 @@ class _SettingsPageState extends State<SettingsPage> {
   late final BitteApi _api = BitteApi.instance;
   Identity? _identity;
   Map<String, dynamic> _info = {};
+  List<FilterRule> _rules = [];
 
   @override
   void initState() {
@@ -37,7 +38,88 @@ class _SettingsPageState extends State<SettingsPage> {
     setState(() {
       _identity = _api.identity();
       _info = _api.sysInfo();
+      _rules = _api.filterRules();
     });
+  }
+
+  void _saveRules() {
+    try {
+      _api.setFilterRules(_rules);
+      _reload();
+    } catch (e) {
+      showError(context, e);
+    }
+  }
+
+  Future<void> _editRule(FilterRule? existing) async {
+    final rule = existing ??
+        FilterRule(
+          id: DateTime.now().millisecondsSinceEpoch % 1000000,
+          enabled: true,
+          field: 'text',
+          mode: 'contains',
+          value: '',
+        );
+    final valueCtrl = TextEditingController(text: rule.value);
+    String field = rule.field;
+    String mode = rule.mode;
+    bool caseSensitive = rule.caseSensitive;
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheet) => AlertDialog(
+          title: Text(existing == null ? '添加过滤规则' : '编辑过滤规则'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DropdownButtonFormField<String>(
+                initialValue: field,
+                items: const [
+                  DropdownMenuItem(value: 'text', child: Text('消息内容')),
+                  DropdownMenuItem(value: 'author_name', child: Text('作者昵称')),
+                  DropdownMenuItem(value: 'author_pk', child: Text('作者公钥')),
+                ],
+                onChanged: (v) => setSheet(() => field = v!),
+              ),
+              DropdownButtonFormField<String>(
+                initialValue: mode,
+                items: const [
+                  DropdownMenuItem(value: 'contains', child: Text('包含')),
+                  DropdownMenuItem(value: 'equals', child: Text('等于')),
+                  DropdownMenuItem(value: 'regex', child: Text('正则表达式')),
+                ],
+                onChanged: (v) => setSheet(() => mode = v!),
+              ),
+              TextField(
+                controller: valueCtrl,
+                decoration: const InputDecoration(
+                    labelText: '匹配值', border: OutlineInputBorder()),
+              ),
+              SwitchListTile(
+                value: caseSensitive,
+                title: const Text('区分大小写'),
+                onChanged: (v) => setSheet(() => caseSensitive = v),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('取消')),
+            FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('保存')),
+          ],
+        ),
+      ),
+    );
+    if (saved != true) return;
+    rule.field = field;
+    rule.mode = mode;
+    rule.caseSensitive = caseSensitive;
+    rule.value = valueCtrl.text;
+    if (existing == null) _rules.add(rule);
+    _saveRules();
   }
 
   Future<void> _pickSeedSource(BuildContext context) async {
@@ -196,6 +278,57 @@ class _SettingsPageState extends State<SettingsPage> {
             const ListTile(
               leading: Icon(Icons.person_off),
               title: Text('原生核心不可用（演示模式）'),
+            ),
+          const Divider(),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Row(
+              children: [
+                Expanded(
+                    child: Text('消息过滤规则', style: theme.textTheme.titleSmall)),
+                TextButton.icon(
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('添加'),
+                  onPressed: () => _editRule(null),
+                ),
+              ],
+            ),
+          ),
+          if (_rules.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: Text('无规则。可按昵称/公钥/内容屏蔽恶意消息；'
+                  '被屏蔽消息在聊天中折叠显示。'),
+            ),
+          for (final r in _rules)
+            ListTile(
+              dense: true,
+              leading: Switch(
+                value: r.enabled,
+                onChanged: (v) {
+                  r.enabled = v;
+                  _saveRules();
+                },
+              ),
+              title: Text(r.describe()),
+              subtitle: Text('#${r.id}'
+                  '${r.caseSensitive ? " · 区分大小写" : ""}'),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.edit_outlined, size: 18),
+                    onPressed: () => _editRule(r),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.delete_outline, size: 18),
+                    onPressed: () {
+                      _rules.remove(r);
+                      _saveRules();
+                    },
+                  ),
+                ],
+              ),
             ),
           const Divider(),
           Padding(

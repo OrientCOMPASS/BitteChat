@@ -288,6 +288,37 @@ class BitteApi extends ChangeNotifier {
   Map<String, dynamic> rssDownload(int itemId) =>
       call('rss.download', {'id': itemId});
 
+  // ---- filter rules ---------------------------------------------------
+
+  List<FilterRule> filterRules() {
+    if (!available) return [];
+    try {
+      final r = call('filter.rules');
+      return ((r['rules'] as List?) ?? [])
+          .map((e) => FilterRule.fromJson(_asMapSafe(e)))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  void setFilterRules(List<FilterRule> rules) => call(
+      'filter.set_rules', {'rules': rules.map((r) => r.toJson()).toList()});
+
+  void blockAuthor(String pk, {String name = ''}) {
+    final rules = filterRules();
+    if (rules.any((r) => r.field == 'author_pk' && r.value == pk)) return;
+    rules.add(FilterRule(
+      id: DateTime.now().millisecondsSinceEpoch % 1000000,
+      enabled: true,
+      field: 'author_pk',
+      mode: 'equals',
+      value: pk,
+    ));
+    setFilterRules(rules);
+    notifyListeners();
+  }
+
   @override
   void dispose() {
     _sub?.cancel();

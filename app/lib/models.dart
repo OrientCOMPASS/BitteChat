@@ -95,6 +95,7 @@ class ChatMessage {
     this.localPath,
     this.haveFile = false,
     this.dl,
+    this.blocked = false,
   });
 
   final String id;
@@ -112,6 +113,7 @@ class ChatMessage {
   final String? localPath;
   final bool haveFile;
   final DownloadState? dl;
+  final bool blocked;
 
   MsgPayloadKind get payloadKind {
     switch (kind) {
@@ -163,6 +165,7 @@ class ChatMessage {
       dl: j['dl'] is Map<String, dynamic>
           ? DownloadState.fromJson(j['dl'] as Map<String, dynamic>)
           : null,
+      blocked: _b(j, 'blocked'),
     );
   }
 }
@@ -449,4 +452,54 @@ String formatBytes(int bytes) {
 String formatSpeed(int bytesPerSec) {
   if (bytesPerSec <= 0) return '0 B/s';
   return '${formatBytes(bytesPerSec)}/s';
+}
+
+class FilterRule {
+  FilterRule({
+    required this.id,
+    required this.enabled,
+    required this.field,
+    required this.mode,
+    required this.value,
+    this.caseSensitive = false,
+  });
+
+  int id;
+  bool enabled;
+  String field; // author_name | author_pk | text
+  String mode; // contains | equals | regex
+  String value;
+  bool caseSensitive;
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'enabled': enabled,
+        'field': field,
+        'mode': mode,
+        'value': value,
+        'case_sensitive': caseSensitive,
+      };
+
+  factory FilterRule.fromJson(Map<String, dynamic> j) => FilterRule(
+        id: _i(j, 'id'),
+        enabled: _b(j, 'enabled', true),
+        field: _s(j, 'field', 'text'),
+        mode: _s(j, 'mode', 'contains'),
+        value: _s(j, 'value'),
+        caseSensitive: _b(j, 'case_sensitive'),
+      );
+
+  String describe() {
+    const fields = {
+      'author_name': '昵称',
+      'author_pk': '公钥',
+      'text': '内容',
+    };
+    const modes = {
+      'contains': '包含',
+      'equals': '等于',
+      'regex': '正则',
+    };
+    return '${fields[field] ?? field} ${modes[mode] ?? mode} "$value"';
+  }
 }

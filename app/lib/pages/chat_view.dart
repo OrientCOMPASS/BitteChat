@@ -35,6 +35,8 @@ class _ChatViewPageState extends State<ChatViewPage> {
   final _input = TextEditingController();
   final _scroll = ScrollController();
   List<ChatMessage> _messages = [];
+  List<_ChatEntry> _entries = [];
+  final Set<String> _expandedGaps = {};
   bool _sending = false;
   StreamSubscription<CoreEvent>? _sub;
   Map<String, dynamic> _detail = {};
@@ -85,7 +87,10 @@ class _ChatViewPageState extends State<ChatViewPage> {
     try {
       final msgs = _api.chatMessages(_gid, limit: 500);
       final stick = markRead || _nearBottom();
-      setState(() => _messages = msgs);
+      setState(() {
+        _messages = msgs;
+        _entries = _buildEntries(msgs);
+      });
       if (markRead) _api.markRead(_gid);
       if (stick) {
         WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
@@ -181,6 +186,23 @@ class _ChatViewPageState extends State<ChatViewPage> {
                     .showSnackBar(const SnackBar(content: Text('已复制消息 ID')));
               },
             ),
+            if (!m.own)
+              ListTile(
+                leading: const Icon(Icons.block),
+                title: const Text('屏蔽该作者'),
+                subtitle: const Text('加入过滤规则（可在设置中管理）'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  try {
+                    _api.blockAuthor(m.authorPk);
+                    _reload();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('已屏蔽 ${m.authorName}')));
+                  } catch (e) {
+                    showError(context, e);
+                  }
+                },
+              ),
             ListTile(
               leading: const Icon(Icons.verified_user),
               title: const Text('签名信息'),
@@ -250,6 +272,22 @@ class _ChatViewPageState extends State<ChatViewPage> {
     } catch (e) {
       if (mounted) showError(context, e);
     }
+  }
+
+  List<_ChatEntry> _buildEntries(List<ChatMessage> msgs) {
+    final out = <_ChatEntry>[];
+    for (final m in msgs) {
+      if (m.blocked) {
+        if (out.isNotEmpty && out.last.isGap) {
+          out.last.blocked.add(m);
+        } else {
+          out.add(_ChatEntry.gap([m]));
+        }
+      } else {
+        out.add(_ChatEntry.msg(m));
+      }
+    }
+    return out;
   }
 
   bool get _hasActiveDownload => _messages.any((m) =>
@@ -355,19 +393,37 @@ class _ChatViewPageState extends State<ChatViewPage> {
                           controller: _scroll,
                           padding: const EdgeInsets.symmetric(
                               horizontal: 12, vertical: 8),
-                          itemCount: _messages.length + 1,
+                          itemCount: _entries.length + 1,
                           itemBuilder: (context, i) {
                             if (i == 0) {
                               return _GenesisHeader(
                                   groupName: widget.group.name);
                             }
-                            final m = _messages[i - 1];
-                            final showAuthor = i == 1 ||
-                                !_messages[i - 2].own != !m.own ||
-                                m.ts - _messages[i - 2].ts > 5 * 60 * 1000 ||
-                                _isNewDay(_messages[i - 2].ts, m.ts);
+                            final entry = _entries[i - 1];
+                            if (entry.isGap) {
+                              return _BlockedGap(
+                                messages: entry.blocked,
+                                expanded: _expandedGaps
+                                    .contains(entry.blocked.first.id),
+                                onToggle: () {
+                                  setState(() {
+                                    final key = entry.blocked.first.id;
+                                    if (!_expandedGaps.remove(key)) {
+                                      _expandedGaps.add(key);
+                                    }
+                                  });
+                                },
+                              );
+                            }
+                            final m = entry.message!;
+                            final prev =
+                                i == 1 ? null : _entries[i - 2].lastMessage;
+                            final showAuthor = prev == null ||
+                                prev.own != m.own ||
+                                m.ts - prev.ts > 5 * 60 * 1000 ||
+                                _isNewDay(prev.ts, m.ts);
                             final showDay =
-                                i == 1 || _isNewDay(_messages[i - 2].ts, m.ts);
+                                prev == null || _isNewDay(prev.ts, m.ts);
                             return Column(
                               children: [
                                 if (showDay) DayDivider(ts: m.ts),
@@ -382,8 +438,7 @@ class _ChatViewPageState extends State<ChatViewPage> {
                               ],
                             );
                           },
-                        ),
-                      ),
+                        )),
               ),
               _InputBar(
                 controller: _input,
@@ -476,11 +531,13 @@ class MessageBubble extends StatelessWidget {
     required this.message,
     required this.showAuthor,
     this.onDownload,
+    this.blockedMark = false,
   });
 
   final ChatMessage message;
   final bool showAuthor;
   final VoidCallback? onDownload;
+  final bool blockedMark;
 
   @override
   Widget build(BuildContext context) {
@@ -492,7 +549,7 @@ class MessageBubble extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 4),
         child: Center(
           child: Text(
-            _systemText(m),
+            (blockedMark ? '🛡 ' : '') + _systemText(m),
             style: theme.textTheme.bodySmall
                 ?.copyWith(color: theme.colorScheme.outline),
           ),
@@ -1309,6 +1366,57 @@ class _Wallpaper extends StatelessWidget {
     return Positioned.fill(
       child:
           Opacity(opacity: prefs.wallpaperOpacity.clamp(0.03, 1.0), child: img),
+    );
+  }
+}
+
+class _ChatEntry {
+  _ChatEntry.msg(this.message) : blocked = [];
+  _ChatEntry.gap(this.blocked) : message = null;
+
+  final ChatMessage? message;
+  final List<ChatMessage> blocked;
+
+  bool get isGap => message == null;
+  ChatMessage? get lastMessage => isGap ? blocked.last : message;
+}
+
+class _BlockedGap extends StatelessWidget {
+  const _BlockedGap({
+    required this.messages,
+    required this.expanded,
+    required this.onToggle,
+  });
+
+  final List<ChatMessage> messages;
+  final bool expanded;
+  final VoidCallback onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: ActionChip(
+            avatar: const Icon(Icons.shield_outlined, size: 16),
+            label: Text('${messages.length} 条被屏蔽的消息'),
+            onPressed: onToggle,
+            side: BorderSide(color: theme.colorScheme.outlineVariant),
+          ),
+        ),
+        if (expanded)
+          for (final m in messages)
+            Opacity(
+              opacity: 0.55,
+              child: MessageBubble(
+                message: m,
+                showAuthor: true,
+                blockedMark: true,
+              ),
+            ),
+      ],
     );
   }
 }

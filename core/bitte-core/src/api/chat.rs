@@ -457,10 +457,19 @@ impl Api {
             .into_iter()
             .map(|s| (s.infohash.clone(), s))
             .collect::<std::collections::HashMap<_, _>>();
+        // NOTE: state lock is held here; read rules straight from the store
+        let rules: Vec<crate::filter::FilterRule> = st
+            .store
+            .kv_get("filter_rules")
+            .ok()
+            .flatten()
+            .and_then(|b| serde_json::from_slice(&b).ok())
+            .unwrap_or_default();
         let items: Vec<Json> = display
             .iter()
             .map(|m| {
                 let mut j = serde_json::to_value(m).unwrap_or(json!({}));
+                j["blocked"] = json!(crate::filter::is_blocked(&rules, m));
                 if let Payload::Attachment(a) = &m.payload {
                     let path = downloads.join(&a.infohash).join(&a.name);
                     j["local_path"] = json!(path.to_string_lossy());

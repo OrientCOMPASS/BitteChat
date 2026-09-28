@@ -674,6 +674,93 @@ fn e2e_bt_page_flow() {
 }
 
 #[test]
+fn e2e_filter_rules_block_and_validate() {
+    let bus = MockBus::new();
+    let (a, _ta) = spawn_node(&bus);
+    let (b, _tb) = spawn_node(&bus);
+    let created = call(&a, "chat.create_group", json!({"name": "过滤群"}));
+    let gid = created["group_id"].as_str().unwrap().to_string();
+    let magnet = created["invite_magnet"].as_str().unwrap().to_string();
+    call(&b, "chat.join_group", json!({"magnet": magnet}));
+    wait_until(&[&a, &b], T, || {
+        if msg_count(&b, &gid) >= 1 {
+            Some(())
+        } else {
+            None
+        }
+    });
+    call(
+        &b,
+        "chat.send",
+        json!({"group_id": gid, "text": "spammy ad here"}),
+    );
+    wait_until(&[&a, &b], T, || {
+        if texts(&a, &gid).iter().any(|t| t.contains("spammy")) {
+            Some(())
+        } else {
+            None
+        }
+    });
+
+    // invalid regex rejected
+    let bad = try_call(
+        &a,
+        "filter.set_rules",
+        json!({"rules": [{
+            "id": 1, "enabled": true, "field": "text",
+            "mode": "regex", "value": "("
+        }]}),
+    );
+    assert!(bad.is_err());
+
+    // block by content
+    call(
+        &a,
+        "filter.set_rules",
+        json!({"rules": [{
+            "id": 1, "enabled": true, "field": "text",
+            "mode": "contains", "value": "spammy", "case_sensitive": false
+        }]}),
+    );
+    let r = call(&a, "chat.messages", json!({"group_id": gid}));
+    let blocked_count = r["messages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|m| m["blocked"] == json!(true))
+        .count();
+    assert_eq!(blocked_count, 1);
+
+    // sender never blocks their own message
+    let r = call(&b, "chat.messages", json!({"group_id": gid}));
+    assert!(r["messages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|m| m["blocked"] != json!(true)));
+
+    // rule list round-trip
+    let rules = call(&a, "filter.rules", json!({}));
+    assert_eq!(rules["rules"].as_array().unwrap().len(), 1);
+
+    // disable -> unblocked
+    call(
+        &a,
+        "filter.set_rules",
+        json!({"rules": [{
+            "id": 1, "enabled": false, "field": "text",
+            "mode": "contains", "value": "spammy", "case_sensitive": false
+        }]}),
+    );
+    let r = call(&a, "chat.messages", json!({"group_id": gid}));
+    assert!(r["messages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|m| m["blocked"] != json!(true)));
+}
+
+#[test]
 fn dispatch_errors_are_graceful() {
     let bus = MockBus::new();
     let (a, _ta) = spawn_node(&bus);
