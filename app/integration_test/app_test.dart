@@ -5,8 +5,11 @@
 //
 // Run: flutter test integration_test/app_test.dart -d <device>
 
+import 'dart:io';
+
 import 'package:bittechat/core/api.dart';
 import 'package:bittechat/core/bridge.dart';
+import 'package:bittechat/core/prefs.dart';
 import 'package:bittechat/main.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
