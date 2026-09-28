@@ -23,23 +23,30 @@ subprojects {
 // hardcodes 31) while their transitive androidx deps require 33+. Flutter's
 // documented workaround (issuetracker.google.com/issues/199180389): raise any
 // plugin module below the app's compileSdk. Same mechanism PiliPlus uses.
+// NOTE: :app is already evaluated at this point (evaluationDependsOn above),
+// so run the bump immediately for evaluated projects instead of afterEvaluate.
 subprojects {
-    afterEvaluate {
-        if (project.extensions.findByName("android") != null) {
+    val bumpCompileSdk = Action<Project> {
+        if (extensions.findByName("android") != null) {
             val androidExtension =
-                project.extensions.getByName("android") as com.android.build.gradle.BaseExtension
+                extensions.getByName("android") as com.android.build.gradle.BaseExtension
             val pluginCompileSdk =
                 androidExtension.compileSdkVersion
                     ?.removePrefix("android-")
                     ?.toIntOrNull()
             if (pluginCompileSdk != null && pluginCompileSdk < 36) {
-                project.logger.warn(
+                logger.warn(
                     "Overriding compileSdk in Flutter plugin ${project.name}: " +
                         "$pluginCompileSdk -> 36"
                 )
                 androidExtension.setCompileSdkVersion(36)
             }
         }
+    }
+    if (state.executed) {
+        bumpCompileSdk.execute(this)
+    } else {
+        afterEvaluate(bumpCompileSdk)
     }
 }
 
