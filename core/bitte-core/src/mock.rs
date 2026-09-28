@@ -300,7 +300,8 @@ pub fn normalize_torrent_input(input: &str) -> Result<(String, Option<String>, S
             "not a magnet link or infohash (expected magnet:?, 40 hex or 32 base32 chars)".into(),
         ));
     };
-    Ok((ih, None, format!("magnet:?xt=urn:btih:{ih}")))
+    let magnet = format!("magnet:?xt=urn:btih:{ih}");
+    Ok((ih, None, magnet))
 }
 
 /// Validate a tracker announce URL (http/https/udp, no whitespace).

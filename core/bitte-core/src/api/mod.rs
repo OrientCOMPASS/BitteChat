@@ -678,7 +678,10 @@ impl Api {
         let eng_name = crate::chat::group::clamp_name(&eng_name);
         let mut changed = false;
         {
-            let mut st = self.inner.state.lock().unwrap();
+            let mut guard = self.inner.state.lock().unwrap();
+            // reborrow as &mut CoreState so groups/store field borrows stay
+            // disjoint (the guard's Deref would otherwise borrow it whole)
+            let st = &mut *guard;
             let Some(rt) = st.groups.get_mut(ih_hex) else {
                 return;
             };

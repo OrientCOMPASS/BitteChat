@@ -35,7 +35,7 @@ pub fn magnet_without_tracker(magnet: &str, url: &str) -> String {
 }
 
 impl Api {
-    fn save_dir_for(&self, ih_hex: &str) -> String {
+    pub fn save_dir_for(&self, ih_hex: &str) -> String {
         self.downloads_dir()
             .join(ih_hex)
             .to_string_lossy()
