@@ -48,20 +48,27 @@
 Flutter 侧的 `libflutter.so`（11.75 MB）与 `libapp.so`（6.95 MB）由 Flutter SDK
 决定，属于所有 Flutter 应用的固定成本（一个空 Flutter 应用 arm64 也已 ~16 MB）。
 
-## 3. v0.5.0 的增量：fvp（libmdk）视频解码后端
+## 3. v0.5.0 的增量：fvp（libmdk）视频解码后端 —— 已实测
 
 为修复"视频有声无画"（平台解码器不支持 Hi10P/HEVC10/AV1 等时 ExoPlayer 丢视频轨），
-v0.5 引入 `fvp`（libmdk + FFmpeg 软解兜底）。官方口径 **每架构约 +10 MB**
-（libmdk.so、libffmpeg.so、libass.so 字幕渲染）。若不想要字幕渲染可裁掉 libass。
+v0.5 引入 `fvp`（libmdk + FFmpeg 软解兜底）。**v0.5.0 实测 universal APK = 106.0 MB**
+（+26.3 MB），新增库（每架构）：
 
-预计 v0.5.0 universal APK ≈ 95-105 MB；**分 ABI 后 arm64 包 ≈ 48-52 MB**。
+| 库 | arm64-v8a | x86_64 | 作用 |
+|---|---:|---:|---|
+| `libffmpeg.so` | 8.30 MB | 10.98 MB | FFmpeg 解封装 + 软解码器 |
+| `libmdk.so` | 2.30 MB | 2.08 MB | libmdk 播放内核 |
+| `libass.so` | 1.37 MB | ~1.4 MB | 内封字幕渲染（可裁） |
+
+**分 ABI 后 arm64 包实测预期 ≈ 52 MB**（37.4 原生 + 12 fvp + 2 共享/dex）。
+若不想要字幕渲染可裁掉 libass（每架构 -1.4 MB）。
 
 ## 4. 瘦身选项（待确认，暂未实施）
 
-| 方案 | 效果（以 v0.4.5 计） | 代价 |
+| 方案 | 效果 | 代价 |
 |---|---|---|
-| **A. 分 ABI 发布**（`flutter build apk --split-per-abi`，Release 同时挂 arm64-v8a / x86_64 两个 APK） | 真机下载 **79.7 → ~39 MB（-51%）**；v0.5 含 fvp 约 ~50 MB | 无功能损失；Release 页多一个文件（普通用户下 arm64 版） |
-| B. 发布只保留 arm64-v8a（x86_64 仅 CI 模拟器用） | 单 APK ~39 MB | x86 设备/模拟器用户需自取 CI artifact |
+| **A. 分 ABI 发布**（`flutter build apk --split-per-abi`，Release 同时挂 arm64-v8a / x86_64 两个 APK） | 真机下载 **106 → ~52 MB（-51%）**（v0.4.5 口径为 79.7 → ~39） | 无功能损失；Release 页多一个文件（普通用户下 arm64 版） |
+| B. 发布只保留 arm64-v8a（x86_64 仅 CI 模拟器用） | 单 APK ~52 MB | x86 设备/模拟器用户需自取 CI artifact |
 | C. Rust profile 再压：`lto="fat"` + `codegen-units=1` + `opt-level="s"` | libbitte_core.so 预计 -15~30%（每架构 -3~5 MB） | CI 构建时间上升；BT 吞吐路径性能略降（本应用为 I/O 密集，影响可忽略） |
 | D. 裁掉 fvp 的 libass（内封字幕渲染） | 每架构约 -1~2 MB | 播放内封字幕的影片无字幕 |
 | E. 上架 Google Play 用 AAB | 商店按设备投递 ~40 MB | 与 GitHub Release APK 分发无关 |
