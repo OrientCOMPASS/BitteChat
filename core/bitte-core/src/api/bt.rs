@@ -477,7 +477,7 @@ impl Api {
         {
             let st = self.inner.state.lock().unwrap();
             if let Ok(Some(row)) = st.store.torrent_get(&ih) {
-                let m = magnet_with_trackers(&row.magnet, &[url.clone()]);
+                let m = magnet_with_trackers(&row.magnet, std::slice::from_ref(&url));
                 st.store.torrent_set_magnet(&ih, &m)?;
             }
         }

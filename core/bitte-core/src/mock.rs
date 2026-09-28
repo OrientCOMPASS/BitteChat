@@ -267,6 +267,7 @@ fn base32_decode(s: &str) -> Option<Vec<u8>> {
 ///   * a bare 40-char hex infohash (any case, whitespace tolerated)
 ///   * a bare 32-char base32 infohash
 ///   * `btih:` / `urn:btih:` prefixed hashes
+///
 /// Bare hashes are expanded into a canonical `magnet:?xt=urn:btih:<hex>`.
 pub fn normalize_torrent_input(input: &str) -> Result<(String, Option<String>, String)> {
     let s = input.trim();
@@ -312,72 +313,6 @@ pub fn valid_tracker_url(url: &str) -> bool {
     }
     let l = u.to_ascii_lowercase();
     l.starts_with("http://") || l.starts_with("https://") || l.starts_with("udp://")
-}
-
-#[cfg(test)]
-mod normalize_tests {
-    use super::*;
-
-    #[test]
-    fn normalize_full_magnet_passthrough() {
-        let m = "magnet:?xt=urn:btih:AABBCCDDEEFF00112233445566778899AABBCCDD&dn=My%20File&tr=udp%3A%2F%2Fx.org%3A1337";
-        let (ih, dn, mag) = normalize_torrent_input(m).unwrap();
-        assert_eq!(ih, "aabbccddeeff00112233445566778899aabbccdd");
-        assert_eq!(dn.as_deref(), Some("My File"));
-        assert_eq!(mag, m);
-    }
-
-    #[test]
-    fn normalize_bare_hex_hash() {
-        let (ih, dn, mag) =
-            normalize_torrent_input("  AABBCCDDEEFF00112233445566778899AABBCCDD ").unwrap();
-        assert_eq!(ih, "aabbccddeeff00112233445566778899aabbccdd");
-        assert!(dn.is_none());
-        assert_eq!(
-            mag,
-            "magnet:?xt=urn:btih:aabbccddeeff00112233445566778899aabbccdd"
-        );
-    }
-
-    #[test]
-    fn normalize_base32_and_prefixed() {
-        // base32 of 20 zero bytes = 32 'A's
-        let (ih, _, _) = normalize_torrent_input("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA").unwrap();
-        assert_eq!(ih, "0".repeat(40));
-        let (ih2, _, _) =
-            normalize_torrent_input("btih:aabbccddeeff00112233445566778899aabbccdd").unwrap();
-        assert_eq!(ih2, "aabbccddeeff00112233445566778899aabbccdd");
-        let (ih3, _, _) =
-            normalize_torrent_input("urn:btih:AABBCCDDEEFF00112233445566778899AABBCCDD").unwrap();
-        assert_eq!(ih3, ih2);
-    }
-
-    #[test]
-    fn normalize_rejects_junk() {
-        for bad in [
-            "",
-            "hello world",
-            "aabbccddeeff00112233445566778899aabbccd", // 39 hex
-            "http://example.com/file.torrent",
-            "magnet:?xt=urn:btmh:1220aabb",
-        ] {
-            assert!(
-                normalize_torrent_input(bad).is_err(),
-                "should reject {bad:?}"
-            );
-        }
-    }
-
-    #[test]
-    fn tracker_url_validation() {
-        assert!(valid_tracker_url(
-            "udp://tracker.opentrackr.org:1337/announce"
-        ));
-        assert!(valid_tracker_url("https://t.example/announce"));
-        assert!(!valid_tracker_url("ftp://x/announce"));
-        assert!(!valid_tracker_url("udp://x y/announce"));
-        assert!(!valid_tracker_url(""));
-    }
 }
 
 impl BtEngine for MockEngine {
@@ -852,5 +787,71 @@ impl MockEngine {
                 self.post(EngineEvent::TorrentUpdate { state: s });
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod normalize_tests {
+    use super::*;
+
+    #[test]
+    fn normalize_full_magnet_passthrough() {
+        let m = "magnet:?xt=urn:btih:AABBCCDDEEFF00112233445566778899AABBCCDD&dn=My%20File&tr=udp%3A%2F%2Fx.org%3A1337";
+        let (ih, dn, mag) = normalize_torrent_input(m).unwrap();
+        assert_eq!(ih, "aabbccddeeff00112233445566778899aabbccdd");
+        assert_eq!(dn.as_deref(), Some("My File"));
+        assert_eq!(mag, m);
+    }
+
+    #[test]
+    fn normalize_bare_hex_hash() {
+        let (ih, dn, mag) =
+            normalize_torrent_input("  AABBCCDDEEFF00112233445566778899AABBCCDD ").unwrap();
+        assert_eq!(ih, "aabbccddeeff00112233445566778899aabbccdd");
+        assert!(dn.is_none());
+        assert_eq!(
+            mag,
+            "magnet:?xt=urn:btih:aabbccddeeff00112233445566778899aabbccdd"
+        );
+    }
+
+    #[test]
+    fn normalize_base32_and_prefixed() {
+        // base32 of 20 zero bytes = 32 'A's
+        let (ih, _, _) = normalize_torrent_input("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA").unwrap();
+        assert_eq!(ih, "0".repeat(40));
+        let (ih2, _, _) =
+            normalize_torrent_input("btih:aabbccddeeff00112233445566778899aabbccdd").unwrap();
+        assert_eq!(ih2, "aabbccddeeff00112233445566778899aabbccdd");
+        let (ih3, _, _) =
+            normalize_torrent_input("urn:btih:AABBCCDDEEFF00112233445566778899AABBCCDD").unwrap();
+        assert_eq!(ih3, ih2);
+    }
+
+    #[test]
+    fn normalize_rejects_junk() {
+        for bad in [
+            "",
+            "hello world",
+            "aabbccddeeff00112233445566778899aabbccd", // 39 hex
+            "http://example.com/file.torrent",
+            "magnet:?xt=urn:btmh:1220aabb",
+        ] {
+            assert!(
+                normalize_torrent_input(bad).is_err(),
+                "should reject {bad:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn tracker_url_validation() {
+        assert!(valid_tracker_url(
+            "udp://tracker.opentrackr.org:1337/announce"
+        ));
+        assert!(valid_tracker_url("https://t.example/announce"));
+        assert!(!valid_tracker_url("ftp://x/announce"));
+        assert!(!valid_tracker_url("udp://x y/announce"));
+        assert!(!valid_tracker_url(""));
     }
 }
