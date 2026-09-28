@@ -74,6 +74,9 @@ pub struct CoreState {
     /// gid (hex) of DM channels WE initiated but the peer hasn't accepted
     /// yet (DmReq is re-sent when the peer shows up)
     pub dm_awaiting_accept: std::collections::HashSet<String>,
+    /// identity pubkeys (hex) the user blocked: their DM requests are
+    /// silently dropped (anti-harassment)
+    pub dm_blocked: std::collections::HashSet<String>,
 }
 
 pub struct Inner {
@@ -160,6 +163,7 @@ impl Api {
                 presence: HashMap::new(),
                 dm_pending: HashMap::new(),
                 dm_awaiting_accept: std::collections::HashSet::new(),
+                dm_blocked: std::collections::HashSet::new(),
             }),
             active: RwLock::new(active),
             emit,
@@ -263,6 +267,7 @@ impl Api {
             "chat.start_dm" => self.chat_start_dm(p),
             "chat.dm_respond" => self.chat_dm_respond(p),
             "chat.dm_requests" => self.chat_dm_requests(),
+            "chat.dm_block" => self.chat_dm_block(p),
             "chat.members" => self.chat_members(p),
             "filter.rules" => self.filter_rules(),
             "filter.set_rules" => self.filter_set_rules(p),
@@ -469,6 +474,34 @@ impl Api {
     fn restore_state(&self) -> Result<()> {
         let own_pk = self.own_pk_hex();
         let mut st = self.inner.state.lock().unwrap();
+        // restore DM request inbox + blocklist (persisted as kv JSON)
+        if let Ok(Some(raw)) = st.store.kv_get("dm_pending_v1") {
+            if let Ok(arr) = serde_json::from_slice::<Vec<Json>>(&raw) {
+                for e in arr {
+                    let (Some(gid), Some(pk)) = (
+                        e["gid"].as_str().map(str::to_string),
+                        e["from_pk"].as_str().map(str::to_string),
+                    ) else {
+                        continue;
+                    };
+                    st.dm_pending.insert(
+                        gid,
+                        crate::api::DmPendingReq {
+                            from_pk: pk,
+                            from_name: e["from_name"].as_str().unwrap_or("").to_string(),
+                            from_x: e["from_x"].as_str().unwrap_or("").to_string(),
+                            ih: e["ih"].as_str().unwrap_or("").to_string(),
+                            ts: e["ts"].as_i64().unwrap_or(0),
+                        },
+                    );
+                }
+            }
+        }
+        if let Ok(Some(raw)) = st.store.kv_get("dm_blocked_v1") {
+            if let Ok(arr) = serde_json::from_slice::<Vec<String>>(&raw) {
+                st.dm_blocked.extend(arr);
+            }
+        }
         let torrents: std::collections::HashMap<String, crate::store::TorrentRow> = st
             .store
             .torrents_all()?

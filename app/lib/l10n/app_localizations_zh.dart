@@ -1051,4 +1051,13 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get videoDecoderHardwareOnly => '硬件解码（MediaCodec）· 解码失败将明确报错';
+
+  @override
+  String get dmRequestSubtitle => '请求与你私聊';
+
+  @override
+  String get block => '屏蔽';
+
+  @override
+  String get dmBlocked => '已屏蔽该用户';
 }

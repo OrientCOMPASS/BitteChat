@@ -673,16 +673,19 @@ fn e2e_dm_encrypted_end_to_end() {
                 .cloned()
         },
     );
-    // the request must NOT have created any group on B before consent
+    // Plan-B inbox: the request shows as an inline conversation-list entry
+    // (dm_request=true), but NO established channel may exist before consent
     let groups = call(&b, "chat.groups", json!({}));
-    assert!(
-        !groups["groups"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|g| g["group_id"].as_str() == Some(dgid.as_str())),
-        "DM must not exist before acceptance"
-    );
+    let entry = groups["groups"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|g| g["group_id"].as_str() == Some(dgid.as_str()))
+        .cloned()
+        .expect("pending request must appear in B's conversation list");
+    assert_eq!(entry["dm_request"], json!(true));
+    assert_eq!(entry["dm"], json!(true));
+    assert!(!entry["peer_pk"].as_str().unwrap_or("").is_empty());
 
     // B accepts
     let resp = call(

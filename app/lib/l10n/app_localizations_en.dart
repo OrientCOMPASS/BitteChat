@@ -1087,4 +1087,13 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get videoDecoderHardwareOnly =>
       'Hardware decoding (MediaCodec) · failures are reported explicitly';
+
+  @override
+  String get dmRequestSubtitle => 'wants to start a private chat';
+
+  @override
+  String get block => 'Block';
+
+  @override
+  String get dmBlocked => 'User blocked';
 }

@@ -657,5 +657,8 @@
  "attPhaseCopy": "Copying into the seed folder…",
  "attPhaseSeed": "Seeding and sending…",
  "attachFailed": "Attachment failed",
- "videoDecoderHardwareOnly": "Hardware decoding (MediaCodec) · failures are reported explicitly"
+ "videoDecoderHardwareOnly": "Hardware decoding (MediaCodec) · failures are reported explicitly",
+ "dmRequestSubtitle": "wants to start a private chat",
+ "block": "Block",
+ "dmBlocked": "User blocked"
 }

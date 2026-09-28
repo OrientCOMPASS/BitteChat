@@ -204,6 +204,11 @@ class BitteApi extends ChangeNotifier {
   Map<String, dynamic> dmRespond(String groupId, {required bool accept}) =>
       call('chat.dm_respond', {'group_id': groupId, 'accept': accept});
 
+  /// Block an identity: drops their pending request and silently ignores
+  /// future DM requests from this pubkey.
+  Map<String, dynamic> dmBlock(String peerPk) =>
+      call('chat.dm_block', {'peer_pk': peerPk});
+
   /// Identified chat peers of a room: [{pk, name, endpoint}] — the member
   /// list you can start a DM with.
   List<Map<String, dynamic>> members(String groupId) {

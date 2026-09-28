@@ -657,5 +657,8 @@
  "attPhaseCopy": "正在复制到做种目录…",
  "attPhaseSeed": "正在做种并发送…",
  "attachFailed": "附件发送失败",
- "videoDecoderHardwareOnly": "硬件解码（MediaCodec）· 解码失败将明确报错"
+ "videoDecoderHardwareOnly": "硬件解码（MediaCodec）· 解码失败将明确报错",
+ "dmRequestSubtitle": "请求与你私聊",
+ "block": "屏蔽",
+ "dmBlocked": "已屏蔽该用户"
 }

@@ -1999,6 +1999,24 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'硬件解码（MediaCodec）· 解码失败将明确报错'**
   String get videoDecoderHardwareOnly;
+
+  /// No description provided for @dmRequestSubtitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'请求与你私聊'**
+  String get dmRequestSubtitle;
+
+  /// No description provided for @block.
+  ///
+  /// In zh, this message translates to:
+  /// **'屏蔽'**
+  String get block;
+
+  /// No description provided for @dmBlocked.
+  ///
+  /// In zh, this message translates to:
+  /// **'已屏蔽该用户'**
+  String get dmBlocked;
 }
 
 class _AppLocalizationsDelegate

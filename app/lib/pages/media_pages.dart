@@ -56,6 +56,16 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
             // strict hardware chain: no silent ffmpeg software fallback —
             // an undecodable track must surface as an explicit error
             'vd-lavc-software-fallback': 'no',
+            // display-referenced A/V sync (PiliPlus default): a flaky audio
+            // device (underruns) must NOT stall the video clock — with mpv's
+            // default video-sync=audio, audio underruns froze the renderer
+            // (vo/gpu/aimagereader frame pile-up, black picture)
+            'video-sync': 'display-resample',
+            // audio backend fallback chain across Android AOs
+            'ao': 'opensles,aaudio,audiotrack',
+            // gentler audio-resync ramp (PiliPlus Android default)
+            'autosync': '30',
+            'volume': '100',
           },
         ),
       );

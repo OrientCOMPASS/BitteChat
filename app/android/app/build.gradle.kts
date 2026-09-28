@@ -40,11 +40,23 @@ android {
         }
     }
 
+    signingConfigs {
+        create("release") {
+            // STABLE project signing key, committed on purpose: BitteChat is
+            // public-domain (Unlicense) and distributed via GitHub Releases,
+            // so a fixed, transparent key lets users UPGRADE IN PLACE. (The
+            // old debug-key signing produced a different signature on every
+            // CI runner => INSTALL_FAILED_UPDATE_INCOMPATIBLE => forced
+            // uninstall/reinstall each release.)
+            storeFile = file("../keystore/release.jks")
+            storePassword = "bittechat"
+            keyAlias = "bittechat"
+            keyPassword = "bittechat"
+        }
+    }
     buildTypes {
         release {
-            // CI distributes debug-signed builds via GitHub Releases; for
-            // store distribution add your own key.properties + signingConfigs.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 }

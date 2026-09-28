@@ -3,7 +3,7 @@
 use base64::Engine as _;
 use serde_json::{json, Value as Json};
 
-use crate::api::{hex20, jbool, ji64, jstr, Api, GroupRuntime};
+use crate::api::{hex20, jbool, ji64, jstr, Api, CoreState, GroupRuntime};
 use crate::chat::group::{DmParty, GroupManifest};
 use crate::chat::message::{create_message_opts, plan_text, AttachmentInfo, MsgKind, Payload};
 use crate::chat::sync::{ExtPayload, GroupSync};
@@ -101,7 +101,11 @@ impl Api {
                 }
                 None => (0, false, 0, 0),
             };
-            let preview = self.last_display_message(&st.store, &row.gid, &own_pk);
+            let channel_key = st
+                .groups
+                .get(&gid_hex)
+                .and_then(|rt| self.dm_channel_key(&rt.sync.manifest));
+            let preview = self.last_display_message(&st.store, &row.gid, &own_pk, channel_key);
             let mut j = group_summary_from_row(row);
             if row.manifest.is_dm() {
                 // UI: "waiting for the peer to accept" chip
@@ -116,6 +120,39 @@ impl Api {
             j["preview"] = preview;
             out.push(j);
         }
+        // pending DM requests surface as conversation-list entries with a
+        // dm_request flag — the UI renders inline accept/decline/block
+        {
+            let mut reqs: Vec<Json> = Vec::new();
+            for (gid_hex, r) in st.dm_pending.iter() {
+                if st.groups.contains_key(gid_hex) {
+                    continue; // already established (accept in flight)
+                }
+                reqs.push(json!({
+                    "group_id": gid_hex,
+                    "name": r.from_name,
+                    "avatar_b64": "",
+                    "invite_magnet": "",
+                    "created": r.ts,
+                    "joined": r.ts,
+                    "left": false,
+                    "dm": true,
+                    "dm_request": true,
+                    "peer_pk": r.from_pk,
+                    "unread": 1,
+                    "last_ts": r.ts,
+                    "online": 0,
+                    "syncing": false,
+                    "messages": 0,
+                    "missing": 0,
+                    "preview": Json::Null,
+                }));
+            }
+            reqs.sort_by_key(|g| -(g["last_ts"].as_i64().unwrap_or(0)));
+            // requests pinned above conversations
+            reqs.extend(out);
+            out = reqs;
+        }
         // most recent activity first
         out.sort_by_key(|g| -(g["last_ts"].as_i64().unwrap_or(0)));
         Ok(json!({"groups": out}))
@@ -126,6 +163,7 @@ impl Api {
         store: &crate::store::Store,
         gid: &[u8; 20],
         own_pk: &str,
+        channel_key: Option<[u8; 32]>,
     ) -> Json {
         let msgs = store.messages_of_group(gid, own_pk).unwrap_or_default();
         if msgs.is_empty() {
@@ -135,7 +173,21 @@ impl Api {
         for sm in msgs {
             let _ = dag.insert(sm.id, sm.msg, sm.bytes);
         }
-        let display = crate::store::Store::display_messages(dag.ordered());
+        let mut display = crate::store::Store::display_messages(dag.ordered());
+        // decrypt sealed DM payloads so the conversation list shows a real
+        // preview instead of "[端到端加密消息]"
+        if let Some(key) = channel_key {
+            for m in display.iter_mut() {
+                if let Payload::Sealed { sealed_b64 } = &m.payload {
+                    if let Some((kind_i, payload)) =
+                        crate::chat::message::open_dm_payload(&key, m.author_seq, sealed_b64)
+                    {
+                        m.kind = kind_i;
+                        m.payload = payload;
+                    }
+                }
+            }
+        }
         match display.last() {
             Some(m) => json!({
                 "author_name": m.author_name,
@@ -609,6 +661,65 @@ impl Api {
             .unwrap_or(false)
     }
 
+    /// Snapshot the in-memory DM request inbox into kv storage (survives
+    /// restarts — a request must not force the peer to resend it).
+    fn persist_dm_pending(&self, st: &CoreState) {
+        let arr: Vec<Json> = st
+            .dm_pending
+            .iter()
+            .map(|(gid, r)| {
+                json!({
+                    "gid": gid,
+                    "from_pk": r.from_pk,
+                    "from_name": r.from_name,
+                    "from_x": r.from_x,
+                    "ih": r.ih,
+                    "ts": r.ts,
+                })
+            })
+            .collect();
+        if let Ok(bytes) = serde_json::to_vec(&arr) {
+            let _ = st.store.kv_set("dm_pending_v1", &bytes);
+        }
+    }
+
+    fn persist_dm_blocked(&self, st: &CoreState) {
+        let mut v: Vec<&String> = st.dm_blocked.iter().collect();
+        v.sort();
+        if let Ok(bytes) = serde_json::to_vec(&v) {
+            let _ = st.store.kv_set("dm_blocked_v1", &bytes);
+        }
+    }
+
+    /// Block a peer: drop their pending request (if any) and silently ignore
+    /// future DM requests from this identity pubkey.
+    pub fn chat_dm_block(&self, p: Json) -> Result<Json> {
+        let peer_pk = jstr(&p, "peer_pk")?.to_string();
+        if peer_pk.len() != 64 {
+            return Err(CoreError::Invalid("bad peer_pk".into()));
+        }
+        let mut removed: Vec<String> = Vec::new();
+        {
+            let mut st = self.inner.state.lock().unwrap();
+            st.dm_blocked.insert(peer_pk.clone());
+            st.dm_pending.retain(|gid, r| {
+                if r.from_pk == peer_pk {
+                    removed.push(gid.clone());
+                    false
+                } else {
+                    true
+                }
+            });
+            self.persist_dm_pending(&st);
+            self.persist_dm_blocked(&st);
+        }
+        for gid in &removed {
+            self.emit_event("chat.dm_rejected", json!({"group": gid}));
+        }
+        self.emit_event("chat.group_updated", json!({}));
+        Ok(json!({"ok": true, "blocked": peer_pk}))
+    }
+
     /// Pending incoming DM requests (for the UI prompt queue; requests also
     /// arrive live via the `chat.dm_request` event).
     pub fn chat_dm_requests(&self) -> Result<Json> {
@@ -636,7 +747,9 @@ impl Api {
         let accept = crate::api::jbool(&p, "accept", true);
         let req = {
             let mut st = self.inner.state.lock().unwrap();
-            st.dm_pending.remove(&gid_hex)
+            let req = st.dm_pending.remove(&gid_hex);
+            self.persist_dm_pending(&st);
+            req
         };
         let Some(req) = req else {
             return Err(CoreError::NotFound("dm request expired".into()));
@@ -917,6 +1030,13 @@ impl Api {
                     return;
                 }
                 let gid_hex = hex::encode(gid);
+                {
+                    let st = self.inner.state.lock().unwrap();
+                    if st.dm_blocked.contains(&payload_pk) {
+                        log::info!("dm request from blocked peer dropped");
+                        return;
+                    }
+                }
                 // channel already established? our accept may have been lost —
                 // re-send it instead of prompting again (idempotent)
                 let established = {
@@ -952,6 +1072,7 @@ impl Api {
                             ts,
                         },
                     );
+                    self.persist_dm_pending(&st);
                 }
                 log::info!("dm request from {}", &payload_pk[..8]);
                 self.emit_event(
@@ -1638,7 +1759,22 @@ impl Api {
                 .message_get_raw(&msg_id)?
                 .ok_or_else(|| CoreError::NotFound("message".into()))?;
             let sm = crate::chat::message::parse_message_unverified(&raw, &own_pk)?;
-            match sm.msg.payload {
+            // DM messages carry SEALED payloads — open with the channel key
+            // before looking for the attachment inside
+            let payload = match &sm.msg.payload {
+                crate::chat::message::Payload::Sealed { sealed_b64 } => {
+                    let key = st
+                        .groups
+                        .get(&gid_hex)
+                        .and_then(|rt| self.dm_channel_key(&rt.sync.manifest))
+                        .ok_or_else(|| CoreError::Invalid("dm channel key unavailable".into()))?;
+                    crate::chat::message::open_dm_payload(&key, sm.msg.author_seq, sealed_b64)
+                        .map(|(_, p)| p)
+                        .ok_or_else(|| CoreError::Invalid("sealed payload decrypt failed".into()))?
+                }
+                p => p.clone(),
+            };
+            match payload {
                 crate::chat::message::Payload::Attachment(a) => (a.infohash, a.name),
                 _ => return Err(CoreError::Invalid("message has no attachment".into())),
             }

@@ -33,15 +33,19 @@ class _ChatTabState extends State<ChatTab> {
   StreamSubscription<CoreEvent>? _sub;
   Timer? _refreshTimer;
   VoidCallback? _magnetListener;
-  bool _dmPromptOpen = false;
 
   @override
   void initState() {
     super.initState();
     _reload();
     _sub = _api.events.listen((e) {
-      if (e.isChatGroupUpdated || e.isChatMessage) _reload();
-      if (e.type == 'chat.dm_request') _promptDmRequest(e.data);
+      if (e.isChatGroupUpdated ||
+          e.isChatMessage ||
+          e.type == 'chat.dm_request' ||
+          e.type == 'chat.dm_established' ||
+          e.type == 'chat.dm_rejected') {
+        _reload();
+      }
       if (e.type == 'chat.dm_rejected' && mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text(L.t.dmRejectedByPeer)));
@@ -50,8 +54,6 @@ class _ChatTabState extends State<ChatTab> {
     // light polling keeps previews fresh even without events
     _refreshTimer =
         Timer.periodic(const Duration(seconds: 10), (_) => _reload());
-    // surface requests that arrived while the app was closed/background
-    WidgetsBinding.instance.addPostFrameCallback((_) => _drainPendingDmReqs());
     _magnetListener = () {
       final m = pendingMagnet.value;
       if (m == null || m.isEmpty) return;
@@ -79,57 +81,70 @@ class _ChatTabState extends State<ChatTab> {
     } catch (_) {}
   }
 
-  void _drainPendingDmReqs() {
-    if (!mounted) return;
-    try {
-      for (final r in _api.dmRequests()) {
-        _promptDmRequest(r);
-        break; // one dialog at a time; the rest follow on the next reload
-      }
-    } catch (_) {}
-  }
-
-  /// Consent dialog for an incoming DM request — nothing is stored on this
-  /// device until the user accepts (v0.5.2 DM design).
-  Future<void> _promptDmRequest(Map<String, dynamic> data) async {
-    if (!mounted) return;
-    final gid = '${data['group_id'] ?? ''}';
-    if (gid.isEmpty || _dmPromptOpen) return;
-    _dmPromptOpen = true;
-    final name = '${data['peer_name'] ?? ''}';
-    final accept = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        icon: const Icon(Icons.lock_person_outlined),
-        title: Text(L.t.dmRequestTitle),
-        content: Text(name.isEmpty
-            ? L.t.dmRequestBodyAnonymous
-            : L.t.dmRequestBody(name)),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: Text(L.t.decline)),
-          FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: Text(L.t.accept)),
-        ],
+  /// Pending DM request as a conversation-list row with INLINE
+  /// accept / decline / block — no modal dialog, no forced immediate
+  /// decision (requests persist across restarts until handled).
+  Widget _requestTile(GroupSummary g) {
+    final theme = Theme.of(context);
+    return Container(
+      color: theme.colorScheme.secondaryContainer.withValues(alpha: 0.35),
+      child: ListTile(
+        leading: Badge(
+          isLabelVisible: false,
+          child: CircleAvatar(
+            backgroundColor: theme.colorScheme.secondaryContainer,
+            child: Icon(Icons.lock_person_outlined,
+                color: theme.colorScheme.onSecondaryContainer),
+          ),
+        ),
+        title: Text(
+          g.name.isNotEmpty ? g.name : shortPkLabel(g.peerPk),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontWeight: FontWeight.w600),
+        ),
+        subtitle: Text(L.t.dmRequestSubtitle,
+            style: theme.textTheme.bodySmall
+                ?.copyWith(color: theme.colorScheme.secondary)),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton.filledTonal(
+              tooltip: L.t.accept,
+              icon: const Icon(Icons.check, size: 20),
+              onPressed: () async {
+                try {
+                  _api.dmRespond(g.id, accept: true);
+                } catch (_) {}
+                _reload();
+                await _openRoomById(g.id);
+              },
+            ),
+            const SizedBox(width: 4),
+            IconButton(
+              tooltip: L.t.decline,
+              icon: const Icon(Icons.close, size: 20),
+              onPressed: () {
+                try {
+                  _api.dmRespond(g.id, accept: false);
+                } catch (_) {}
+                _reload();
+              },
+            ),
+            IconButton(
+              tooltip: L.t.block,
+              icon: const Icon(Icons.block, size: 20),
+              onPressed: () {
+                try {
+                  _api.dmBlock(g.peerPk);
+                } catch (_) {}
+                _reload();
+              },
+            ),
+          ],
+        ),
       ),
     );
-    _dmPromptOpen = false;
-    if (accept == null) return; // dismissed: stays pending, re-prompted later
-    try {
-      _api.dmRespond(gid, accept: accept);
-    } catch (_) {}
-    _reload();
-    _drainPendingDmReqs();
-  }
-
-  Future<void> _openGroup(GroupSummary g) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-          builder: (_) => ChatViewPage(group: g, prefs: widget.prefs)),
-    );
-    _reload();
   }
 
   Future<GroupSummary?> _summaryFor(String gid) async {
@@ -265,8 +280,12 @@ class _ChatTabState extends State<ChatTab> {
                   child: ListView.separated(
                     itemCount: _groups.length,
                     separatorBuilder: (_, __) => const Divider(height: 1),
-                    itemBuilder: (context, i) => _GroupTile(
-                        group: _groups[i], onTap: () => _openGroup(_groups[i])),
+                    itemBuilder: (context, i) => _groups[i].dmRequest
+                        ? _requestTile(_groups[i])
+                        : _GroupTile(
+                            group: _groups[i],
+                            onTap: () => _openGroup(_groups[i]),
+                          ),
                   ),
                 ),
       floatingActionButton: !_api.available || _groups.isEmpty
@@ -312,6 +331,9 @@ class _ChatTabState extends State<ChatTab> {
     );
   }
 }
+
+String shortPkLabel(String pk) =>
+    pk.length > 12 ? '${pk.substring(0, 12)}…' : pk;
 
 class _GroupTile extends StatelessWidget {
   const _GroupTile({required this.group, required this.onTap});

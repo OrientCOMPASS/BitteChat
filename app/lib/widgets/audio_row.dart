@@ -27,7 +27,13 @@ class _SharedAudio {
     if (p != null) return p;
     try {
       return _player = await Player.create(
-        configuration: PlayerConfiguration(logLevel: MPVLogLevel.warn),
+        configuration: PlayerConfiguration(
+          logLevel: MPVLogLevel.warn,
+          options: {
+            'ao': 'opensles,aaudio,audiotrack',
+            'volume': '100',
+          },
+        ),
       );
     } catch (e) {
       // host/demo mode without libmpv: degrade to a disabled row
