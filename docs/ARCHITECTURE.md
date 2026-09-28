@@ -75,8 +75,10 @@ Dart↔Rust 只走两条通道：`bc_call(method, json) -> json`（同步，命�
 ### 7. 数据目录布局 (app 私有外部存储)
 ```
 <data>/bitte.db                     SQLite (WAL)
-<data>/groups/<manifest_ih>/bitte-group.benc   仅 DM/遗留清单频道
+<data>/groups/<manifest_ih>/bitte-group.benc   仅遗留清单频道（v0.6 起 DM 无种子）
 <data>/downloads/<ih>/<文件名>       BT 下载与聊天附件（种子群聊即普通任务）
+<data>/resume/<ih>.fastresume        libtorrent 断点快照（120s/完成/退出时刷新，添加任务时自动回挂——重启不重新校验、进度不清零）
+<data>/logs/core.log(.1/.2)          核心滚动日志（2MB×3，逐行落盘）；Dart 侧 logs/app.log；设置页可导出到 Download
 <data>/tmp/                          RSS 导入暂存
 ```
 **种子即群聊**：普通群聊没有专属目录——房间就是 downloads/<infohash> 下的普通 BT
@@ -90,7 +92,8 @@ restore_state 从 SQLite（groups + torrents 表）直接重建运行时并重�
 |------|------|
 | FFI 调用线程 (Dart isolate) | bc_call → dispatch（持 state 锁，短临界区） |
 | bitte-events | 引擎事件 → 协议状态机（DHT 条目验证入库、ext 消息处理、头发布） |
-| bitte-sched | 每 1s tick：3s 批量 bt 状态推送 / 5s 群轮询+发布重试 / 10s outbox / 60s RSS 到期刷新 |
+| bitte-sched | 每 1s tick：3s 批量 bt 状态推送 / 5s 群轮询+发布重试（DM 群跳过 DHT）/ 10s outbox（DM 条目走定向 ext 投递）/ 60s RSS 到期刷新 / 120s resume data 快照 |
+| bitte-attach | 附件工作线程：哈希→复制→做种→发消息（chat.send_file 立即返回 job_id，进度经 chat.attachment_progress 事件） |
 | bitte-events-out | 事件 JSON → Dart 回调 |
 | rss/dl worker | 阻塞式 HTTP（ureq），不持任何锁 |
 
