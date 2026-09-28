@@ -319,6 +319,20 @@ impl Store {
         Ok(n > 0)
     }
 
+    /// Which group a stored message belongs to (used to route put
+    /// confirmations without in-memory state).
+    pub fn message_group(&self, id: &Sha1Hash) -> Result<Option<Sha1Hash>> {
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT group_id FROM messages WHERE id=?1",
+                params![id.to_vec()],
+                |r| r.get::<_, Vec<u8>>(0),
+            )
+            .optional()?
+            .and_then(|b| hash_from_blob(&b).ok()))
+    }
+
     pub fn message_state_set(&self, id: &Sha1Hash, state: i64) -> Result<()> {
         self.conn.execute(
             "UPDATE messages SET state=?2 WHERE id=?1",

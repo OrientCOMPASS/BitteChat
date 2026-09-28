@@ -341,12 +341,14 @@ impl Api {
         let st = &mut *guard;
         if !mutable {
             let Ok(target) = hex20(&key) else { return };
-            // find the group with this pending put
+            // the immutable target IS the message id: confirm purely from the
+            // store so restarts (empty pending_puts) still converge
             let gid_hex = st
-                .groups
-                .iter()
-                .find(|(_, rt)| rt.sync.pending_puts.contains(&target))
-                .map(|(g, _)| g.clone());
+                .store
+                .message_group(&target)
+                .ok()
+                .flatten()
+                .map(hex::encode);
             let Some(gid_hex) = gid_hex else { return };
             if num_success > 0 {
                 if let Some(rt) = st.groups.get_mut(&gid_hex) {
@@ -359,11 +361,9 @@ impl Api {
                     "chat.message_state",
                     json!({"group": gid_hex, "id": key, "state": 1}),
                 );
-            } else {
-                if let Some(rt) = st.groups.get_mut(&gid_hex) {
-                    rt.sync.dirty_heads = true; // will retry via outbox
-                    rt.last_publish = now - 3_000;
-                }
+            } else if let Some(rt) = st.groups.get_mut(&gid_hex) {
+                rt.sync.dirty_heads = true; // will retry via outbox
+                rt.last_publish = now - 3_000;
             }
         } else {
             // mutable head put
