@@ -20,7 +20,7 @@ Flutter (Android) 前端 + Rust 核心 + [libtorrent](https://www.libtorrent.org
 - **群 = 种子**：不需要"创建"群聊——**每个 BT 种子天然自带一个聊天室**，房间 ID 就是种子 infohash。添加任意种子（磁力链 / info hash / .torrent）即进入它的群聊；把种子分享给别人 = 邀请进群。群聊头指针的签名密钥由 infohash 确定性派生，任何持有种子的人都能独立推导，无需交换清单文件。
 - **消息 = git 对象**：每条消息经作者 Ed25519 签名，引用父消息的 SHA-1，形成有向无环图（DAG）。并发发言产生多个"头"（heads），后续消息通过引用全部头完成合并——与 git 的分支/合并模型一致。
 - **传播 = BEP44 DHT + BT 扩展消息**：消息本体作为 DHT 不可变条目（内容寻址）存储；每个群的头指针作为 DHT 可变条目（infohash 派生密钥签名、序号单调）发布；同一种子 swarm 内已连接的成员之间通过自定义 BEP10 扩展消息 `bc_chat` 实时直推。
-- **Tracker 支持**：可配置全局默认 Tracker 列表（自动附加到所有新任务与聊天附件）并对单个任务增删 tracker；DHT 引导节点多路冗余，纯 DHT 环境也能工作。
+- **Tracker 支持**：可配置全局默认 Tracker 列表（自动附加到所有新任务与聊天附件）并对单个任务增删 tracker；DHT 引导节点可配置，纯 DHT 环境也能工作。
 - **防篡改**：验签失败/哈希不符的消息直接丢弃；恶意回滚头指针会被诚实成员的 DAG 合并自动纠正；消息一旦扩散无法撤销。
 - **兼容性**：对网络中的其它 BT 客户端（qBittorrent、Transmission……）而言，本应用是一个行为正常的 libtorrent 客户端；不支持 `bc_chat` 扩展的 peer 只是收不到聊天消息，互不影响。你在下载热门种子时，swarm 里其他 BitteChat 用户就是天然的群友。
 
@@ -73,5 +73,5 @@ cd app && flutter build apk --release --split-per-abi
 - [x] v0.4.2 端到端加密私聊（X25519 + ChaCha20-Poly1305）
 - [x] v0.4.3 消息过滤规则引擎（折叠显示，不破坏链完整性）
 - [x] v0.4.5 国际化（zh/en）+ 身份档案管理
-- [x] v0.5.0 **种子即群聊**（移除"凭空建群"，房间 ID = infohash，头密钥确定性派生）+ Tracker 设置（全局默认列表/单任务增删/DHT 多引导节点）+ info hash 直连输入 + fvp 视频软解兜底 + 全局壁纸
+- [x] v0.5.0 **种子即群聊**（移除"凭空建群"，房间 ID = infohash，头密钥确定性派生）+ Tracker 设置（全局默认列表/单任务增删/DHT 引导可配置）+ info hash 直连输入 + fvp 视频软解兜底 + 全局壁纸
 - [ ] v0.5+：前台服务保活、消息搜索、armeabi-v7a、目录做种、分 ABI 发布包瘦身

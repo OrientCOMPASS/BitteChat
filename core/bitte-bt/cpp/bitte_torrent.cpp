@@ -1257,18 +1257,15 @@ extern "C" bc_session* bct_create(const char* cfg_json, bc_event_fn cb, void* cb
     }
     pack.set_bool(settings_pack::enable_dht, true);
     {
-        // a single bootstrap host is fragile (it has been down before);
-        // seed the DHT from several long-standing routers unless overridden.
-        // kept short: every extra host adds DNS/connect latency before the
-        // DHT is usable (observed in CI with longer lists)
-        std::string bootstrap = jstr(cfg, "dht_bootstrap_nodes");
-        if (bootstrap.empty())
+        // Keep libtorrent's own default bootstrap (dht.libtorrent.org:25401)
+        // unless the caller overrides it: swapping in longer router lists was
+        // observed to stall DHT bootstrap on CI runners. Configurable via
+        // cfg key "dht_bootstrap_nodes" (comma-separated host:port list).
+        std::string const bootstrap = jstr(cfg, "dht_bootstrap_nodes");
+        if (!bootstrap.empty())
         {
-            bootstrap = "dht.libtorrent.org:25401,"
-                        "router.bittorrent.com:6881,"
-                        "dht.transmissionbt.com:6881";
+            pack.set_str(settings_pack::dht_bootstrap_nodes, bootstrap);
         }
-        pack.set_str(settings_pack::dht_bootstrap_nodes, bootstrap);
     }
     pack.set_bool(settings_pack::enable_lsd, true);
     pack.set_bool(settings_pack::enable_upnp, true);
