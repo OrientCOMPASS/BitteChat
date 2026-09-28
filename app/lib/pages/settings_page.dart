@@ -181,7 +181,7 @@ class _SettingsPageState extends State<SettingsPage> {
           const AboutListTile(
             icon: Icon(Icons.favorite_outline),
             applicationName: 'BitteChat',
-            applicationVersion: '0.3.0',
+            applicationVersion: '0.4.0',
             aboutBoxChildren: [
               Text(
                 '去中心化 BitTorrent 群聊：一个种子就是一个群，'
