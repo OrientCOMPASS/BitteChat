@@ -51,6 +51,33 @@ class Attachment {
       );
 }
 
+class DownloadState {
+  DownloadState({
+    required this.progress,
+    required this.finished,
+    required this.paused,
+    required this.rate,
+    required this.peers,
+    this.state = '',
+  });
+
+  final double progress;
+  final bool finished;
+  final bool paused;
+  final int rate;
+  final int peers;
+  final String state;
+
+  factory DownloadState.fromJson(Map<String, dynamic> j) => DownloadState(
+        progress: _d(j, 'progress'),
+        finished: _b(j, 'finished'),
+        paused: _b(j, 'paused'),
+        rate: _i(j, 'rate'),
+        peers: _i(j, 'peers'),
+        state: _s(j, 'state'),
+      );
+}
+
 class ChatMessage {
   ChatMessage({
     required this.id,
@@ -67,6 +94,7 @@ class ChatMessage {
     this.systemDetail = '',
     this.localPath,
     this.haveFile = false,
+    this.dl,
   });
 
   final String id;
@@ -83,6 +111,7 @@ class ChatMessage {
   final String systemDetail;
   final String? localPath;
   final bool haveFile;
+  final DownloadState? dl;
 
   MsgPayloadKind get payloadKind {
     switch (kind) {
@@ -131,6 +160,9 @@ class ChatMessage {
       systemDetail: sysDetail,
       localPath: j['local_path'] is String ? j['local_path'] as String : null,
       haveFile: _b(j, 'have_file'),
+      dl: j['dl'] is Map<String, dynamic>
+          ? DownloadState.fromJson(j['dl'] as Map<String, dynamic>)
+          : null,
     );
   }
 }

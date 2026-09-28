@@ -156,7 +156,10 @@ impl Api {
     }
 
     /// Merge live engine state with the persistent registry.
-    pub fn bt_list(&self) -> Result<Json> {
+    /// Chat-internal torrents (group manifests, chat attachments) are hidden
+    /// unless `include_chat` is true, so the BT page stays about *the user's*
+    /// downloads instead of being polluted by chat plumbing.
+    pub fn bt_list(&self, include_chat: bool) -> Result<Json> {
         let states = self.inner.engine.torrent_states()?;
         let st = self.inner.state.lock().unwrap();
         let rows: std::collections::HashMap<String, TorrentRow> = st
@@ -182,6 +185,9 @@ impl Api {
                 Some(r) => (r.kind, String::new()),
                 None => (0, String::new()),
             };
+            if !include_chat && (kind == 1 || kind == 2) {
+                continue;
+            }
             let display_name = match kind {
                 1 if !group_name.is_empty() => format!("群聊·{group_name}"),
                 _ => row
@@ -211,6 +217,9 @@ impl Api {
         // registered but not (yet) in the engine: show as queued
         for (ih, r) in rows.iter() {
             if seen.contains(ih) {
+                continue;
+            }
+            if !include_chat && (r.kind == 1 || r.kind == 2) {
                 continue;
             }
             out.push(json!({
@@ -341,7 +350,7 @@ impl Api {
 
     /// Periodic broadcast used by the scheduler.
     pub fn push_bt_updates(&self) {
-        if let Ok(list) = self.bt_list() {
+        if let Ok(list) = self.bt_list(false) {
             self.emit_event("bt.updated", list);
         }
         if let Ok(stats) = self.bt_stats() {

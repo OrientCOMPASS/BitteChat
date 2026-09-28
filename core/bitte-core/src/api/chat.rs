@@ -320,6 +320,14 @@ impl Api {
         let from = (total as i64 - limit).max(0) as usize;
         display.drain(0..from);
         let downloads = self.downloads_dir();
+        let states = self
+            .inner
+            .engine
+            .torrent_states()
+            .unwrap_or_default()
+            .into_iter()
+            .map(|s| (s.infohash.clone(), s))
+            .collect::<std::collections::HashMap<_, _>>();
         let items: Vec<Json> = display
             .iter()
             .map(|m| {
@@ -328,6 +336,16 @@ impl Api {
                     let path = downloads.join(&a.infohash).join(&a.name);
                     j["local_path"] = json!(path.to_string_lossy());
                     j["have_file"] = json!(path.exists());
+                    if let Some(s) = states.get(&a.infohash) {
+                        j["dl"] = json!({
+                            "progress": s.progress,
+                            "finished": s.finished,
+                            "paused": s.paused,
+                            "rate": s.download_rate,
+                            "peers": s.num_peers,
+                            "state": s.state,
+                        });
+                    }
                 }
                 j
             })
@@ -557,6 +575,61 @@ impl Api {
         self.send_system_message(&gid_hex, "rename", &name);
         self.emit_event("chat.group_updated", json!({"group": gid_hex}));
         Ok(json!({"ok": true, "name": name}))
+    }
+
+    /// Download a chat attachment through the internal (hidden) torrent
+    /// registry so chat traffic never pollutes the BT page.
+    pub fn chat_download_attachment(&self, p: Json) -> Result<Json> {
+        let gid_hex = jstr(&p, "group_id")?.to_string();
+        let msg_id_hex = jstr(&p, "msg_id")?;
+        let gid = hex20(&gid_hex)?;
+        let msg_id = hex20(msg_id_hex)?;
+        let own_pk = self.own_pk_hex();
+        let (ih_hex, name) = {
+            let st = self.inner.state.lock().unwrap();
+            let raw = st
+                .store
+                .message_get_raw(&msg_id)?
+                .ok_or_else(|| CoreError::NotFound("message".into()))?;
+            let sm = crate::chat::message::parse_message_unverified(&raw, &own_pk)?;
+            match sm.msg.payload {
+                crate::chat::message::Payload::Attachment(a) => (a.infohash, a.name),
+                _ => return Err(CoreError::Invalid("message has no attachment".into())),
+            }
+        };
+        // already known to the engine?
+        let existing = self
+            .inner
+            .engine
+            .torrent_states()?
+            .into_iter()
+            .any(|s| s.infohash == ih_hex);
+        if !existing {
+            let save_dir = self.downloads_dir().join(&ih_hex);
+            std::fs::create_dir_all(&save_dir)?;
+            let magnet = format!("magnet:?xt=urn:btih:{ih_hex}&dn={}", urlquery(&name));
+            self.inner
+                .engine
+                .add_magnet(&magnet, &save_dir.to_string_lossy(), Some(&name))?;
+        }
+        {
+            let st = self.inner.state.lock().unwrap();
+            st.store.torrent_upsert(&crate::store::TorrentRow {
+                infohash: ih_hex.clone(),
+                name: name.clone(),
+                magnet: format!("magnet:?xt=urn:btih:{ih_hex}"),
+                save_path: self
+                    .downloads_dir()
+                    .join(&ih_hex)
+                    .to_string_lossy()
+                    .to_string(),
+                kind: 2,
+                group_id: Some(gid),
+                added: crate::now_ms(),
+            })?;
+        }
+        self.emit_event("chat.group_updated", json!({"group": gid_hex}));
+        Ok(json!({"infohash": ih_hex, "name": name}))
     }
 
     pub fn chat_mark_read(&self, p: Json) -> Result<Json> {

@@ -158,6 +158,9 @@ class BitteApi extends ChangeNotifier {
   void markRead(String groupId) =>
       call('chat.mark_read', {'group_id': groupId});
 
+  Map<String, dynamic> downloadAttachment(String groupId, String msgId) =>
+      call('chat.download_attachment', {'group_id': groupId, 'msg_id': msgId});
+
   void renameGroup(String groupId, String name) =>
       call('chat.rename_group', {'group_id': groupId, 'name': name});
 
@@ -172,9 +175,9 @@ class BitteApi extends ChangeNotifier {
 
   // ---- bt --------------------------------------------------------------
 
-  List<TorrentInfo> torrents() {
+  List<TorrentInfo> torrents({bool includeChat = false}) {
     if (!available) return [];
-    final r = call('bt.list');
+    final r = call('bt.list', {'include_chat': includeChat});
     return ((r['torrents'] as List?) ?? [])
         .map((e) => TorrentInfo.fromJson(_asMapSafe(e)))
         .toList();

@@ -10,7 +10,10 @@ import 'package:intl/intl.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../core/api.dart';
+import '../core/files.dart';
 import '../models.dart';
+import '../widgets/audio_row.dart';
+import 'media_pages.dart';
 import '../widgets/avatar.dart';
 import '../widgets/time_fmt.dart';
 import 'home.dart';
@@ -55,7 +58,9 @@ class _ChatViewPageState extends State<ChatViewPage> {
       }
     });
     _detailTimer = Timer.periodic(const Duration(seconds: 5), (_) {
-      if (mounted) _loadDetail(silent: true);
+      if (!mounted) return;
+      _loadDetail(silent: true);
+      if (_hasActiveDownload) _reload();
     });
     _loadDetail(silent: true);
     _scroll.addListener(_onScroll);
@@ -195,16 +200,23 @@ class _ChatViewPageState extends State<ChatViewPage> {
     final att = m.attachment;
     if (att == null) return;
     try {
-      _api.btAdd('magnet:?xt=urn:btih:${att.infohash}&dn=${att.name}');
+      _api.downloadAttachment(_gid, m.id);
+      _reload();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('已开始下载「${att.name}」，进度见种子页')),
+          SnackBar(content: Text('已开始下载「${att.name}」（聊天内传输，不占用种子页）')),
         );
       }
     } catch (e) {
       if (mounted) showError(context, e);
     }
   }
+
+  bool get _hasActiveDownload => _messages.any((m) =>
+      m.payloadKind == MsgPayloadKind.attachment &&
+      m.dl != null &&
+      !m.dl!.finished &&
+      !m.haveFile);
 
   Future<void> _openGroupSheet() async {
     _loadDetail();
@@ -546,23 +558,14 @@ class _TextBody extends StatelessWidget {
   }
 }
 
-bool _isImageName(String name, String mime) {
-  final n = name.toLowerCase();
-  return mime.startsWith('image/') ||
-      n.endsWith('.png') ||
-      n.endsWith('.jpg') ||
-      n.endsWith('.jpeg') ||
-      n.endsWith('.webp') ||
-      n.endsWith('.gif') ||
-      n.endsWith('.bmp');
-}
-
 class _AttachmentBody extends StatelessWidget {
   const _AttachmentBody({required this.message, this.onDownload});
   final ChatMessage message;
   final VoidCallback? onDownload;
 
-  void _openViewer(BuildContext context, String path) {
+  bool get _have => message.haveFile && message.localPath != null;
+
+  void _openImage(BuildContext context, String path) {
     showDialog<void>(
       context: context,
       builder: (ctx) => Dialog.fullscreen(
@@ -587,17 +590,83 @@ class _AttachmentBody extends StatelessWidget {
     );
   }
 
+  Future<void> _openMedia(BuildContext context) async {
+    final att = message.attachment!;
+    final path = message.localPath!;
+    final kind = mediaKindOf(att.name, att.mime);
+    switch (kind) {
+      case MediaKind.image:
+        _openImage(context, path);
+      case MediaKind.video:
+        await Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => VideoPlayerPage(path: path, title: att.name)));
+      case MediaKind.text:
+        await Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => TextPreviewPage(path: path, title: att.name)));
+      case MediaKind.audio:
+      case MediaKind.other:
+        final ok = await openWithExternalApp(path, mimeFromName(att.name));
+        if (!ok && context.mounted) {
+          ScaffoldMessenger.of(context)
+              .showSnackBar(const SnackBar(content: Text('没有可打开该文件的应用')));
+        }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final att = message.attachment!;
-    final have = message.haveFile;
-    final imagePath =
-        (have && message.localPath != null) ? message.localPath! : null;
-    final isImage = imagePath != null && _isImageName(att.name, att.mime);
-    return GestureDetector(
-      onTap: isImage ? () => _openViewer(context, imagePath) : null,
-      child: Column(
+    final kind = mediaKindOf(att.name, att.mime);
+    final dl = message.dl;
+
+    // downloading: live progress
+    if (!_have && dl != null && !dl.finished) {
+      return SizedBox(
+        width: 220,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2, value: dl.progress),
+                ),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text(att.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w600)),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(3),
+              child: LinearProgressIndicator(value: dl.progress, minHeight: 5),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              '${(dl.progress * 100).toStringAsFixed(0)}% · '
+              '${formatSpeed(dl.rate)} · ${dl.peers} peers'
+              '${dl.paused ? " · 已暂停" : ""}',
+              style: theme.textTheme.labelSmall
+                  ?.copyWith(color: theme.colorScheme.outline),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // not downloaded yet
+    if (!_have) {
+      return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -615,48 +684,128 @@ class _AttachmentBody extends StatelessWidget {
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(fontWeight: FontWeight.w600)),
-                    Text(
-                      '${formatBytes(att.size)} · ${have ? '已下载' : att.infohash.substring(0, 8)}',
-                      style: theme.textTheme.bodySmall
-                          ?.copyWith(color: theme.colorScheme.outline),
-                    ),
+                    Text('${formatBytes(att.size)} · ${_kindLabel(kind)}',
+                        style: theme.textTheme.bodySmall
+                            ?.copyWith(color: theme.colorScheme.outline)),
                   ],
                 ),
               ),
             ],
           ),
           const SizedBox(height: 6),
-          if (have)
-            Row(
-              mainAxisSize: MainAxisSize.min,
+          TextButton.icon(
+            onPressed: onDownload,
+            icon: const Icon(Icons.download, size: 18),
+            label: const Text('通过 BT 下载'),
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              visualDensity: VisualDensity.compact,
+            ),
+          ),
+        ],
+      );
+    }
+
+    // have the file: media-aware presentation
+    final path = message.localPath!;
+    Widget media;
+    switch (kind) {
+      case MediaKind.image:
+        media = GestureDetector(
+          onTap: () => _openImage(context, path),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Image.file(
+              File(path),
+              height: 150,
+              width: 210,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+            ),
+          ),
+        );
+      case MediaKind.audio:
+        media = AudioRow(path: path, title: att.name);
+      case MediaKind.video:
+        media = GestureDetector(
+          onTap: () => _openMedia(context),
+          child: Container(
+            width: 210,
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Column(
               children: [
-                Icon(Icons.check_circle,
-                    size: 16, color: theme.colorScheme.tertiary),
-                const SizedBox(width: 4),
-                Flexible(
-                  child: Text(message.localPath ?? '',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.labelSmall),
-                ),
+                Icon(Icons.smart_display,
+                    size: 40, color: theme.colorScheme.primary),
+                const SizedBox(height: 4),
+                const Text('点击播放视频'),
               ],
-            )
-          else
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton.icon(
-                onPressed: onDownload,
-                icon: const Icon(Icons.download, size: 18),
-                label: const Text('通过 BT 下载'),
-                style: TextButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  visualDensity: VisualDensity.compact,
-                ),
+            ),
+          ),
+        );
+      case MediaKind.text:
+      case MediaKind.other:
+        media = Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            onPressed: () => _openMedia(context),
+            icon: Icon(
+                kind == MediaKind.text
+                    ? Icons.article_outlined
+                    : Icons.open_in_new,
+                size: 18),
+            label: Text(kind == MediaKind.text ? '预览文本' : '用其他应用打开'),
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              visualDensity: VisualDensity.compact,
+            ),
+          ),
+        );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        media,
+        const SizedBox(height: 6),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(_fileIcon(att.name),
+                size: 16, color: theme.colorScheme.outline),
+            const SizedBox(width: 4),
+            Flexible(
+              child: Text(
+                '${att.name} · ${formatBytes(att.size)}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.labelSmall
+                    ?.copyWith(color: theme.colorScheme.outline),
               ),
             ),
-        ],
-      ),
+          ],
+        ),
+      ],
     );
+  }
+
+  String _kindLabel(MediaKind k) {
+    switch (k) {
+      case MediaKind.image:
+        return '图片';
+      case MediaKind.audio:
+        return '音频';
+      case MediaKind.video:
+        return '视频';
+      case MediaKind.text:
+        return '文本';
+      case MediaKind.other:
+        return '文件';
+    }
   }
 
   IconData _fileIcon(String name) {

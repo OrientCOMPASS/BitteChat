@@ -322,9 +322,43 @@ fn e2e_attachment_transfer() {
         }
     });
 
-    // B downloads it through the BT layer
-    let dmag = format!("magnet:?xt=urn:btih:{ih}&dn=hello.txt");
-    call(&b, "bt.add", json!({"magnet": dmag}));
+    // chat-internal torrents must NOT pollute the default BT list (sender
+    // side has the kind=2 registry row; receiver side has nothing yet)
+    for node in [&a, &b] {
+        let list = call(node, "bt.list", json!({}));
+        assert!(
+            !list["torrents"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|t| t["infohash"].as_str() == Some(ih.as_str())),
+            "attachment torrent leaked into user BT list"
+        );
+    }
+    // ...but the sender sees it when explicitly requesting chat torrents
+    let list = call(&a, "bt.list", json!({"include_chat": true}));
+    assert!(list["torrents"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|t| t["infohash"].as_str() == Some(ih.as_str())));
+
+    // B downloads through the internal chat channel
+    let r = call(&b, "chat.messages", json!({"group_id": gid}));
+    let msg_id = r["messages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| m["payload"]["Attachment"]["infohash"].as_str() == Some(ih.as_str()))
+        .unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    call(
+        &b,
+        "chat.download_attachment",
+        json!({"group_id": gid, "msg_id": msg_id}),
+    );
     wait_until(&[&a, &b], T, || {
         let path = b.api.downloads_dir().join(&ih).join("hello.txt");
         if path.exists() {

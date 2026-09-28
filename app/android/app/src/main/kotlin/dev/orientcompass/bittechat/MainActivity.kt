@@ -1,6 +1,7 @@
 package dev.orientcompass.bittechat
 
 import android.content.Intent
+import androidx.core.content.FileProvider
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -35,6 +36,33 @@ class MainActivity : FlutterActivity() {
         }
         channel = ch
         pendingMagnet?.let { ch.invokeMethod("magnet", it) }
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "bittechat/files")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "openWith" -> {
+                        val path = call.argument<String>("path")
+                        val mime = call.argument<String>("mime") ?: "*/*"
+                        val file = path?.let { java.io.File(it) }
+                        if (file == null || !file.exists()) {
+                            result.success(false)
+                        } else {
+                            try {
+                                val uri = FileProvider.getUriForFile(
+                                    this, "$packageName.fileprovider", file)
+                                val view = Intent(Intent.ACTION_VIEW)
+                                    .setDataAndType(uri, mime)
+                                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                startActivity(Intent.createChooser(view, "打开方式"))
+                                result.success(true)
+                            } catch (e: Exception) {
+                                result.success(false)
+                            }
+                        }
+                    }
+                    else -> result.notImplemented()
+                }
+            }
     }
 
     override fun onNewIntent(intent: Intent) {

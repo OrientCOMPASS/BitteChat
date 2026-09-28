@@ -20,6 +20,7 @@ class BtTab extends StatefulWidget {
 class _BtTabState extends State<BtTab> {
   late final BitteApi _api = BitteApi.instance;
   List<TorrentInfo> _torrents = [];
+  bool _includeChat = false;
   SessionStats _stats = SessionStats(
       dhtNodes: -1, uploadRate: 0, downloadRate: 0, numTorrents: 0);
   StreamSubscription<CoreEvent>? _sub;
@@ -46,7 +47,7 @@ class _BtTabState extends State<BtTab> {
     if (!mounted) return;
     try {
       setState(() {
-        _torrents = _api.torrents();
+        _torrents = _api.torrents(includeChat: _includeChat);
         _stats = _api.btStats();
       });
     } catch (_) {}
@@ -130,6 +131,21 @@ class _BtTabState extends State<BtTab> {
         title: const Text('种子'),
         actions: [
           IconButton(
+            tooltip: _includeChat ? '隐藏聊天内部种子' : '显示聊天内部种子',
+            icon: Icon(_includeChat
+                ? Icons.visibility
+                : Icons.visibility_off_outlined),
+            onPressed: () {
+              setState(() => _includeChat = !_includeChat);
+              _reload();
+            },
+          ),
+          IconButton(
+            tooltip: '传输限速',
+            icon: const Icon(Icons.speed),
+            onPressed: _openLimitsSheet,
+          ),
+          IconButton(
             tooltip: '刷新',
             icon: const Icon(Icons.refresh),
             onPressed: _reload,
@@ -138,7 +154,10 @@ class _BtTabState extends State<BtTab> {
       ),
       body: Column(
         children: [
-          _StatsBar(stats: _stats),
+          GestureDetector(
+            onTap: _openLimitsSheet,
+            child: _StatsBar(stats: _stats),
+          ),
           const Divider(height: 1),
           Expanded(
             child: _torrents.isEmpty
@@ -207,6 +226,72 @@ class _BtTabState extends State<BtTab> {
       ),
     );
     _reload();
+  }
+
+  Future<void> _openLimitsSheet() async {
+    final limits = _api.btLimits();
+    final upCtrl = TextEditingController(
+        text: limits.up > 0 ? '${limits.up ~/ 1024}' : '');
+    final downCtrl = TextEditingController(
+        text: limits.down > 0 ? '${limits.down ~/ 1024}' : '');
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('传输限速（KB/s，留空或 0 为不限速）',
+                style: Theme.of(ctx).textTheme.titleSmall),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: upCtrl,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                        labelText: '上传', border: OutlineInputBorder()),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: TextField(
+                    controller: downCtrl,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                        labelText: '下载', border: OutlineInputBorder()),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            FilledButton(
+              onPressed: () {
+                int parse(TextEditingController c) {
+                  final v = int.tryParse(c.text.trim()) ?? 0;
+                  return v <= 0 ? 0 : v * 1024;
+                }
+
+                try {
+                  _api.btSetLimits(up: parse(upCtrl), down: parse(downCtrl));
+                  Navigator.pop(ctx);
+                  ScaffoldMessenger.of(context)
+                      .showSnackBar(const SnackBar(content: Text('限速已应用')));
+                } catch (e) {
+                  showError(context, e);
+                }
+              },
+              child: const Text('保存'),
+            ),
+          ],
+        ),
+      ),
+    );
+    upCtrl.dispose();
+    downCtrl.dispose();
   }
 
   void _showAddSheet() {
