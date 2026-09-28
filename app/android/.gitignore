@@ -12,3 +12,7 @@ GeneratedPluginRegistrant.java
 key.properties
 **/*.keystore
 **/*.jks
+# EXCEPTION — the release keystore is INTENTIONALLY committed: this is an
+# Unlicense (public-domain) project distributed via GitHub Releases, and a
+# stable public signing key is what allows users to UPGRADE IN PLACE.
+!keystore/release.jks
