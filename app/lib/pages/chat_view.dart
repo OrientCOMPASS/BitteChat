@@ -525,6 +525,8 @@ class MessageBubble extends StatelessWidget {
         return '👋 ${m.authorName} 加入了群聊';
       case 'leave':
         return '${m.authorName} 退出了群聊';
+      case 'rename':
+        return '📛 ${m.authorName} 将群名改为「${m.systemDetail}」';
       default:
         return '[系统] ${m.systemCode} ${m.systemDetail}';
     }
