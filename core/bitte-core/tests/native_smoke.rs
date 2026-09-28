@@ -113,7 +113,7 @@ fn native_engine_smoke() {
         .expect("dht_get_immutable");
     let got = wait_event(
         &rx,
-        Duration::from_secs(20),
+        Duration::from_secs(60),
         |ev| matches!(ev, EngineEvent::DhtImmutableItem { target, .. } if *target == unknown),
     );
     assert!(got.is_some(), "dht immutable alert plumbing broken");
