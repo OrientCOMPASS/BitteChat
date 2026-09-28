@@ -119,7 +119,6 @@ pub const BEP44_VALUE_LIMIT: usize = 1000;
 
 use chacha20poly1305::aead::{Aead, KeyInit};
 use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
-use sha2::Digest as _;
 
 pub type XSecret = [u8; 32];
 pub type XPub = [u8; 32];

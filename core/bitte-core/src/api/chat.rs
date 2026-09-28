@@ -6,7 +6,7 @@ use serde_json::{json, Value as Json};
 use crate::api::{hex20, jbool, ji64, jstr, Api, GroupRuntime};
 use crate::chat::group::{DmParty, GroupManifest};
 use crate::chat::message::{
-    create_message, create_message_opts, plan_text, AttachmentInfo, MsgKind, MsgOpts, Payload,
+    create_message_opts, plan_text, AttachmentInfo, MsgKind, MsgOpts, Payload,
 };
 use crate::chat::sync::ExtPayload;
 use crate::crypto::Identity;

@@ -485,6 +485,7 @@ mod tests {
             author_name: "x".into(),
             kind: 1,
             payload: Payload::Text { text: "x".into() },
+            sender_x: None,
             own: false,
             state: 1,
         }
