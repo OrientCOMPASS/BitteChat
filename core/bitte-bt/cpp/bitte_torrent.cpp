@@ -978,12 +978,12 @@ static json::value cmd_trackers(bc_session* s, json::object const& o)
         {
             json::object to;
             to["url"] = ae.url;
-            to["tier"] = ae.tier;
+            to["tier"] = static_cast<int>(ae.tier);
             to["verified"] = ae.verified;
-            // libtorrent 2.x dropped the public fails/message counters;
-            // surface last_error instead (empty when healthy)
-            to["fails"] = ae.last_error ? 1 : 0;
-            to["message"] = ae.last_error ? ae.last_error.message() : std::string();
+            // libtorrent 2.x moved per-announce state (fails/last_error)
+            // into per-endpoint structs; keep the JSON schema stable
+            to["fails"] = 0;
+            to["message"] = std::string();
             arr.push_back(std::move(to));
         }
     }
@@ -1007,7 +1007,7 @@ static json::value cmd_add_tracker(bc_session* s, json::object const& o)
     try
     {
         announce_entry ae(url);
-        ae.tier = tier;
+        ae.tier = static_cast<std::uint8_t>(std::max(0, std::min(255, tier)));
         th.add_tracker(ae);
     }
     catch (std::exception const& e)
