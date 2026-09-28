@@ -38,6 +38,8 @@ class _ChatViewPageState extends State<ChatViewPage> {
   List<_ChatEntry> _entries = [];
   final Set<String> _expandedGaps = {};
   bool _sending = false;
+  String? _attJob;
+  String _attPhase = '';
   StreamSubscription<CoreEvent>? _sub;
   Map<String, dynamic> _detail = {};
   Timer? _detailTimer;
@@ -45,6 +47,7 @@ class _ChatViewPageState extends State<ChatViewPage> {
 
   String get _gid => widget.group.id;
   bool get _isDm => widget.group.dm;
+  bool get _dmOnline => (_detail['dm_online'] as bool?) ?? false;
 
   @override
   void initState() {
@@ -61,6 +64,9 @@ class _ChatViewPageState extends State<ChatViewPage> {
         if (mounted) setState(() {});
       } else if (e.type == 'chat.message_state' && e.data['group'] == _gid) {
         _reload();
+      } else if (e.type == 'chat.attachment_progress' &&
+          e.data['job_id'] == _attJob) {
+        _onAttProgress('${e.data['phase'] ?? ''}', '${e.data['error'] ?? ''}');
       }
     });
     _detailTimer = Timer.periodic(const Duration(seconds: 5), (_) {
@@ -101,8 +107,30 @@ class _ChatViewPageState extends State<ChatViewPage> {
   void _loadDetail({bool silent = false}) {
     try {
       _detail = _api.groupDetail(_gid);
-      if (!silent && mounted) setState(() {});
+      if (mounted) setState(() {});
     } catch (_) {}
+  }
+
+  void _onAttProgress(String phase, String error) {
+    if (!mounted) return;
+    if (phase == 'sent') {
+      setState(() {
+        _attJob = null;
+        _attPhase = '';
+      });
+      _reload();
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(L.t.sentSeeding(''))));
+    } else if (phase == 'error') {
+      setState(() {
+        _attJob = null;
+        _attPhase = '';
+      });
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('${L.t.attachFailed}: $error')));
+    } else {
+      setState(() => _attPhase = phase);
+    }
   }
 
   void _onScroll() {
@@ -243,16 +271,18 @@ class _ChatViewPageState extends State<ChatViewPage> {
       final name = files.single.name;
       if (path == null) return;
       if (!mounted) return;
-      final messenger = ScaffoldMessenger.of(context);
-      messenger.showSnackBar(
-        SnackBar(content: Text(L.t.sending)),
-      );
+      // v0.6: the core hashes+copies on a worker thread (big videos must
+      // not block the UI); we track the job via attachment_progress events
       final r = _api.sendFile(_gid, path, name: name);
-      messenger.hideCurrentSnackBar();
-      messenger.showSnackBar(SnackBar(
-        content: Text(L.t.sentSeeding(shortHash('${r['infohash'] ?? ''}'))),
-      ));
-      _reload();
+      final job = '${r['job_id'] ?? ''}';
+      if (job.isNotEmpty) {
+        setState(() {
+          _attJob = job;
+          _attPhase = 'hash';
+        });
+      } else {
+        _reload();
+      }
     } catch (e) {
       if (mounted) showError(context, e);
     }
@@ -340,10 +370,21 @@ class _ChatViewPageState extends State<ChatViewPage> {
                     ?.copyWith(color: theme.colorScheme.primary),
               )
             else if (_isDm)
-              Text(
-                L.t.dmEncrypted,
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: theme.colorScheme.primary),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.circle,
+                      size: 8,
+                      color: _dmOnline
+                          ? Colors.green
+                          : theme.colorScheme.outlineVariant),
+                  const SizedBox(width: 5),
+                  Text(
+                    _dmOnline ? L.t.dmOnline : L.t.dmOffline,
+                    style: theme.textTheme.bodySmall
+                        ?.copyWith(color: theme.colorScheme.primary),
+                  ),
+                ],
               )
             else
               Text(
@@ -442,6 +483,33 @@ class _ChatViewPageState extends State<ChatViewPage> {
                           },
                         )),
               ),
+              if (_attJob != null)
+                Material(
+                  color: theme.colorScheme.surfaceContainerHighest,
+                  child: Padding(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: Row(
+                      children: [
+                        const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2)),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            switch (_attPhase) {
+                              'copy' => L.t.attPhaseCopy,
+                              'seed' => L.t.attPhaseSeed,
+                              _ => L.t.attPhaseHash,
+                            },
+                            style: theme.textTheme.bodySmall,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               _InputBar(
                 controller: _input,
                 sending: _sending,
@@ -1073,6 +1141,23 @@ class _GroupDetailSheetState extends State<GroupDetailSheet> {
     } catch (_) {}
   }
 
+  Future<void> _startDmWith(String pk) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final r = _api.startDm(pk);
+      Navigator.pop(context);
+      if (r['existing'] == true) {
+        messenger.showSnackBar(SnackBar(content: Text(L.t.dmAlreadyExists)));
+      } else if (r['sent'] == true) {
+        messenger.showSnackBar(SnackBar(content: Text(L.t.dmRequestSent)));
+      } else {
+        messenger.showSnackBar(SnackBar(content: Text(L.t.dmRequestQueued)));
+      }
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('$e')));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -1080,6 +1165,7 @@ class _GroupDetailSheetState extends State<GroupDetailSheet> {
     final group = _asMap(d['group']);
     final magnet = (group['invite_magnet'] as String?) ?? '';
     final peers = (d['peers'] as List?) ?? [];
+    final members = (d['members'] as List?) ?? [];
     final heads = (d['heads'] as List?) ?? [];
     final creator = _asMap(d['creator']);
     final kind = (d['kind'] as String?) ?? 'torrent';
@@ -1129,47 +1215,98 @@ class _GroupDetailSheetState extends State<GroupDetailSheet> {
           _StatRow(label: L.t.headsCount, value: '${heads.length}'),
           _StatRow(label: L.t.missingCount, value: '${d['missing'] ?? 0}'),
           _StatRow(label: L.t.headSeq, value: '${d['head_seq'] ?? 0}'),
-          _StatRow(label: L.t.members, value: '${peers.length}'),
           _StatRow(
-              label: isDm ? L.t.manifestTorrent : L.t.infohashLabel,
-              value: shortHash(
-                  '${d['infohash'] ?? d['manifest_infohash'] ?? ''}', 16)),
+              label: L.t.members,
+              value: '${members.isNotEmpty ? members.length : peers.length}'),
+          if (!isDm)
+            _StatRow(
+                label: L.t.infohashLabel,
+                value: shortHash('${d['infohash'] ?? ''}', 16)),
           SizedBox(height: 16),
-          Text(isDm ? L.t.inviteLink : L.t.roomInviteTitle,
-              style: theme.textTheme.titleSmall),
-          if (!isDm) ...[
+          if (isDm) ...[
+            // v0.6 DM: purely local channel — no invite link/QR (the channel
+            // was established by a signed request, not a shared secret)
+            Row(
+              children: [
+                Icon(
+                  (d['dm_online'] == true)
+                      ? Icons.circle
+                      : Icons.circle_outlined,
+                  size: 10,
+                  color: (d['dm_online'] == true)
+                      ? Colors.green
+                      : theme.colorScheme.outlineVariant,
+                ),
+                SizedBox(width: 6),
+                Text(
+                  (d['dm_online'] == true) ? L.t.dmOnline : L.t.dmOffline,
+                  style: theme.textTheme.bodySmall,
+                ),
+              ],
+            ),
+            SizedBox(height: 4),
+            Text(L.t.dmLocalOnlyHint,
+                style: theme.textTheme.bodySmall
+                    ?.copyWith(color: theme.colorScheme.outline)),
+          ] else ...[
+            Text(L.t.roomInviteTitle, style: theme.textTheme.titleSmall),
             SizedBox(height: 4),
             Text(L.t.roomInviteHint,
                 style: theme.textTheme.bodySmall
                     ?.copyWith(color: theme.colorScheme.outline)),
-          ],
-          SizedBox(height: 8),
-          if (magnet.isNotEmpty)
-            Center(
-              child: Container(
-                padding: const EdgeInsets.all(10),
-                color: Colors.white,
-                child: QrImageView(
-                  data: magnet,
-                  size: 180,
-                  backgroundColor: Colors.white,
+            SizedBox(height: 8),
+            if (magnet.isNotEmpty)
+              Center(
+                child: Container(
+                  padding: const EdgeInsets.all(10),
+                  color: Colors.white,
+                  child: QrImageView(
+                    data: magnet,
+                    size: 180,
+                    backgroundColor: Colors.white,
+                  ),
                 ),
               ),
+            SizedBox(height: 8),
+            OutlinedButton.icon(
+              icon: Icon(Icons.copy, size: 18),
+              label: Text(L.t.copyInviteLink),
+              onPressed: () async {
+                await Clipboard.setData(ClipboardData(text: magnet));
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text(L.t.copiedInvite)),
+                  );
+                }
+              },
             ),
-          SizedBox(height: 8),
-          OutlinedButton.icon(
-            icon: Icon(Icons.copy, size: 18),
-            label: Text(L.t.copyInviteLink),
-            onPressed: () async {
-              await Clipboard.setData(ClipboardData(text: magnet));
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(L.t.copiedInvite)),
-                );
-              }
-            },
-          ),
+          ],
           SizedBox(height: 12),
+          if (!isDm && members.isNotEmpty) ...[
+            Text(L.t.membersIdentified, style: theme.textTheme.titleSmall),
+            SizedBox(height: 4),
+            ...members.map((m) {
+              final mm = _asMap(m);
+              final pk = '${mm['pk'] ?? ''}';
+              final name = '${mm['name'] ?? ''}';
+              return ListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                leading: KeyAvatar(keyHex: pk, name: name, size: 32),
+                title: Text(name.isNotEmpty ? name : shortHash(pk, 12),
+                    style: theme.textTheme.bodyMedium),
+                subtitle: Text(shortHash(pk, 16),
+                    style: theme.textTheme.bodySmall
+                        ?.copyWith(color: theme.colorScheme.outline)),
+                trailing: TextButton.icon(
+                  icon: Icon(Icons.lock_person_outlined, size: 16),
+                  label: Text(L.t.startDm),
+                  onPressed: () => _startDmWith(pk),
+                ),
+              );
+            }),
+            SizedBox(height: 12),
+          ],
           if (peers.isNotEmpty) ...[
             Text(L.t.p2pPeers, style: theme.textTheme.titleSmall),
             SizedBox(height: 4),
@@ -1200,7 +1337,7 @@ class _GroupDetailSheetState extends State<GroupDetailSheet> {
             contentPadding: EdgeInsets.zero,
             leading: Icon(Icons.edit_outlined),
             title: Text(L.t.renameGroup),
-            subtitle: Text(L.t.renameBroadcast),
+            subtitle: Text(L.t.renameLocalNote),
             onTap: () async {
               final controller =
                   TextEditingController(text: (group['name'] as String?) ?? '');

@@ -610,5 +610,51 @@
     "type": "Object"
    }
   }
- }
+ },
+ "accept": "Accept",
+ "decline": "Decline",
+ "wallpaperEdit": "Adjust wallpaper",
+ "wallpaperEditHint": "Pinch and drag to frame the image; the controls below preview the final look",
+ "wallpaperLoadFail": "Could not load the image",
+ "exportLogs": "Export logs",
+ "exportLogsHint": "Writes the core + UI logs to the Download directory for bug reports",
+ "logsExported": "Logs exported: {dest}",
+ "@logsExported": {
+  "placeholders": {
+   "dest": {
+    "type": "Object"
+   }
+  }
+ },
+ "exportLogsFail": "Export failed: ",
+ "videoDecoder": "Video decoding",
+ "videoDecoderSoftware": "Software (compatibility first)",
+ "videoDecoderHardware": "Hardware first (battery saver)",
+ "videoDecoderHint": "Keep software decoding if videos play audio with a black picture; hardware decoding saves battery but renders black on some device/codec combinations. Applies to newly opened videos",
+ "videoDecoderTip": "Black screen with audio? Switch the decoder under Settings → Video decoding",
+ "avatarLocalOnly": "Avatar and nickname stay on this device and are never broadcast",
+ "renameLocalNote": "Local note — only visible to you",
+ "dmRequestTitle": "Private chat request",
+ "dmRequestBody": "{name} wants to start an end-to-end encrypted private chat",
+ "@dmRequestBody": {
+  "placeholders": {
+   "name": {
+    "type": "Object"
+   }
+  }
+ },
+ "dmRequestBodyAnonymous": "Someone wants to start an end-to-end encrypted private chat",
+ "dmRejectedByPeer": "The other side declined the private chat",
+ "dmAwaitingAccept": "Waiting for accept",
+ "dmRequestSent": "Request sent",
+ "dmRequestQueued": "Peer is offline — the request will be delivered when they return",
+ "dmAlreadyExists": "Private chat already exists",
+ "dmOnline": "Online",
+ "dmOffline": "Offline",
+ "dmLocalOnlyHint": "DM messages travel directly between the two devices and are stored locally only: no DHT items, no extra torrent",
+ "membersIdentified": "Members (DM capable)",
+ "attPhaseHash": "Hashing file…",
+ "attPhaseCopy": "Copying into the seed folder…",
+ "attPhaseSeed": "Seeding and sending…",
+ "attachFailed": "Attachment failed"
 }

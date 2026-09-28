@@ -947,4 +947,105 @@ class AppLocalizationsZh extends AppLocalizations {
   String trackerFails(Object n) {
     return '失败 $n 次';
   }
+
+  @override
+  String get accept => '接受';
+
+  @override
+  String get decline => '拒绝';
+
+  @override
+  String get wallpaperEdit => '调整壁纸';
+
+  @override
+  String get wallpaperEditHint => '双指缩放与拖动调整构图；下方滑杆实时预览最终效果';
+
+  @override
+  String get wallpaperLoadFail => '图片加载失败';
+
+  @override
+  String get exportLogs => '导出日志';
+
+  @override
+  String get exportLogsHint => '将核心与界面日志导出到「下载」目录，用于问题反馈';
+
+  @override
+  String logsExported(Object dest) {
+    return '日志已导出：$dest';
+  }
+
+  @override
+  String get exportLogsFail => '导出失败：';
+
+  @override
+  String get videoDecoder => '视频解码';
+
+  @override
+  String get videoDecoderSoftware => '软件解码（兼容优先）';
+
+  @override
+  String get videoDecoderHardware => '硬件解码优先（省电）';
+
+  @override
+  String get videoDecoderHint =>
+      '遇到视频"有声无画"请保持软件解码；硬件解码更省电，但部分机型/编码会黑屏。切换后对新打开的视频生效';
+
+  @override
+  String get videoDecoderTip => '黑屏有声？可在 设置 → 视频解码 切换解码方式';
+
+  @override
+  String get avatarLocalOnly => '头像与昵称仅保存在本机，不会广播给其他用户';
+
+  @override
+  String get renameLocalNote => '备注仅自己可见，不会广播';
+
+  @override
+  String get dmRequestTitle => '私聊请求';
+
+  @override
+  String dmRequestBody(Object name) {
+    return '$name 请求与你建立端到端加密私聊';
+  }
+
+  @override
+  String get dmRequestBodyAnonymous => '有用户请求与你建立端到端加密私聊';
+
+  @override
+  String get dmRejectedByPeer => '对方婉拒了私聊请求';
+
+  @override
+  String get dmAwaitingAccept => '等待对方接受';
+
+  @override
+  String get dmRequestSent => '私聊请求已发送';
+
+  @override
+  String get dmRequestQueued => '对方当前不在线，请求将在 TA 上线后自动送达';
+
+  @override
+  String get dmAlreadyExists => '私聊已存在';
+
+  @override
+  String get dmOnline => '在线';
+
+  @override
+  String get dmOffline => '离线';
+
+  @override
+  String get dmLocalOnlyHint => '私聊消息在两台设备之间直连传输、仅本地存储：不写入 DHT，也不新建种子';
+
+  @override
+  String get membersIdentified => '可私聊的成员';
+
+  @override
+  String get attPhaseHash => '正在计算文件哈希…';
+
+  @override
+  String get attPhaseCopy => '正在复制到做种目录…';
+
+  @override
+  String get attPhaseSeed => '正在做种并发送…';
+
+  @override
+  String get attachFailed => '附件发送失败';
 }

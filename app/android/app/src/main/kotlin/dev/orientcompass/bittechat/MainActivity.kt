@@ -40,6 +40,48 @@ class MainActivity : FlutterActivity() {
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "bittechat/files")
             .setMethodCallHandler { call, result ->
                 when (call.method) {
+                    "exportToDownloads" -> {
+                        val path = call.argument<String>("path")
+                        val name = call.argument<String>("name")
+                            ?: "bittechat-log.txt"
+                        val file = path?.let { java.io.File(it) }
+                        if (file == null || !file.exists()) {
+                            result.error("no_file", "log bundle missing", null)
+                        } else {
+                            try {
+                                val bytes = file.readBytes()
+                                if (android.os.Build.VERSION.SDK_INT >= 29) {
+                                    val values = android.content.ContentValues().apply {
+                                        put(android.provider.MediaStore.Downloads.DISPLAY_NAME, name)
+                                        put(android.provider.MediaStore.Downloads.MIME_TYPE, "text/plain")
+                                        put(android.provider.MediaStore.Downloads.RELATIVE_PATH,
+                                            android.os.Environment.DIRECTORY_DOWNLOADS + "/BitteChat")
+                                        put(android.provider.MediaStore.Downloads.IS_PENDING, 1)
+                                    }
+                                    val uri = contentResolver.insert(
+                                        android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                                        values) ?: throw IllegalStateException("insert failed")
+                                    contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
+                                        ?: throw IllegalStateException("no stream")
+                                    values.clear()
+                                    values.put(android.provider.MediaStore.Downloads.IS_PENDING, 0)
+                                    contentResolver.update(uri, values, null, null)
+                                    result.success("Download/BitteChat/$name")
+                                } else {
+                                    @Suppress("DEPRECATION")
+                                    val dir = android.os.Environment
+                                        .getExternalStoragePublicDirectory(
+                                            android.os.Environment.DIRECTORY_DOWNLOADS)
+                                    if (!dir.exists()) dir.mkdirs()
+                                    val out = java.io.File(dir, name)
+                                    out.writeBytes(bytes)
+                                    result.success(out.absolutePath)
+                                }
+                            } catch (e: Exception) {
+                                result.error("export_failed", e.message, null)
+                            }
+                        }
+                    }
                     "openWith" -> {
                         val path = call.argument<String>("path")
                         val mime = call.argument<String>("mime") ?: "*/*"

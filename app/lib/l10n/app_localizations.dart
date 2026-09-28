@@ -1801,6 +1801,198 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'失败 {n} 次'**
   String trackerFails(Object n);
+
+  /// No description provided for @accept.
+  ///
+  /// In zh, this message translates to:
+  /// **'接受'**
+  String get accept;
+
+  /// No description provided for @decline.
+  ///
+  /// In zh, this message translates to:
+  /// **'拒绝'**
+  String get decline;
+
+  /// No description provided for @wallpaperEdit.
+  ///
+  /// In zh, this message translates to:
+  /// **'调整壁纸'**
+  String get wallpaperEdit;
+
+  /// No description provided for @wallpaperEditHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'双指缩放与拖动调整构图；下方滑杆实时预览最终效果'**
+  String get wallpaperEditHint;
+
+  /// No description provided for @wallpaperLoadFail.
+  ///
+  /// In zh, this message translates to:
+  /// **'图片加载失败'**
+  String get wallpaperLoadFail;
+
+  /// No description provided for @exportLogs.
+  ///
+  /// In zh, this message translates to:
+  /// **'导出日志'**
+  String get exportLogs;
+
+  /// No description provided for @exportLogsHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'将核心与界面日志导出到「下载」目录，用于问题反馈'**
+  String get exportLogsHint;
+
+  /// No description provided for @logsExported.
+  ///
+  /// In zh, this message translates to:
+  /// **'日志已导出：{dest}'**
+  String logsExported(Object dest);
+
+  /// No description provided for @exportLogsFail.
+  ///
+  /// In zh, this message translates to:
+  /// **'导出失败：'**
+  String get exportLogsFail;
+
+  /// No description provided for @videoDecoder.
+  ///
+  /// In zh, this message translates to:
+  /// **'视频解码'**
+  String get videoDecoder;
+
+  /// No description provided for @videoDecoderSoftware.
+  ///
+  /// In zh, this message translates to:
+  /// **'软件解码（兼容优先）'**
+  String get videoDecoderSoftware;
+
+  /// No description provided for @videoDecoderHardware.
+  ///
+  /// In zh, this message translates to:
+  /// **'硬件解码优先（省电）'**
+  String get videoDecoderHardware;
+
+  /// No description provided for @videoDecoderHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'遇到视频"有声无画"请保持软件解码；硬件解码更省电，但部分机型/编码会黑屏。切换后对新打开的视频生效'**
+  String get videoDecoderHint;
+
+  /// No description provided for @videoDecoderTip.
+  ///
+  /// In zh, this message translates to:
+  /// **'黑屏有声？可在 设置 → 视频解码 切换解码方式'**
+  String get videoDecoderTip;
+
+  /// No description provided for @avatarLocalOnly.
+  ///
+  /// In zh, this message translates to:
+  /// **'头像与昵称仅保存在本机，不会广播给其他用户'**
+  String get avatarLocalOnly;
+
+  /// No description provided for @renameLocalNote.
+  ///
+  /// In zh, this message translates to:
+  /// **'备注仅自己可见，不会广播'**
+  String get renameLocalNote;
+
+  /// No description provided for @dmRequestTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'私聊请求'**
+  String get dmRequestTitle;
+
+  /// No description provided for @dmRequestBody.
+  ///
+  /// In zh, this message translates to:
+  /// **'{name} 请求与你建立端到端加密私聊'**
+  String dmRequestBody(Object name);
+
+  /// No description provided for @dmRequestBodyAnonymous.
+  ///
+  /// In zh, this message translates to:
+  /// **'有用户请求与你建立端到端加密私聊'**
+  String get dmRequestBodyAnonymous;
+
+  /// No description provided for @dmRejectedByPeer.
+  ///
+  /// In zh, this message translates to:
+  /// **'对方婉拒了私聊请求'**
+  String get dmRejectedByPeer;
+
+  /// No description provided for @dmAwaitingAccept.
+  ///
+  /// In zh, this message translates to:
+  /// **'等待对方接受'**
+  String get dmAwaitingAccept;
+
+  /// No description provided for @dmRequestSent.
+  ///
+  /// In zh, this message translates to:
+  /// **'私聊请求已发送'**
+  String get dmRequestSent;
+
+  /// No description provided for @dmRequestQueued.
+  ///
+  /// In zh, this message translates to:
+  /// **'对方当前不在线，请求将在 TA 上线后自动送达'**
+  String get dmRequestQueued;
+
+  /// No description provided for @dmAlreadyExists.
+  ///
+  /// In zh, this message translates to:
+  /// **'私聊已存在'**
+  String get dmAlreadyExists;
+
+  /// No description provided for @dmOnline.
+  ///
+  /// In zh, this message translates to:
+  /// **'在线'**
+  String get dmOnline;
+
+  /// No description provided for @dmOffline.
+  ///
+  /// In zh, this message translates to:
+  /// **'离线'**
+  String get dmOffline;
+
+  /// No description provided for @dmLocalOnlyHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'私聊消息在两台设备之间直连传输、仅本地存储：不写入 DHT，也不新建种子'**
+  String get dmLocalOnlyHint;
+
+  /// No description provided for @membersIdentified.
+  ///
+  /// In zh, this message translates to:
+  /// **'可私聊的成员'**
+  String get membersIdentified;
+
+  /// No description provided for @attPhaseHash.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在计算文件哈希…'**
+  String get attPhaseHash;
+
+  /// No description provided for @attPhaseCopy.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在复制到做种目录…'**
+  String get attPhaseCopy;
+
+  /// No description provided for @attPhaseSeed.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在做种并发送…'**
+  String get attPhaseSeed;
+
+  /// No description provided for @attachFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'附件发送失败'**
+  String get attachFailed;
 }
 
 class _AppLocalizationsDelegate

@@ -610,5 +610,51 @@
     "type": "Object"
    }
   }
- }
+ },
+ "accept": "接受",
+ "decline": "拒绝",
+ "wallpaperEdit": "调整壁纸",
+ "wallpaperEditHint": "双指缩放与拖动调整构图；下方滑杆实时预览最终效果",
+ "wallpaperLoadFail": "图片加载失败",
+ "exportLogs": "导出日志",
+ "exportLogsHint": "将核心与界面日志导出到「下载」目录，用于问题反馈",
+ "logsExported": "日志已导出：{dest}",
+ "@logsExported": {
+  "placeholders": {
+   "dest": {
+    "type": "Object"
+   }
+  }
+ },
+ "exportLogsFail": "导出失败：",
+ "videoDecoder": "视频解码",
+ "videoDecoderSoftware": "软件解码（兼容优先）",
+ "videoDecoderHardware": "硬件解码优先（省电）",
+ "videoDecoderHint": "遇到视频\"有声无画\"请保持软件解码；硬件解码更省电，但部分机型/编码会黑屏。切换后对新打开的视频生效",
+ "videoDecoderTip": "黑屏有声？可在 设置 → 视频解码 切换解码方式",
+ "avatarLocalOnly": "头像与昵称仅保存在本机，不会广播给其他用户",
+ "renameLocalNote": "备注仅自己可见，不会广播",
+ "dmRequestTitle": "私聊请求",
+ "dmRequestBody": "{name} 请求与你建立端到端加密私聊",
+ "@dmRequestBody": {
+  "placeholders": {
+   "name": {
+    "type": "Object"
+   }
+  }
+ },
+ "dmRequestBodyAnonymous": "有用户请求与你建立端到端加密私聊",
+ "dmRejectedByPeer": "对方婉拒了私聊请求",
+ "dmAwaitingAccept": "等待对方接受",
+ "dmRequestSent": "私聊请求已发送",
+ "dmRequestQueued": "对方当前不在线，请求将在 TA 上线后自动送达",
+ "dmAlreadyExists": "私聊已存在",
+ "dmOnline": "在线",
+ "dmOffline": "离线",
+ "dmLocalOnlyHint": "私聊消息在两台设备之间直连传输、仅本地存储：不写入 DHT，也不新建种子",
+ "membersIdentified": "可私聊的成员",
+ "attPhaseHash": "正在计算文件哈希…",
+ "attPhaseCopy": "正在复制到做种目录…",
+ "attPhaseSeed": "正在做种并发送…",
+ "attachFailed": "附件发送失败"
 }

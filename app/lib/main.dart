@@ -1,29 +1,48 @@
+import 'dart:async';
 import 'dart:io';
-import 'dart:ui';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:bittechat/l10n/app_localizations.dart';
 import 'package:fvp/fvp.dart' as fvp;
 
 import 'core/api.dart';
+import 'core/applog.dart';
 import 'core/l10n.dart';
 import 'core/intent.dart';
 import 'core/prefs.dart';
 import 'pages/home.dart';
 
-Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  // Route video_player through libmdk (fvp): hardware decode when available
-  // with an FFmpeg software fallback, so formats the platform decoder cannot
-  // handle (Hi10P / HEVC10 / AV1 / VP9 …) still show a picture instead of
-  // playing audio over a black screen.
+/// Register the video stack: video_player is routed through libmdk (fvp).
+/// Software decode (FFmpeg) is the default — some devices' MediaCodec
+/// silently produces black frames for Hi10P/HEVC10/AV1/VP9 while audio
+/// keeps playing; FFmpeg decodes everything correctly at a CPU cost. The
+/// settings page can switch to hardware-first (AMediaCodec with FFmpeg
+/// fallback) for battery savings on well-behaved devices.
+void registerVideoStack({required bool softwareDecode}) {
+  final decoders = softwareDecode ? ['FFmpeg'] : ['AMediaCodec', 'FFmpeg'];
+  appLog(
+      'registerVideoStack: softwareDecode=$softwareDecode decoders=$decoders');
   fvp.registerWith(options: {
     'platforms': ['android'],
+    'video.decoders': decoders,
   });
-  final api = await BitteApi.init();
-  bindIntentChannel();
-  final prefs = await UiPrefs.load(api.dataDir);
-  runApp(BitteChatApp(prefs: prefs));
+}
+
+Future<void> main() async {
+  runZonedGuarded(() async {
+    WidgetsFlutterBinding.ensureInitialized();
+    AppLog.captureErrors();
+    final api = await BitteApi.init();
+    await AppLog.init(api.dataDir);
+    appLog('=== app start ===');
+    bindIntentChannel();
+    final prefs = await UiPrefs.load(api.dataDir);
+    registerVideoStack(softwareDecode: prefs.videoSoftwareDecode);
+    runApp(BitteChatApp(prefs: prefs));
+  }, (e, st) {
+    appLog('ZONE ERROR: $e\n$st');
+  });
 }
 
 class BitteChatApp extends StatefulWidget {
@@ -103,37 +122,119 @@ class _BitteChatAppState extends State<BitteChatApp> {
   }
 }
 
-/// Global wallpaper layer: full-bleed image at the configured opacity,
-/// optionally blurred. Rendered under the Navigator so it spans the whole
-/// application (chat, torrents, feeds, settings), not just the chat page.
-class AppWallpaper extends StatelessWidget {
+/// Global wallpaper layer, rendered under the Navigator so it spans the
+/// whole application (chat, torrents, feeds, settings).
+///
+/// The image is decoded ONCE into a [ui.Image] (blur baked in when enabled)
+/// and painted with [RawImage]: navigating between pages never re-resolves
+/// or re-decodes anything, so there is no flicker and no load delay — the
+/// old Image.file-based layer visibly lagged route transitions.
+class AppWallpaper extends StatefulWidget {
   const AppWallpaper({super.key, required this.prefs});
 
   final UiPrefs prefs;
 
   @override
-  Widget build(BuildContext context) {
-    final path = prefs.wallpaperPath;
-    if (path == null) return const SizedBox.shrink();
-    Widget img = Image.file(
-      File(path),
-      fit: BoxFit.cover,
-      width: double.infinity,
-      height: double.infinity,
-      // cap the decoded size so huge photos don't blow up memory
-      cacheWidth: 1440,
-      errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-    );
-    if (prefs.wallpaperBlur) {
-      img = ImageFiltered(
-        imageFilter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
-        child: img,
-      );
+  State<AppWallpaper> createState() => _AppWallpaperState();
+}
+
+class _AppWallpaperState extends State<AppWallpaper> {
+  ui.Image? _image;
+  String? _loadedPath;
+  bool? _loadedBlur;
+  int _loadedRev = -1;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void didUpdateWidget(AppWallpaper oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // the root state rebuilds us on every prefs notification; reload only
+    // when the image source or the blur flag changed (opacity is a paint
+    // parameter and needs no decode)
+    if (_loadedPath != widget.prefs.wallpaperPath ||
+        _loadedBlur != widget.prefs.wallpaperBlur ||
+        _loadedRev != widget.prefs.wallpaperRev) {
+      _load();
     }
+  }
+
+  Future<void> _load() async {
+    final path = widget.prefs.wallpaperPath;
+    final blur = widget.prefs.wallpaperBlur;
+    _loadedPath = path;
+    _loadedBlur = blur;
+    _loadedRev = widget.prefs.wallpaperRev;
+    if (path == null) {
+      if (_image != null && mounted) {
+        setState(() {
+          _image?.dispose();
+          _image = null;
+        });
+      }
+      return;
+    }
+    try {
+      final bytes = await File(path).readAsBytes();
+      final codec = await ui.instantiateImageCodec(bytes, targetWidth: 1440);
+      final frame = await codec.getNextFrame();
+      codec.dispose();
+      var img = frame.image;
+      if (blur) img = await _blurred(img);
+      if (!mounted) {
+        img.dispose();
+        return;
+      }
+      setState(() {
+        _image?.dispose();
+        _image = img;
+      });
+    } catch (e) {
+      appLog('wallpaper load failed: $e');
+      if (mounted) {
+        setState(() {
+          _image?.dispose();
+          _image = null;
+        });
+      }
+    }
+  }
+
+  /// Bake the blur into the decoded bitmap once — an ImageFiltered layer
+  /// would re-render a full-screen blur on every navigation frame.
+  static Future<ui.Image> _blurred(ui.Image src) async {
+    final rec = ui.PictureRecorder();
+    final canvas = ui.Canvas(rec);
+    final paint = Paint()
+      ..imageFilter = ui.ImageFilter.blur(sigmaX: 6, sigmaY: 6);
+    canvas.drawImage(src, Offset.zero, paint);
+    final pic = rec.endRecording();
+    final out = await pic.toImage(src.width, src.height);
+    pic.dispose();
+    src.dispose();
+    return out;
+  }
+
+  @override
+  void dispose() {
+    _image?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final img = _image;
+    if (img == null) return const SizedBox.shrink();
     return Positioned.fill(
       child: IgnorePointer(
         child: Opacity(
-            opacity: prefs.wallpaperOpacity.clamp(0.03, 1.0), child: img),
+          opacity: widget.prefs.wallpaperOpacity.clamp(0.03, 1.0),
+          child: RawImage(image: img, fit: BoxFit.cover),
+        ),
       ),
     );
   }

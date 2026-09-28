@@ -8,7 +8,10 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 
 import '../core/api.dart';
+import '../core/applog.dart';
 import '../core/prefs.dart';
+import '../main.dart' show registerVideoStack;
+import 'wallpaper_edit.dart';
 import '../models.dart';
 import '../widgets/avatar.dart';
 import 'home.dart';
@@ -282,14 +285,41 @@ class _SettingsPageState extends State<SettingsPage> {
       if (files.isEmpty) return;
       final srcPath = files.single.path;
       if (srcPath == null) return;
-      final dest = '${_api.dataDir}/wallpaper.img';
-      await File(srcPath).copy(dest);
-      widget.prefs.wallpaperPath = dest;
-      await widget.prefs.refreshWallpaperSeed();
-      await widget.prefs.save();
-      messenger.showSnackBar(SnackBar(content: Text(L.t.wallpaperApplied)));
+      if (!mounted) return;
+      await _editWallpaper(srcPath);
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text('$e')));
+    }
+  }
+
+  /// Open the crop/preview editor for [srcPath]; on save the cropped bitmap
+  /// becomes the global wallpaper.
+  Future<void> _editWallpaper(String srcPath) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final saved = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => WallpaperEditPage(
+          sourcePath: srcPath,
+          prefs: widget.prefs,
+          destPath: '${_api.dataDir}/wallpaper.img',
+        ),
+      ),
+    );
+    if (saved == true) {
+      await widget.prefs.refreshWallpaperSeed();
+      messenger.showSnackBar(SnackBar(content: Text(L.t.wallpaperApplied)));
+    }
+  }
+
+  Future<void> _exportLogs() async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final dest = await AppLog.exportToDownloads();
+      messenger.showSnackBar(SnackBar(content: Text(L.t.logsExported(dest))));
+    } catch (e) {
+      messenger
+          .showSnackBar(SnackBar(content: Text('${L.t.exportLogsFail} $e')));
     }
   }
 
@@ -460,6 +490,13 @@ class _SettingsPageState extends State<SettingsPage> {
                 label: Text(L.t.setAvatar),
                 onPressed: _setAvatar,
               ),
+            ),
+          if (id != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Text(L.t.avatarLocalOnly,
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: theme.colorScheme.outline)),
             )
           else
             ListTile(
@@ -635,14 +672,26 @@ class _SettingsPageState extends State<SettingsPage> {
                         (widget.prefs.wallpaperOpacity * 100).round()) +
                     (widget.prefs.wallpaperBlur ? L.t.blurredMark : '')),
             trailing: widget.prefs.wallpaperPath != null
-                ? IconButton(
-                    tooltip: L.t.clear,
-                    icon: Icon(Icons.delete_outline),
-                    onPressed: () async {
-                      widget.prefs.wallpaperPath = null;
-                      await widget.prefs.refreshWallpaperSeed();
-                      await widget.prefs.save();
-                    },
+                ? Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        tooltip: L.t.wallpaperEdit,
+                        icon: Icon(Icons.crop_original_outlined),
+                        onPressed: () =>
+                            _editWallpaper(widget.prefs.wallpaperPath!),
+                      ),
+                      IconButton(
+                        tooltip: L.t.clear,
+                        icon: Icon(Icons.delete_outline),
+                        onPressed: () async {
+                          widget.prefs.wallpaperPath = null;
+                          widget.prefs.wallpaperRev++;
+                          await widget.prefs.refreshWallpaperSeed();
+                          await widget.prefs.save();
+                        },
+                      ),
+                    ],
                   )
                 : null,
             onTap: () => _pickWallpaper(context),
@@ -698,6 +747,35 @@ class _SettingsPageState extends State<SettingsPage> {
             child: Text(L.t.defaultTrackersHint,
                 style: theme.textTheme.bodySmall
                     ?.copyWith(color: theme.colorScheme.outline)),
+          ),
+          const Divider(),
+          ListTile(
+            leading: Icon(Icons.smart_display_outlined),
+            title: Text(L.t.videoDecoder),
+            subtitle: Text(widget.prefs.videoSoftwareDecode
+                ? L.t.videoDecoderSoftware
+                : L.t.videoDecoderHardware),
+            trailing: Switch(
+              value: widget.prefs.videoSoftwareDecode,
+              onChanged: (v) {
+                widget.prefs.videoSoftwareDecode = v;
+                widget.prefs.save();
+                registerVideoStack(softwareDecode: v);
+                setState(() {});
+              },
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Text(L.t.videoDecoderHint,
+                style: theme.textTheme.bodySmall
+                    ?.copyWith(color: theme.colorScheme.outline)),
+          ),
+          ListTile(
+            leading: Icon(Icons.bug_report_outlined),
+            title: Text(L.t.exportLogs),
+            subtitle: Text(L.t.exportLogsHint),
+            onTap: _exportLogs,
           ),
           const Divider(),
           ListTile(

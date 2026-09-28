@@ -184,6 +184,7 @@ class GroupSummary {
     required this.messages,
     required this.missing,
     this.dm = false,
+    this.awaitingAccept = false,
     this.previewAuthor = '',
     this.previewText = '',
     this.previewTs = 0,
@@ -202,6 +203,9 @@ class GroupSummary {
   final int messages;
   final int missing;
   final bool dm;
+
+  /// DM only: we requested the channel and the peer hasn't accepted yet
+  final bool awaitingAccept;
   final String previewAuthor;
   final String previewText;
   final int previewTs;
@@ -222,6 +226,7 @@ class GroupSummary {
       messages: _i(j, 'messages'),
       missing: _i(j, 'missing'),
       dm: _b(j, 'dm'),
+      awaitingAccept: _b(j, 'awaiting_accept'),
       previewAuthor: _s(pv, 'author_name'),
       previewText: _s(pv, 'text', ''),
       previewTs: _i(pv, 'ts'),

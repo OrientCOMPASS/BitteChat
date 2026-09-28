@@ -24,8 +24,17 @@ class UiPrefs extends ChangeNotifier {
   double wallpaperOpacity = 0.16;
   bool wallpaperBlur = false;
 
+  /// Video decoding: true = FFmpeg software decode (compatible default —
+  /// some devices' MediaCodec renders black frames for Hi10P/HEVC10/AV1),
+  /// false = hardware-first (AMediaCodec, FFmpeg fallback) to save battery.
+  bool videoSoftwareDecode = true;
+
   /// 运行时缓存：从壁纸提取的主色
   Color? wallpaperSeed;
+
+  /// bumped whenever the wallpaper FILE content changes in place (the crop
+  /// editor rewrites the same path) so listeners re-decode it
+  int wallpaperRev = 0;
 
   static Future<UiPrefs> load(String dataDir) async {
     final f = File('$dataDir/ui_prefs.json');
@@ -47,6 +56,8 @@ class UiPrefs extends ChangeNotifier {
           prefs.wallpaperOpacity =
               (j['wallpaperOpacity'] as num?)?.toDouble() ?? 0.16;
           prefs.wallpaperBlur = (j['wallpaperBlur'] as bool?) ?? false;
+          prefs.videoSoftwareDecode =
+              (j['videoSoftwareDecode'] as bool?) ?? true;
         }
       }
     } catch (_) {}
@@ -63,6 +74,7 @@ class UiPrefs extends ChangeNotifier {
         'wallpaper': wallpaperPath,
         'wallpaperOpacity': wallpaperOpacity,
         'wallpaperBlur': wallpaperBlur,
+        'videoSoftwareDecode': videoSoftwareDecode,
       }));
     } catch (_) {}
     notifyListeners();

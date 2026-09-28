@@ -33,6 +33,7 @@ class _ChatTabState extends State<ChatTab> {
   StreamSubscription<CoreEvent>? _sub;
   Timer? _refreshTimer;
   VoidCallback? _magnetListener;
+  bool _dmPromptOpen = false;
 
   @override
   void initState() {
@@ -40,10 +41,17 @@ class _ChatTabState extends State<ChatTab> {
     _reload();
     _sub = _api.events.listen((e) {
       if (e.isChatGroupUpdated || e.isChatMessage) _reload();
+      if (e.type == 'chat.dm_request') _promptDmRequest(e.data);
+      if (e.type == 'chat.dm_rejected') {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(L.t.dmRejectedByPeer)));
+      }
     });
     // light polling keeps previews fresh even without events
     _refreshTimer =
         Timer.periodic(const Duration(seconds: 10), (_) => _reload());
+    // surface requests that arrived while the app was closed/background
+    WidgetsBinding.instance.addPostFrameCallback((_) => _drainPendingDmReqs());
     _magnetListener = () {
       final m = pendingMagnet.value;
       if (m == null || m.isEmpty) return;
@@ -69,6 +77,51 @@ class _ChatTabState extends State<ChatTab> {
       final g = _api.chatGroups();
       if (mounted) setState(() => _groups = g);
     } catch (_) {}
+  }
+
+  void _drainPendingDmReqs() {
+    if (!mounted) return;
+    try {
+      for (final r in _api.dmRequests()) {
+        _promptDmRequest(r);
+        break; // one dialog at a time; the rest follow on the next reload
+      }
+    } catch (_) {}
+  }
+
+  /// Consent dialog for an incoming DM request — nothing is stored on this
+  /// device until the user accepts (v0.6 DM design).
+  Future<void> _promptDmRequest(Map<String, dynamic> data) async {
+    if (!mounted) return;
+    final gid = '${data['group_id'] ?? ''}';
+    if (gid.isEmpty || _dmPromptOpen) return;
+    _dmPromptOpen = true;
+    final name = '${data['peer_name'] ?? ''}';
+    final accept = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        icon: const Icon(Icons.lock_person_outlined),
+        title: Text(L.t.dmRequestTitle),
+        content: Text(name.isEmpty
+            ? L.t.dmRequestBodyAnonymous
+            : L.t.dmRequestBody(name)),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(L.t.decline)),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(L.t.accept)),
+        ],
+      ),
+    );
+    _dmPromptOpen = false;
+    if (accept == null) return; // dismissed: stays pending, re-prompted later
+    try {
+      _api.dmRespond(gid, accept: accept);
+    } catch (_) {}
+    _reload();
+    _drainPendingDmReqs();
   }
 
   Future<void> _openGroup(GroupSummary g) async {
@@ -350,6 +403,18 @@ class _GroupTile extends StatelessWidget {
                     fontSize: 11,
                     fontWeight: FontWeight.bold),
               ),
+            )
+          else if (group.dm && group.awaitingAccept)
+            Text(L.t.dmAwaitingAccept,
+                style: theme.textTheme.bodySmall
+                    ?.copyWith(color: theme.colorScheme.tertiary))
+          else if (group.dm)
+            Icon(
+              group.online > 0 ? Icons.circle : Icons.circle_outlined,
+              size: 10,
+              color: group.online > 0
+                  ? Colors.green
+                  : theme.colorScheme.outlineVariant,
             )
           else if (group.online > 0)
             Text(L.t.onlinePeers(group.online),

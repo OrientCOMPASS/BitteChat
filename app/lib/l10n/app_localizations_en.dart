@@ -975,4 +975,112 @@ class AppLocalizationsEn extends AppLocalizations {
   String trackerFails(Object n) {
     return '$n fails';
   }
+
+  @override
+  String get accept => 'Accept';
+
+  @override
+  String get decline => 'Decline';
+
+  @override
+  String get wallpaperEdit => 'Adjust wallpaper';
+
+  @override
+  String get wallpaperEditHint =>
+      'Pinch and drag to frame the image; the controls below preview the final look';
+
+  @override
+  String get wallpaperLoadFail => 'Could not load the image';
+
+  @override
+  String get exportLogs => 'Export logs';
+
+  @override
+  String get exportLogsHint =>
+      'Writes the core + UI logs to the Download directory for bug reports';
+
+  @override
+  String logsExported(Object dest) {
+    return 'Logs exported: $dest';
+  }
+
+  @override
+  String get exportLogsFail => 'Export failed: ';
+
+  @override
+  String get videoDecoder => 'Video decoding';
+
+  @override
+  String get videoDecoderSoftware => 'Software (compatibility first)';
+
+  @override
+  String get videoDecoderHardware => 'Hardware first (battery saver)';
+
+  @override
+  String get videoDecoderHint =>
+      'Keep software decoding if videos play audio with a black picture; hardware decoding saves battery but renders black on some device/codec combinations. Applies to newly opened videos';
+
+  @override
+  String get videoDecoderTip =>
+      'Black screen with audio? Switch the decoder under Settings → Video decoding';
+
+  @override
+  String get avatarLocalOnly =>
+      'Avatar and nickname stay on this device and are never broadcast';
+
+  @override
+  String get renameLocalNote => 'Local note — only visible to you';
+
+  @override
+  String get dmRequestTitle => 'Private chat request';
+
+  @override
+  String dmRequestBody(Object name) {
+    return '$name wants to start an end-to-end encrypted private chat';
+  }
+
+  @override
+  String get dmRequestBodyAnonymous =>
+      'Someone wants to start an end-to-end encrypted private chat';
+
+  @override
+  String get dmRejectedByPeer => 'The other side declined the private chat';
+
+  @override
+  String get dmAwaitingAccept => 'Waiting for accept';
+
+  @override
+  String get dmRequestSent => 'Request sent';
+
+  @override
+  String get dmRequestQueued =>
+      'Peer is offline — the request will be delivered when they return';
+
+  @override
+  String get dmAlreadyExists => 'Private chat already exists';
+
+  @override
+  String get dmOnline => 'Online';
+
+  @override
+  String get dmOffline => 'Offline';
+
+  @override
+  String get dmLocalOnlyHint =>
+      'DM messages travel directly between the two devices and are stored locally only: no DHT items, no extra torrent';
+
+  @override
+  String get membersIdentified => 'Members (DM capable)';
+
+  @override
+  String get attPhaseHash => 'Hashing file…';
+
+  @override
+  String get attPhaseCopy => 'Copying into the seed folder…';
+
+  @override
+  String get attPhaseSeed => 'Seeding and sending…';
+
+  @override
+  String get attachFailed => 'Attachment failed';
 }

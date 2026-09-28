@@ -187,8 +187,34 @@ class BitteApi extends ChangeNotifier {
   Map<String, dynamic> downloadAttachment(String groupId, String msgId) =>
       call('chat.download_attachment', {'group_id': groupId, 'msg_id': msgId});
 
+  /// Set the LOCAL display note of a room (private — not broadcast).
   void renameGroup(String groupId, String name) =>
       call('chat.rename_group', {'group_id': groupId, 'name': name});
+
+  // ---- v0.6 DM flow (request/accept over shared swarms, no torrents) ----
+
+  /// Pending incoming DM requests (also delivered live via the
+  /// `chat.dm_request` event).
+  List<Map<String, dynamic>> dmRequests() {
+    if (!available) return [];
+    final r = call('chat.dm_requests');
+    return ((r['requests'] as List?) ?? []).map(_asMapSafe).toList();
+  }
+
+  Map<String, dynamic> dmRespond(String groupId, {required bool accept}) =>
+      call('chat.dm_respond', {'group_id': groupId, 'accept': accept});
+
+  /// Identified chat peers of a room: [{pk, name, endpoint}] — the member
+  /// list you can start a DM with.
+  List<Map<String, dynamic>> members(String groupId) {
+    if (!available) return [];
+    try {
+      final r = call('chat.members', {'group_id': groupId});
+      return ((r['members'] as List?) ?? []).map(_asMapSafe).toList();
+    } catch (_) {
+      return [];
+    }
+  }
 
   void syncGroup(String groupId) {
     try {

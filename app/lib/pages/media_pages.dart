@@ -3,6 +3,9 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+
+import '../core/applog.dart';
+import '../core/files.dart';
 import 'package:video_player/video_player.dart';
 import '../core/l10n.dart';
 
@@ -37,8 +40,11 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
       }
       c.addListener(_onValue);
       setState(() => _controller = c);
+      appLog('video init ok: ${widget.path} '
+          'size=${c.value.size} duration=${c.value.duration}');
       await c.play();
     } catch (e) {
+      appLog('video init FAILED: ${widget.path} err=$e');
       if (mounted) {
         setState(() {
           _failed = true;
@@ -53,6 +59,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
     if (c == null || !mounted) return;
     final err = c.value.errorDescription;
     if (err != null && err.isNotEmpty && !_failed) {
+      appLog('video error: ${widget.path} err=$err pos=${c.value.position}');
       setState(() {
         _failed = true;
         _error = err;
@@ -95,6 +102,19 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(color: Colors.white38, fontSize: 12)),
                   ],
+                  SizedBox(height: 16),
+                  OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.white70),
+                    icon: Icon(Icons.open_in_new, size: 18),
+                    label: Text(L.t.openWith),
+                    onPressed: () =>
+                        openWithExternalApp(widget.path, 'video/*'),
+                  ),
+                  SizedBox(height: 8),
+                  Text(L.t.videoDecoderTip,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.white38, fontSize: 12)),
                 ],
               ),
             ))
