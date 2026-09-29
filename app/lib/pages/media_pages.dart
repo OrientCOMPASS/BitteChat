@@ -750,8 +750,8 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text('${_fmt(_dragTargetPos)} / ${_fmt(_duration)}',
-                        style: const TextStyle(
-                            color: Colors.white, fontSize: 18)),
+                        style:
+                            const TextStyle(color: Colors.white, fontSize: 18)),
                     const SizedBox(height: 2),
                     Text(_fmtDelta(_dragTargetPos - _dragStartPos),
                         style: const TextStyle(

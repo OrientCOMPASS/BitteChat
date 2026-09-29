@@ -20,10 +20,12 @@ android {
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         // API 28+: libtorrent/boost.asio need std::aligned_alloc (NDK, API 28)
         minSdk = 28
-        ndk {
-            // native core (libbitte_core.so) is built for these ABIs only
-            abiFilters += listOf("arm64-v8a", "x86_64")
-        }
+        // NB: deliberately NO `ndk { abiFilters }` here. Gradle rejects
+        // abiFilters when ABI splits are enabled, and the release build uses
+        // `flutter build apk --split-per-abi --target-platform
+        // android-arm64,android-x64`, which drives the ABI set (arm64-v8a +
+        // x86_64 — the only ones the native core is built for) via splits.
+        // The packaging.jniLibs excludes below still keep armeabi-v7a out.
         targetSdk = flutter.targetSdkVersion
         // Uses the version code from pubspec.yaml. When using split APKs, 1000 * ABI_VERSION
         // is added automatically by Flutter. (https://developer.android.com/studio/build/configure-apk-splits#configure-APK-versions)

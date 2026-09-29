@@ -68,8 +68,8 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
     _listener = ImageStreamListener(
       (info, _) {
         if (mounted) {
-          setState(() => _native = Size(
-              info.image.width.toDouble(), info.image.height.toDouble()));
+          setState(() => _native =
+              Size(info.image.width.toDouble(), info.image.height.toDouble()));
         }
       },
       // a decode error leaves _native null → we fall back to the fixed floor
