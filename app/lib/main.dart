@@ -34,6 +34,9 @@ Future<void> main() async {
   runZonedGuarded(() async {
     WidgetsFlutterBinding.ensureInitialized();
     AppLog.captureErrors();
+    // lifecycle flips feed the crash-dump breadcrumb ring (the
+    // resume-from-background crash leaves "paused" as its last crumb)
+    WidgetsBinding.instance.addObserver(_CrashBreadcrumb());
     final api = await BitteApi.init();
     await AppLog.init(api.dataDir);
     appLog('=== app start ===');
@@ -47,7 +50,17 @@ Future<void> main() async {
     runApp(BitteChatApp(prefs: prefs));
   }, (e, st) {
     appLog('ZONE ERROR: $e\n$st');
+    AppLog.crashDump('zone', e, st);
   });
+}
+
+/// Folds app lifecycle flips into the crash-dump breadcrumb ring so a
+/// resume-from-background crash is diagnosable from `crash_dart.log`.
+class _CrashBreadcrumb extends WidgetsBindingObserver {
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    AppLog.breadcrumb('lifecycle:$state');
+  }
 }
 
 /// Decode the configured wallpaper up-front so the very first frame of the app

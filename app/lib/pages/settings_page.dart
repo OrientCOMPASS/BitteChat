@@ -494,6 +494,38 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
+  /// `1.0× / 1.5× / 2.0×` — one decimal keeps the picker column tidy.
+  String _fmtX(double r) => r == r.roundToDouble() ? '${r.toInt()}.0×' : '$r×';
+
+  /// Radio-style picker used by the playback-speed settings.
+  Future<void> _pickSpeed(
+    BuildContext context, {
+    required String title,
+    required List<double> options,
+    required double current,
+    required ValueChanged<double> onPick,
+  }) async {
+    final picked = await showDialog<double>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: Text(title),
+        children: [
+          for (final o in options)
+            RadioListTile<double>(
+              value: o,
+              groupValue: current,
+              dense: true,
+              title: Text(_fmtX(o)),
+              onChanged: (v) => Navigator.pop(ctx, v),
+            ),
+        ],
+      ),
+    );
+    if (picked == null) return;
+    onPick(picked);
+    if (mounted) setState(() {});
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -780,6 +812,55 @@ class _SettingsPageState extends State<SettingsPage> {
           const Divider(),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Text(L.t.playbackSection, style: theme.textTheme.titleSmall),
+          ),
+          SwitchListTile(
+            value: widget.prefs.playDoubleTapSideSeek,
+            title: Text(L.t.dblTapSideSeek),
+            subtitle: Text(L.t.dblTapSideSeekHint,
+                style: theme.textTheme.bodySmall
+                    ?.copyWith(color: theme.colorScheme.outline)),
+            onChanged: (v) {
+              widget.prefs.playDoubleTapSideSeek = v;
+              widget.prefs.save();
+            },
+          ),
+          ListTile(
+            leading: Icon(Icons.touch_app_outlined),
+            title: Text(L.t.longPressSpeed),
+            subtitle: Text(L.t.longPressSpeedHint,
+                style: theme.textTheme.bodySmall
+                    ?.copyWith(color: theme.colorScheme.outline)),
+            trailing: Text(_fmtX(widget.prefs.playLongPressSpeed)),
+            onTap: () => _pickSpeed(
+              context,
+              title: L.t.longPressSpeed,
+              options: const [1.5, 2.0, 2.5, 3.0],
+              current: widget.prefs.playLongPressSpeed,
+              onPick: (v) {
+                widget.prefs.playLongPressSpeed = v;
+                widget.prefs.save();
+              },
+            ),
+          ),
+          ListTile(
+            leading: Icon(Icons.speed),
+            title: Text(L.t.defaultPlaySpeed),
+            trailing: Text(_fmtX(widget.prefs.playDefaultSpeed)),
+            onTap: () => _pickSpeed(
+              context,
+              title: L.t.defaultPlaySpeed,
+              options: const [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0],
+              current: widget.prefs.playDefaultSpeed,
+              onPick: (v) {
+                widget.prefs.playDefaultSpeed = v;
+                widget.prefs.save();
+              },
+            ),
+          ),
+          const Divider(),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Text(L.t.storage, style: theme.textTheme.titleSmall),
           ),
           ListTile(
@@ -831,7 +912,7 @@ class _SettingsPageState extends State<SettingsPage> {
           AboutListTile(
             icon: Icon(Icons.favorite_outline),
             applicationName: 'BitteChat',
-            applicationVersion: '${_info['version'] ?? '0.5.8'}',
+            applicationVersion: '${_info['version'] ?? '0.5.9'}',
             aboutBoxChildren: [
               Text(
                 '${L.t.aboutDesc}${L.t.aboutDesc2}'

@@ -1122,6 +1122,54 @@ class AppLocalizationsZh extends AppLocalizations {
   String get markAsRead => '标记为已读';
 
   @override
+  String get playbackSection => '播放';
+
+  @override
+  String get dblTapSideSeek => '双击左右快进/快退';
+
+  @override
+  String get dblTapSideSeekHint => '双击画面左/右侧快退或快进 10 秒；默认关闭';
+
+  @override
+  String get longPressSpeed => '长按倍速';
+
+  @override
+  String get longPressSpeedHint => '长按画面时的临时播放倍率';
+
+  @override
+  String get defaultPlaySpeed => '默认播放倍速';
+
+  @override
+  String get subtitle => '字幕';
+
+  @override
+  String get subtitleOff => '关闭字幕';
+
+  @override
+  String get subtitleExternal => '加载外部字幕…';
+
+  @override
+  String get subtitleNoTracks => '无内嵌字幕轨';
+
+  @override
+  String get lockControls => '锁定控制';
+
+  @override
+  String get unlockControls => '解锁控制';
+
+  @override
+  String get fitContain => '适应画面';
+
+  @override
+  String get fitCover => '铺满裁剪';
+
+  @override
+  String get fitFill => '拉伸填充';
+
+  @override
+  String get speedActive => '倍速中';
+
+  @override
   String get videoSoftwareDecodeNotice => '正在使用软件解码（硬件解码器不支持此编码）';
 
   @override

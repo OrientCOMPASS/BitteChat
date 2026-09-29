@@ -150,99 +150,133 @@ class _ChatViewPageState extends State<ChatViewPage> {
       !_scroll.hasClients ||
       _scroll.position.maxScrollExtent - _scroll.position.pixels < 160;
 
-  void _longPressMessage(ChatMessage m) {
-    showModalBottomSheet<void>(
-      context: context,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (!m.own && !_isDm)
-              ListTile(
-                leading: Icon(Icons.lock_outline),
-                title: Text(L.t.startDm),
-                subtitle: Text(L.t.startDmHint(m.authorName)),
-                onTap: () async {
-                  Navigator.pop(ctx);
-                  try {
-                    final r = _api.startDm(m.authorPk);
-                    final dgid = r['group_id'] as String;
-                    if (!mounted) return;
-                    final groups = _api.chatGroups();
-                    final summary = groups.firstWhere(
-                      (g) => g.id == dgid,
-                      orElse: () => GroupSummary(
-                        id: dgid,
-                        name: m.authorName,
-                        avatarB64: '',
-                        inviteMagnet: '',
-                        unread: 0,
-                        lastTs: 0,
-                        online: 0,
-                        syncing: false,
-                        messages: 0,
-                        missing: 0,
-                        dm: true,
-                      ),
-                    );
-                    await Navigator.of(context).push(MaterialPageRoute(
-                        builder: (_) => ChatViewPage(group: summary)));
-                    _reload();
-                  } catch (e) {
-                    if (mounted) showError(context, e);
-                  }
-                },
-              ),
-            if (m.payloadKind == MsgPayloadKind.text)
-              ListTile(
-                leading: Icon(Icons.copy),
-                title: Text(L.t.copyMessage),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  Clipboard.setData(ClipboardData(text: m.text));
-                  ScaffoldMessenger.of(context)
-                      .showSnackBar(SnackBar(content: Text(L.t.copied)));
-                },
-              ),
-            ListTile(
-              leading: Icon(Icons.fingerprint),
-              title: Text(L.t.copyMessageId),
-              subtitle: Text(shortHash(m.id, 16)),
-              onTap: () {
-                Navigator.pop(ctx);
-                Clipboard.setData(ClipboardData(text: m.id));
-                ScaffoldMessenger.of(context)
-                    .showSnackBar(SnackBar(content: Text(L.t.copiedId)));
-              },
-            ),
-            if (!m.own)
-              ListTile(
-                leading: Icon(Icons.block),
-                title: Text(L.t.blockAuthor),
-                subtitle: Text(L.t.blockAuthorHint),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  try {
-                    _api.blockAuthor(m.authorPk);
-                    _reload();
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                        content: Text(L.t.blockedAuthor(m.authorName))));
-                  } catch (e) {
-                    showError(context, e);
-                  }
-                },
-              ),
-            ListTile(
-              leading: Icon(Icons.verified_user),
-              title: Text(L.t.signatureInfo),
-              subtitle: Text(L.t.sigDetail(shortHash(m.authorPk, 16),
-                  m.state == 1 ? L.t.sigConfirmed : L.t.sigPending)),
-              onTap: () => Navigator.pop(ctx),
-            ),
-            SizedBox(height: 8),
-          ],
+  /// Open a DM with the author of [m] (used by the message action popup).
+  Future<void> _startDmFromMessage(ChatMessage m) async {
+    try {
+      final r = _api.startDm(m.authorPk);
+      final dgid = r['group_id'] as String;
+      if (!mounted) return;
+      final groups = _api.chatGroups();
+      final summary = groups.firstWhere(
+        (g) => g.id == dgid,
+        orElse: () => GroupSummary(
+          id: dgid,
+          name: m.authorName,
+          avatarB64: '',
+          inviteMagnet: '',
+          unread: 0,
+          lastTs: 0,
+          online: 0,
+          syncing: false,
+          messages: 0,
+          missing: 0,
+          dm: true,
         ),
-      ),
+      );
+      await Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => ChatViewPage(group: summary, prefs: widget.prefs)));
+      _reload();
+    } catch (e) {
+      if (mounted) showError(context, e);
+    }
+  }
+
+  /// QQ-style floating action popup anchored at the selection, shown by the
+  /// message [SelectionArea] on long-press alongside the selection handles
+  /// (replaces the old pull-up bottom sheet).
+  Widget _messageContextMenu(
+      BuildContext ctx, SelectableRegionState state, ChatMessage m) {
+    final theme = Theme.of(ctx);
+    final anchor = state.contextMenuAnchors.primaryAnchor;
+    final screen = MediaQuery.sizeOf(ctx);
+    const menuW = 300.0;
+    final maxLeft = (screen.width - menuW - 8).clamp(8.0, screen.width);
+    final left = (anchor.dx - menuW / 2).clamp(8.0, maxLeft);
+    final top = (anchor.dy + 8).clamp(8.0, screen.height - 140);
+    void run(VoidCallback fn) {
+      state.hideToolbar();
+      fn();
+    }
+
+    Widget act(IconData icon, String label, VoidCallback fn) {
+      return InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: () => run(fn),
+        child: SizedBox(
+          width: 68,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 20, color: theme.colorScheme.onSurface),
+              const SizedBox(height: 4),
+              Text(label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.labelSmall),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Stack(
+      children: [
+        Positioned(
+          left: left,
+          top: top,
+          child: Material(
+            elevation: 8,
+            borderRadius: BorderRadius.circular(12),
+            color: theme.colorScheme.surfaceContainerHighest,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+              child: SizedBox(
+                width: menuW,
+                child: Wrap(
+                  alignment: WrapAlignment.center,
+                  spacing: 4,
+                  runSpacing: 8,
+                  children: [
+                    if (m.payloadKind == MsgPayloadKind.text)
+                      act(Icons.copy, L.t.copyMessage, () {
+                        Clipboard.setData(ClipboardData(text: m.text));
+                        ScaffoldMessenger.of(context)
+                            .showSnackBar(SnackBar(content: Text(L.t.copied)));
+                      }),
+                    act(Icons.fingerprint, L.t.copyMessageId, () {
+                      Clipboard.setData(ClipboardData(text: m.id));
+                      ScaffoldMessenger.of(context)
+                          .showSnackBar(SnackBar(content: Text(L.t.copiedId)));
+                    }),
+                    if (!m.own && !_isDm)
+                      act(Icons.lock_person_outlined, L.t.startDm,
+                          () => _startDmFromMessage(m)),
+                    if (!m.own)
+                      act(Icons.block, L.t.blockAuthor, () {
+                        try {
+                          _api.blockAuthor(m.authorPk);
+                          _reload();
+                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                              content: Text(L.t.blockedAuthor(m.authorName))));
+                        } catch (e) {
+                          showError(context, e);
+                        }
+                      }),
+                    act(Icons.verified_user, L.t.signatureInfo, () {
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                          content: Text(L.t.sigDetail(
+                              shortHash(m.authorPk, 16),
+                              m.state == 1
+                                  ? L.t.sigConfirmed
+                                  : L.t.sigPending))));
+                    }),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -471,8 +505,13 @@ class _ChatViewPageState extends State<ChatViewPage> {
                             return Column(
                               children: [
                                 if (showDay) DayDivider(ts: m.ts),
-                                GestureDetector(
-                                  onLongPress: () => _longPressMessage(m),
+                                // QQ-style: long-press gives BOTH text
+                                // selection cursors (SelectionArea) and an
+                                // anchored floating action popup (custom
+                                // context menu) — not a bottom sheet.
+                                SelectionArea(
+                                  contextMenuBuilder: (ctx, state) =>
+                                      _messageContextMenu(ctx, state, m),
                                   child: MessageBubble(
                                     message: m,
                                     showAuthor: showAuthor,
@@ -681,7 +720,10 @@ class MessageBubble extends StatelessWidget {
                         ),
                       ),
                       child: m.payloadKind == MsgPayloadKind.attachment
-                          ? _AttachmentBody(message: m, onDownload: onDownload)
+                          ? _AttachmentBody(
+                              message: m,
+                              onDownload: onDownload,
+                              prefs: widget.prefs)
                           : _TextBody(message: m),
                     ),
                   ),
@@ -752,9 +794,10 @@ class _TextBody extends StatelessWidget {
 }
 
 class _AttachmentBody extends StatelessWidget {
-  const _AttachmentBody({required this.message, this.onDownload});
+  const _AttachmentBody({required this.message, this.onDownload, this.prefs});
   final ChatMessage message;
   final VoidCallback? onDownload;
+  final UiPrefs? prefs;
 
   bool get _have => message.haveFile && message.localPath != null;
 
@@ -782,7 +825,8 @@ class _AttachmentBody extends StatelessWidget {
         _openImage(context, path);
       case MediaKind.video:
         await Navigator.of(context).push(MaterialPageRoute(
-            builder: (_) => VideoPlayerPage(path: path, title: att.name)));
+            builder: (_) =>
+                VideoPlayerPage(path: path, title: att.name, prefs: prefs)));
       case MediaKind.text:
         await Navigator.of(context).push(MaterialPageRoute(
             builder: (_) => TextPreviewPage(path: path, title: att.name)));

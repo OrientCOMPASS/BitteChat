@@ -26,6 +26,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
@@ -33,6 +34,7 @@ import '../core/applog.dart';
 import '../core/files.dart';
 import '../core/l10n.dart';
 import '../core/media_focus.dart';
+import '../core/prefs.dart';
 import '../core/video_decode.dart';
 import '../widgets/audio_row.dart';
 
@@ -40,10 +42,23 @@ import '../widgets/audio_row.dart';
 const List<double> kPlaybackRates = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0];
 
 class VideoPlayerPage extends StatefulWidget {
-  const VideoPlayerPage({super.key, required this.path, required this.title});
+  const VideoPlayerPage({
+    super.key,
+    required this.path,
+    required this.title,
+    this.prefs,
+  });
 
   final String path;
   final String title;
+
+  /// Playback preferences (double-tap side-seek / long-press speed / default
+  /// speed) come from the shared [UiPrefs] (Settings → Playback). Nullable so
+  /// the page still works in demo/test contexts without prefs.
+  final UiPrefs? prefs;
+
+  bool get _sideSeekOn => prefs?.playDoubleTapSideSeek ?? false;
+  double get _longPressSpeed => prefs?.playLongPressSpeed ?? 2.0;
 
   /// Test/observability hooks — the CI real-video test asserts on these
   /// instead of pixel-diffing a software-rendered emulator.
@@ -104,6 +119,26 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
   // --- one-shot "we fell back to software decode" notice ------------------
   bool _notifiedSoftware = false;
 
+  // --- v0.5.9 player UX (PiliPlus-inspired, filtered) --------------------
+  bool _locked = false;
+  BoxFit _fit = BoxFit.contain;
+  bool _longPressSpeedActive = false;
+
+  // double-tap side-seek flash (signed seconds), cleared after a beat
+  int? _seekFlash;
+  Timer? _seekFlashTimer;
+
+  // vertical-drag OSD: volume (right half) / brightness (left half)
+  double? _osdLevel;
+  IconData? _osdIcon;
+  Timer? _osdTimer;
+  bool _vertBrightness = false;
+  double? _brightness; // cached 0..1 screen brightness, fetched once
+
+  // subtitles (embedded tracks + optional external file)
+  List<SubtitleTrack> _subtitleTracks = const [];
+  String _activeSubtitleId = '';
+
   // --- decode chain state -------------------------------------------------
   int _generation = 0;
   int _tierIndex = 0;
@@ -131,6 +166,8 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     VideoPlayerPage.debugDowngrades = 0;
     VideoPlayerPage.debugActiveTierStalls.clear();
     _tierIndex = VideoDecodeChain.instance.startTier;
+    _rate = widget.prefs?.playDefaultSpeed ?? 1.0;
+    _loadBrightness();
     WidgetsBinding.instance.addObserver(this);
     _openAt(_tierIndex, seekTo: null);
   }
@@ -143,6 +180,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
         state == AppLifecycleState.inactive) {
       _player?.pause().catchError((_) {});
       appLog('video lifecycle: $state (paused player)');
+      AppLog.breadcrumb('video lifecycle:$state');
     }
   }
 
@@ -259,6 +297,228 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     return '$sign$m:$s';
   }
 
+  // ------------------------------------------------- v0.5.9 gesture extras
+
+  static const MethodChannel _mediaCh = MethodChannel('bittechat/media');
+
+  /// Relative/absolute seek used by double-tap side-seek.
+  Future<void> _seekBy(Duration delta) async {
+    final upper = _duration > Duration.zero ? _duration : _position;
+    final target = (_position + delta).clamp(Duration.zero, upper);
+    try {
+      await _player?.seek(target);
+    } catch (_) {}
+    if (mounted) setState(() => _position = target);
+  }
+
+  void _flashSeek(int seconds) {
+    _seekFlashTimer?.cancel();
+    setState(() => _seekFlash = seconds);
+    _seekFlashTimer = Timer(const Duration(milliseconds: 700), () {
+      if (mounted) setState(() => _seekFlash = null);
+    });
+  }
+
+  /// Double-tap: centre = play/pause; left/right = ∓/+10s **only when the
+  /// user enabled it** (Settings → Playback), otherwise centre behaviour.
+  void _onDoubleTapDown(TapDownDetails d) {
+    if (_locked || _failed) return;
+    final width = MediaQuery.sizeOf(context).width;
+    final x = d.localPosition.dx;
+    final sideSeek = widget._sideSeekOn;
+    if (sideSeek && width > 0 && x < width * 0.25) {
+      _seekBy(const Duration(seconds: -10));
+      _flashSeek(-10);
+    } else if (sideSeek && width > 0 && x > width * 0.75) {
+      _seekBy(const Duration(seconds: 10));
+      _flashSeek(10);
+    } else {
+      _playPause();
+    }
+  }
+
+  /// Long-press: temporary speed boost (multiplier from Settings), restored
+  /// on release.
+  void _onLongPressStart(LongPressStartDetails d) {
+    if (_locked || _failed) return;
+    _longPressSpeedActive = true;
+    _player?.setRate(widget._longPressSpeed).catchError((_) {});
+    if (mounted) setState(() {});
+  }
+
+  void _onLongPressEnd(LongPressEndDetails d) {
+    if (!_longPressSpeedActive) return;
+    _longPressSpeedActive = false;
+    _player?.setRate(_rate).catchError((_) {});
+    if (mounted) setState(() {});
+  }
+
+  /// Vertical drag: left half = screen brightness, right half = volume, each
+  /// with a centre OSD (PiliPlus-style).
+  void _onVerticalDragStart(DragStartDetails d) {
+    if (_locked || _failed) return;
+    final width = MediaQuery.sizeOf(context).width;
+    _vertBrightness = d.localPosition.dx < width / 2;
+    _uiTimer?.cancel();
+  }
+
+  void _onVerticalDragUpdate(DragUpdateDetails d) {
+    if (_locked || _failed) return;
+    final height = MediaQuery.sizeOf(context).height;
+    final span = height > 0 ? height : 1;
+    // dragging UP (negative dy) increases the level; applied incrementally
+    // from the current value so a continued drag stays monotonic
+    if (_vertBrightness) {
+      final cur = _brightness ?? 0.5;
+      final next = (cur - d.delta.dy / span).clamp(0.02, 1.0);
+      _brightness = next;
+      _setBrightness(next);
+      _showOsd(Icons.brightness_high, next);
+    } else {
+      final cur = _player?.state.volume ?? 100;
+      final next = (cur - d.delta.dy / span * 100).clamp(0.0, 100.0);
+      _player?.setVolume(next).catchError((_) {});
+      _showOsd(Icons.volume_up, next / 100);
+    }
+  }
+
+  void _onVerticalDragEnd(DragEndDetails d) {
+    if (_locked || _failed) return;
+    _hideOsdSoon();
+  }
+
+  void _showOsd(IconData icon, double level) {
+    _osdTimer?.cancel();
+    setState(() {
+      _osdIcon = icon;
+      _osdLevel = level;
+    });
+    _hideOsdSoon();
+  }
+
+  void _hideOsdSoon() {
+    _osdTimer?.cancel();
+    _osdTimer = Timer(const Duration(milliseconds: 700), () {
+      if (mounted) setState(() => _osdLevel = null);
+    });
+  }
+
+  Future<void> _loadBrightness() async {
+    try {
+      final v = await _mediaCh.invokeMethod<double>('getBrightness');
+      if (v != null && mounted) _brightness = v.clamp(0.02, 1.0);
+    } catch (_) {/* no native channel (desktop/tests): skip */}
+  }
+
+  Future<void> _setBrightness(double v) async {
+    try {
+      await _mediaCh.invokeMethod<bool>('setBrightness', {'value': v});
+    } catch (_) {}
+  }
+
+  /// Cycle contain → cover → fill, naming the new mode briefly.
+  void _cycleFit() {
+    setState(() {
+      _fit = _fit == BoxFit.contain
+          ? BoxFit.cover
+          : _fit == BoxFit.cover
+              ? BoxFit.fill
+              : BoxFit.contain;
+    });
+    final label = _fit == BoxFit.contain
+        ? L.t.fitContain
+        : _fit == BoxFit.cover
+            ? L.t.fitCover
+            : L.t.fitFill;
+    if (mounted) {
+      ScaffoldMessenger.of(context)
+        ..clearSnackBars()
+        ..showSnackBar(SnackBar(
+            content: Text(label), duration: const Duration(milliseconds: 900)));
+    }
+  }
+
+  void _toggleLock() {
+    setState(() {
+      _locked = !_locked;
+      if (_locked) {
+        _uiTimer?.cancel();
+        _setUiVisible(false);
+      } else {
+        _showUi();
+      }
+    });
+  }
+
+  /// Subtitle picker: embedded tracks + "off" + load an external file.
+  Future<void> _openSubtitleMenu() async {
+    _uiTimer?.cancel();
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.subtitles_off_outlined),
+              title: Text(L.t.subtitleOff),
+              onTap: () => Navigator.pop(ctx, 'no'),
+            ),
+            if (_subtitleTracks.isEmpty)
+              Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Text(L.t.subtitleNoTracks,
+                    style: Theme.of(ctx).textTheme.bodySmall),
+              ),
+            for (final t in _subtitleTracks)
+              ListTile(
+                leading: Icon(t.id == _activeSubtitleId
+                    ? Icons.check_circle
+                    : Icons.subtitles_outlined),
+                title: Text(t.title ?? t.language ?? '#${t.id}'),
+                onTap: () => Navigator.pop(ctx, t.id),
+              ),
+            const Divider(height: 1),
+            ListTile(
+              leading: const Icon(Icons.note_add_outlined),
+              title: Text(L.t.subtitleExternal),
+              onTap: () => Navigator.pop(ctx, 'external'),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (picked == null || !mounted) return;
+    final p = _player;
+    if (p == null) return;
+    try {
+      if (picked == 'no') {
+        await p.setSubtitleTrack(SubtitleTrack.no());
+        setState(() => _activeSubtitleId = '');
+      } else if (picked == 'external') {
+        final files = await FilePicker.platform.pickFiles(
+          type: FileType.custom,
+          allowedExtensions: ['srt', 'ass', 'ssa', 'vtt', 'sub'],
+        );
+        final path = files?.files.single.path;
+        if (path != null && mounted) {
+          await p.setSubtitleTrack(SubtitleTrack.uri(path));
+          setState(() => _activeSubtitleId = path);
+        }
+      } else {
+        final track = _subtitleTracks.firstWhere((t) => t.id == picked);
+        await p.setSubtitleTrack(track);
+        setState(() => _activeSubtitleId = picked);
+      }
+    } catch (e) {
+      appLog('subtitle select failed: $e');
+    }
+    _showUi();
+  }
+
   Future<void> _setRate(double v) async {
     setState(() => _rate = v);
     try {
@@ -292,6 +552,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     VideoPlayerPage.debugActiveTierStalls.clear();
     appLog('video decode tier -> ${tier.label} '
         '(hwdec=${tier.hwdec}, gen=$gen, resume=${seekTo?.inMilliseconds ?? 0}ms)');
+    AppLog.breadcrumb('video open tier=${tier.label} gen=$gen');
 
     // The last rung is software decode — the hardware decoder could not handle
     // this codec. Tell the user once (a SnackBar over the fullscreen picture)
@@ -373,6 +634,15 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
         }),
         player.stream.duration.listen((v) {
           if (mounted && gen == _generation) setState(() => _duration = v);
+        }),
+        player.stream.tracks.listen((t) {
+          if (mounted && gen == _generation) {
+            setState(() {
+              _subtitleTracks = t.subtitle;
+              final sel = t.subtitle.where((s) => s.selected);
+              _activeSubtitleId = sel.isEmpty ? '' : sel.first.id;
+            });
+          }
         }),
       ]);
 
@@ -684,6 +954,8 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     _watchdog?.cancel();
     _promoteTimer?.cancel();
     _uiTimer?.cancel();
+    _osdTimer?.cancel();
+    _seekFlashTimer?.cancel();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     if (_orientationApplied) {
       // restore the app's default (system/sensor) orientation on the way out
@@ -708,6 +980,103 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     super.dispose();
   }
 
+  Widget _buildOsd() {
+    return Center(
+      child: IgnorePointer(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: Colors.black54,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(_osdIcon, color: Colors.white, size: 28),
+              const SizedBox(height: 8),
+              SizedBox(
+                width: 120,
+                child: LinearProgressIndicator(
+                  value: _osdLevel,
+                  backgroundColor: Colors.white24,
+                  valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text('${((_osdLevel ?? 0) * 100).round()}%',
+                  style: const TextStyle(color: Colors.white, fontSize: 12)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSeekFlash() {
+    final s = _seekFlash ?? 0;
+    return Center(
+      child: IgnorePointer(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+          decoration: BoxDecoration(
+            color: Colors.black54,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(s < 0 ? Icons.fast_rewind : Icons.fast_forward,
+                  color: Colors.white, size: 24),
+              const SizedBox(width: 6),
+              Text('${s.abs()}s',
+                  style: const TextStyle(color: Colors.white, fontSize: 16)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSpeedChip() {
+    return Positioned(
+      top: 16,
+      left: 0,
+      right: 0,
+      child: Center(
+        child: IgnorePointer(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: Colors.black54,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Text(
+              '${_fmtRate(widget._longPressSpeed)} ${L.t.speedActive}',
+              style: const TextStyle(color: Colors.white, fontSize: 13),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLockButton() {
+    return Positioned(
+      left: 8,
+      top: 0,
+      bottom: 0,
+      child: Center(
+        child: IconButton(
+          tooltip: _locked ? L.t.unlockControls : L.t.lockControls,
+          style: IconButton.styleFrom(backgroundColor: Colors.black38),
+          icon: Icon(_locked ? Icons.lock_outline : Icons.lock_open,
+              color: Colors.white),
+          onPressed: _toggleLock,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final vc = _videoController;
@@ -719,10 +1088,20 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
           // picture + tap/drag surface: a single tap toggles the chrome, a
           // horizontal swipe scrubs the timeline (fine-tune the progress)
           GestureDetector(
-            onTap: _toggleUi,
-            onHorizontalDragStart: _failed ? null : _onSeekDragStart,
-            onHorizontalDragUpdate: _failed ? null : _onSeekDragUpdate,
-            onHorizontalDragEnd: _failed ? null : _onSeekDragEnd,
+            onTap: _locked ? null : _toggleUi,
+            onDoubleTapDown: _failed ? null : _onDoubleTapDown,
+            onLongPressStart: _failed ? null : _onLongPressStart,
+            onLongPressEnd: _failed ? null : _onLongPressEnd,
+            onHorizontalDragStart:
+                (_failed || _locked) ? null : _onSeekDragStart,
+            onHorizontalDragUpdate:
+                (_failed || _locked) ? null : _onSeekDragUpdate,
+            onHorizontalDragEnd: (_failed || _locked) ? null : _onSeekDragEnd,
+            onVerticalDragStart:
+                (_failed || _locked) ? null : _onVerticalDragStart,
+            onVerticalDragUpdate:
+                (_failed || _locked) ? null : _onVerticalDragUpdate,
+            onVerticalDragEnd: (_failed || _locked) ? null : _onVerticalDragEnd,
             child: _failed
                 ? _failurePane()
                 : vc == null
@@ -730,7 +1109,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
                     : Video(
                         controller: vc,
                         controls: NoVideoControls,
-                        fit: BoxFit.contain,
+                        fit: _fit,
                         fill: Colors.black,
                       ),
           ),
@@ -758,6 +1137,14 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
                 ),
               ),
             ),
+          // vertical-drag OSD (volume / brightness)
+          if (_osdLevel != null && _osdIcon != null) _buildOsd(),
+          // double-tap side-seek flash
+          if (_seekFlash != null) _buildSeekFlash(),
+          // long-press temporary-speed indicator
+          if (_longPressSpeedActive) _buildSpeedChip(),
+          // lock / unlock on the left edge — the only control while locked
+          if (!_failed && (_uiVisible || _locked)) _buildLockButton(),
           // top chrome
           AnimatedOpacity(
             opacity: _uiVisible ? 1 : 0,
@@ -781,6 +1168,22 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
                       style:
                           const TextStyle(color: Colors.white, fontSize: 15)),
                   actions: [
+                    IconButton(
+                      color: Colors.white,
+                      tooltip: L.t.subtitle,
+                      icon: const Icon(Icons.subtitles_outlined, size: 20),
+                      onPressed: _openSubtitleMenu,
+                    ),
+                    IconButton(
+                      color: Colors.white,
+                      tooltip: _fit == BoxFit.contain
+                          ? L.t.fitContain
+                          : _fit == BoxFit.cover
+                              ? L.t.fitCover
+                              : L.t.fitFill,
+                      icon: const Icon(Icons.aspect_ratio, size: 20),
+                      onPressed: _cycleFit,
+                    ),
                     IconButton(
                       color: Colors.white,
                       tooltip: L.t.openWith,

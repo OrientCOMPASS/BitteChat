@@ -1160,6 +1160,56 @@ class AppLocalizationsEn extends AppLocalizations {
   String get markAsRead => 'Mark as read';
 
   @override
+  String get playbackSection => 'Playback';
+
+  @override
+  String get dblTapSideSeek => 'Double-tap sides to skip ±10s';
+
+  @override
+  String get dblTapSideSeekHint =>
+      'Double-tap the left/right of the picture to skip back/forward 10s; off by default';
+
+  @override
+  String get longPressSpeed => 'Long-press speed';
+
+  @override
+  String get longPressSpeedHint =>
+      'Temporary playback multiplier while long-pressing the picture';
+
+  @override
+  String get defaultPlaySpeed => 'Default playback speed';
+
+  @override
+  String get subtitle => 'Subtitles';
+
+  @override
+  String get subtitleOff => 'Subtitles off';
+
+  @override
+  String get subtitleExternal => 'Load external subtitle…';
+
+  @override
+  String get subtitleNoTracks => 'No embedded subtitle tracks';
+
+  @override
+  String get lockControls => 'Lock controls';
+
+  @override
+  String get unlockControls => 'Unlock controls';
+
+  @override
+  String get fitContain => 'Fit';
+
+  @override
+  String get fitCover => 'Crop to fill';
+
+  @override
+  String get fitFill => 'Stretch to fill';
+
+  @override
+  String get speedActive => 'speed';
+
+  @override
   String get videoSoftwareDecodeNotice =>
       'Using software decoding (hardware decoder lacks this codec)';
 

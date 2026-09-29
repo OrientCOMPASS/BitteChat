@@ -109,6 +109,53 @@ use __android_log_write as android_log_write;
 
 static TEE_LOGGER: OnceLock<TeeLogger> = OnceLock::new();
 
+/// Directory (`<data_dir>/logs`) the panic hook writes `crash_rust.log` into.
+/// Set during [bc_init]; the hook is a no-op before that.
+static CRASH_DIR: OnceLock<std::path::PathBuf> = OnceLock::new();
+
+/// Append a Rust panic record (message, thread, forced backtrace) to
+/// `<data_dir>/logs/crash_rust.log`, bounded like the other logs. Written
+/// DIRECTLY (not through the logger) so it survives even when the panic fires
+/// while the engine/logger is being torn down — e.g. the resume-from-
+/// background crash.
+fn write_crash_dump(msg: &str) {
+    use std::io::Write;
+    let dir = match CRASH_DIR.get() {
+        Some(d) => d.clone(),
+        None => return,
+    };
+    let _ = std::fs::create_dir_all(&dir);
+    let path = dir.join("crash_rust.log");
+    let thread = std::thread::current().name().unwrap_or("<unnamed>").to_string();
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    let bt = std::backtrace::Backtrace::force_capture();
+    let mut f = match std::fs::OpenOptions::new().create(true).append(true).open(&path) {
+        Ok(f) => f,
+        Err(_) => return,
+    };
+    let _ = writeln!(
+        f,
+        "=== rust panic ts={ts} thread={thread} ===\n{msg}\nbacktrace:\n{bt}\n"
+    );
+    drop(f);
+    // keep it bounded: beyond ~256 KiB keep the newer half of the lines
+    if let Ok(meta) = std::fs::metadata(&path) {
+        if meta.len() > 256 * 1024 {
+            if let Ok(content) = std::fs::read_to_string(&path) {
+                let lines: Vec<&str> = content.lines().collect();
+                let keep = &lines[lines.len() / 2..];
+                let _ = std::fs::write(
+                    &path,
+                    format!("[crash_rust.log trimmed]\n{}\n", keep.join("\n")),
+                );
+            }
+        }
+    }
+}
+
 fn init_logging(data_dir: &str) {
     let logger = TeeLogger {
         file: bitte_core::filelog::FileLog::open(std::path::Path::new(data_dir)),
@@ -150,7 +197,9 @@ pub unsafe extern "C" fn bc_init(
     static PANIC_HOOK: OnceLock<()> = OnceLock::new();
     PANIC_HOOK.get_or_init(|| {
         std::panic::set_hook(Box::new(|info| {
-            log::error!("bitte panic: {info}");
+            let msg = format!("bitte panic: {info}");
+            log::error!("{msg}");
+            write_crash_dump(&msg);
         }));
     });
 
@@ -161,6 +210,7 @@ pub unsafe extern "C" fn bc_init(
         .and_then(|d| d.as_str())
         .unwrap_or("./bitte-data")
         .to_string();
+    let _ = CRASH_DIR.set(std::path::PathBuf::from(&data_dir).join("logs"));
     init_logging(&data_dir);
     log::info!("bc_init: bitte {} data_dir={data_dir}", bitte_core::VERSION);
 

@@ -2132,6 +2132,102 @@ abstract class AppLocalizations {
   /// **'标记为已读'**
   String get markAsRead;
 
+  /// No description provided for @playbackSection.
+  ///
+  /// In zh, this message translates to:
+  /// **'播放'**
+  String get playbackSection;
+
+  /// No description provided for @dblTapSideSeek.
+  ///
+  /// In zh, this message translates to:
+  /// **'双击左右快进/快退'**
+  String get dblTapSideSeek;
+
+  /// No description provided for @dblTapSideSeekHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'双击画面左/右侧快退或快进 10 秒；默认关闭'**
+  String get dblTapSideSeekHint;
+
+  /// No description provided for @longPressSpeed.
+  ///
+  /// In zh, this message translates to:
+  /// **'长按倍速'**
+  String get longPressSpeed;
+
+  /// No description provided for @longPressSpeedHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'长按画面时的临时播放倍率'**
+  String get longPressSpeedHint;
+
+  /// No description provided for @defaultPlaySpeed.
+  ///
+  /// In zh, this message translates to:
+  /// **'默认播放倍速'**
+  String get defaultPlaySpeed;
+
+  /// No description provided for @subtitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'字幕'**
+  String get subtitle;
+
+  /// No description provided for @subtitleOff.
+  ///
+  /// In zh, this message translates to:
+  /// **'关闭字幕'**
+  String get subtitleOff;
+
+  /// No description provided for @subtitleExternal.
+  ///
+  /// In zh, this message translates to:
+  /// **'加载外部字幕…'**
+  String get subtitleExternal;
+
+  /// No description provided for @subtitleNoTracks.
+  ///
+  /// In zh, this message translates to:
+  /// **'无内嵌字幕轨'**
+  String get subtitleNoTracks;
+
+  /// No description provided for @lockControls.
+  ///
+  /// In zh, this message translates to:
+  /// **'锁定控制'**
+  String get lockControls;
+
+  /// No description provided for @unlockControls.
+  ///
+  /// In zh, this message translates to:
+  /// **'解锁控制'**
+  String get unlockControls;
+
+  /// No description provided for @fitContain.
+  ///
+  /// In zh, this message translates to:
+  /// **'适应画面'**
+  String get fitContain;
+
+  /// No description provided for @fitCover.
+  ///
+  /// In zh, this message translates to:
+  /// **'铺满裁剪'**
+  String get fitCover;
+
+  /// No description provided for @fitFill.
+  ///
+  /// In zh, this message translates to:
+  /// **'拉伸填充'**
+  String get fitFill;
+
+  /// No description provided for @speedActive.
+  ///
+  /// In zh, this message translates to:
+  /// **'倍速中'**
+  String get speedActive;
+
   /// No description provided for @videoSoftwareDecodeNotice.
   ///
   /// In zh, this message translates to:

@@ -76,17 +76,66 @@ class AppLog {
   }
 
   /// Install global error funnels: framework errors, async zone errors and
-  /// platform dispatcher errors all end up in app.log.
+  /// platform dispatcher errors all end up in app.log AND in a dedicated
+  /// bounded `logs/crash_dart.log` crash dump (with the recent breadcrumb
+  /// ring) so a crash — e.g. the resume-from-background one — leaves a
+  /// forensics file on disk even though the process dies right after.
   static void captureErrors() {
     FlutterError.onError = (details) {
       FlutterError.presentError(details);
       _safeWrite(
           'FLUTTER ERROR: ${details.exceptionAsString()}\n${details.stack}');
+      crashDump('flutter', details.exception, details.stack);
     };
     PlatformDispatcher.instance.onError = (e, st) {
       _safeWrite('PLATFORM ERROR: $e\n$st');
+      crashDump('platform', e, st);
       return true;
     };
+  }
+
+  // ------------------------------------------------------------- crash dump
+
+  static final List<String> _crumbs = [];
+
+  /// Record a one-line context breadcrumb kept in memory and folded into the
+  /// next crash dump (lifecycle flips, media opens, …). Bounded.
+  static void breadcrumb(String msg) {
+    _crumbs.add('${DateTime.now().toIso8601String()} $msg');
+    if (_crumbs.length > 60) _crumbs.removeRange(0, _crumbs.length - 60);
+  }
+
+  /// Append a structured crash record to `<dataDir>/logs/crash_dart.log`
+  /// (bounded like app.log). Written SYNCHRONOUSLY so it survives the crash.
+  static void crashDump(String kind, Object error, StackTrace? st) {
+    final inst = _instance;
+    if (inst == null) return;
+    try {
+      final buf = StringBuffer()
+        ..writeln('=== dart crash [$kind] ${DateTime.now().toIso8601String()} '
+            'pid=$pid ===')
+        ..writeln('error: $error');
+      if (st != null) buf.writeln('stack:\n$st');
+      buf.writeln('last context:');
+      for (final c in _crumbs) {
+        buf.writeln('  $c');
+      }
+      buf.writeln();
+      final f = File('${inst._dir}/logs/crash_dart.log');
+      final sink = f.openSync(mode: FileMode.append);
+      try {
+        sink.writeStringSync(buf.toString());
+      } finally {
+        sink.closeSync();
+      }
+      // keep the crash log bounded too
+      if (f.lengthSync() > _maxBytes) {
+        f.writeAsStringSync(
+            trimFrontHalf(f.readAsStringSync(), marker: 'crash_dart.log'),
+            flush: true);
+      }
+      _safeWrite('crash dump written: kind=$kind');
+    } catch (_) {}
   }
 
   static void _safeWrite(String line) {

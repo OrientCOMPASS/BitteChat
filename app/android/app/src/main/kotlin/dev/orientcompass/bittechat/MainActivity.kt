@@ -113,6 +113,30 @@ class MainActivity : FlutterActivity() {
                         acceptAudioFocusGain = call.argument<Boolean>("accept") ?: true
                         result.success(true)
                     }
+                    // Screen brightness for the player's left-edge vertical
+                    // drag. -1 (BRIGHTNESS_OVERRIDE_NONE) means "follow system",
+                    // in which case fall back to the system setting value.
+                    "getBrightness" -> {
+                        val lp = window.attributes
+                        val v = if (lp.screenBrightness >= 0f) {
+                            lp.screenBrightness
+                        } else {
+                            android.provider.Settings.System.getInt(
+                                contentResolver,
+                                android.provider.Settings.System.SCREEN_BRIGHTNESS,
+                                128
+                            ).toFloat() / 255f
+                        }
+                        result.success(v.coerceIn(0.02f, 1f))
+                    }
+                    "setBrightness" -> {
+                        val v = (call.argument<Double>("value") ?: 0.5)
+                            .toFloat().coerceIn(0.02f, 1f)
+                        val lp = window.attributes
+                        lp.screenBrightness = v
+                        window.attributes = lp
+                        result.success(true)
+                    }
                     else -> result.notImplemented()
                 }
             }

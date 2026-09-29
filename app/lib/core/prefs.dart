@@ -28,6 +28,18 @@ class UiPrefs extends ChangeNotifier {
 
   bool get wallpaperBlur => wallpaperBlurSigma > 0;
 
+  // ---- playback (v0.5.9) -------------------------------------------------
+
+  /// Double-tap the left/right of the picture to skip ∓/+10s. Off by default
+  /// (double-tap centre = play/pause is always on).
+  bool playDoubleTapSideSeek = false;
+
+  /// Temporary multiplier applied while long-pressing the picture.
+  double playLongPressSpeed = 2.0;
+
+  /// Playback rate applied when a video is opened.
+  double playDefaultSpeed = 1.0;
+
   /// 运行时缓存：从壁纸提取的主色
   Color? wallpaperSeed;
 
@@ -58,6 +70,12 @@ class UiPrefs extends ChangeNotifier {
           prefs.wallpaperBlurSigma =
               (j['wallpaperBlurSigma'] as num?)?.toDouble() ??
                   ((j['wallpaperBlur'] as bool?) == true ? 6.0 : 0.0);
+          prefs.playDoubleTapSideSeek =
+              (j['playDoubleTapSideSeek'] as bool?) ?? false;
+          prefs.playLongPressSpeed =
+              (j['playLongPressSpeed'] as num?)?.toDouble() ?? 2.0;
+          prefs.playDefaultSpeed =
+              (j['playDefaultSpeed'] as num?)?.toDouble() ?? 1.0;
         }
       }
     } catch (_) {}
@@ -75,6 +93,9 @@ class UiPrefs extends ChangeNotifier {
         'wallpaperOpacity': wallpaperOpacity,
         'wallpaperBlur': wallpaperBlur,
         'wallpaperBlurSigma': wallpaperBlurSigma,
+        'playDoubleTapSideSeek': playDoubleTapSideSeek,
+        'playLongPressSpeed': playLongPressSpeed,
+        'playDefaultSpeed': playDefaultSpeed,
       }));
     } catch (_) {}
     notifyListeners();
