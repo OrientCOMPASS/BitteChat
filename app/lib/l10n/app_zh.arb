@@ -78,9 +78,9 @@
  "chunkSyncing": "〔长消息分块同步中…〕",
  "renameGroup": "修改群名",
  "renameBroadcast": "以签名系统消息广播给全群",
- "leaveGroup": "退出群聊（保留本地历史）",
+ "leaveGroup": "退出群聊",
  "leaveGroupQ": "退出群聊？",
- "leaveGroupHint": "将停止做种频道清单，本地聊天记录默认保留。",
+ "leaveGroupHint": "将停止私聊会话（本地记录默认保留）。",
  "leave": "退出",
  "members": "在线成员",
  "manifestTorrent": "清单种子",
@@ -571,7 +571,7 @@
  "infohashLabel": "种子 infohash",
  "roomInviteTitle": "邀请 = 分享这个种子",
  "roomInviteHint": "把磁力链接或 info hash 发给别人，对方添加该种子后即可进入同一群聊",
- "leaveRoomHint": "只解除群聊绑定，种子任务保留在种子页。",
+ "leaveRoomHint": "只解除群聊绑定，种子任务保留在种子页；可同时删除本地聊天记录（重置哈希链）。",
  "network": "网络",
  "defaultTrackers": "默认 Tracker 列表",
  "defaultTrackersNone": "未设置（仅 DHT/PEX 发现节点）",
@@ -668,7 +668,7 @@
  "downloadDirReset": "恢复默认",
  "downloadDirSaved": "下载目录已更新",
  "filterScript": "过滤脚本",
- "filterScriptHint": "直接编辑、导入或导出过滤规则脚本（JSON）；可粘贴 LLM 生成的脚本后应用",
+ "filterScriptHint": "直接编辑、导入或导出过滤规则脚本（JSON）。规则在本地按 内容/昵称/公钥 × 包含/等于/正则 匹配",
  "filterScriptApply": "应用",
  "filterScriptApplied": "过滤脚本已应用（{n} 条规则）",
  "@filterScriptApplied": {
@@ -682,5 +682,25 @@
  "importFile": "导入",
  "exportFile": "导出",
  "rotate": "旋转 90°",
- "wallpaperBlurOff": "关"
+ "wallpaperBlurOff": "关",
+ "wallpaperPadding": "留白填充",
+ "wallpaperPaddingTransparent": "透明",
+ "wallpaperPaddingBlack": "纯黑",
+ "wallpaperPaddingWhite": "纯白",
+ "wallpaperPaddingExtend": "边缘扩展",
+ "wallpaperEditGestureHint": "单指拖动 · 双指缩放/旋转 · 双击复位",
+ "wallpaperCropHint": "取景框比屏幕宽一圈，保存后按屏幕比例裁掉两侧；虚线框内为最终显示范围",
+ "wallpaperPaddingExtendHint": "留白按图片最外一圈像素向外延展填充",
+ "videoDecoderChainNote": "解码链：零拷贝硬解 → 硬解回读 → 软解（黑屏会自动降级并记住本机可用档位）",
+ "videoDecoderSwActive": "软解渲染",
+ "deleteLocalHistory": "同时删除本地聊天记录",
+ "deleteLocalHistoryHint": "清空本机的消息与哈希链头指针（进错哈希链后可用它重置）。重新进入同一种子会从 DHT/在线成员重新同步。",
+ "videoDecoderSwitch": "已切换到「{tier}」解码",
+ "@videoDecoderSwitch": {
+  "placeholders": {
+   "tier": {
+    "type": "Object"
+   }
+  }
+ }
 }

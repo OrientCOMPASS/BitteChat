@@ -280,14 +280,14 @@ class AppLocalizationsEn extends AppLocalizations {
   String get renameBroadcast => 'Broadcast as a signed system message';
 
   @override
-  String get leaveGroup => 'Leave group (keep local history)';
+  String get leaveGroup => 'Leave group';
 
   @override
   String get leaveGroupQ => 'Leave group?';
 
   @override
   String get leaveGroupHint =>
-      'Stops seeding the channel manifest; local history is kept.';
+      'Ends the private conversation (local history is kept by default).';
 
   @override
   String get leave => 'Leave';
@@ -931,7 +931,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get leaveRoomHint =>
-      'Only unbinds the chat room; the torrent task stays on the Torrents page.';
+      'Only unbinds the chat room; the torrent task stays on the Torrents page. You can also delete the local history (a chain reset).';
 
   @override
   String get network => 'Network';
@@ -1022,7 +1022,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get videoDecoderTip =>
-      'Playback failed? Use "Open with" and report it via Settings → Export logs';
+      'Playback failed? Use \"Open with\" and report it via Settings → Export logs';
 
   @override
   String get avatarLocalOnly =>
@@ -1121,7 +1121,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get filterScriptHint =>
-      'Edit, import or export the filter rule script (JSON); paste an LLM-generated script and apply';
+      'Edit, import or export the filter rule script (JSON). Rules match locally on content/nickname/pubkey × contains/equals/regex';
 
   @override
   String get filterScriptApply => 'Apply';
@@ -1145,4 +1145,50 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get wallpaperBlurOff => 'Off';
+
+  @override
+  String get wallpaperPadding => 'Padding fill';
+
+  @override
+  String get wallpaperPaddingTransparent => 'Transparent';
+
+  @override
+  String get wallpaperPaddingBlack => 'Black';
+
+  @override
+  String get wallpaperPaddingWhite => 'White';
+
+  @override
+  String get wallpaperPaddingExtend => 'Extend edges';
+
+  @override
+  String get wallpaperEditGestureHint =>
+      'Drag to move · pinch to zoom & rotate · double-tap to reset';
+
+  @override
+  String get wallpaperCropHint =>
+      'The canvas is wider than the screen: the saved image is cropped to the screen ratio, so only the dashed area is finally visible';
+
+  @override
+  String get wallpaperPaddingExtendHint =>
+      'The margin is filled by extending the picture\'s outermost pixels';
+
+  @override
+  String get videoDecoderChainNote =>
+      'Decode ladder: zero-copy hw → hw read-back → software (a stalled picture downgrades automatically and the working rung is remembered)';
+
+  @override
+  String get videoDecoderSwActive => 'software rendering';
+
+  @override
+  String get deleteLocalHistory => 'Also delete local history';
+
+  @override
+  String get deleteLocalHistoryHint =>
+      'Wipes this device\'s messages and DAG heads (the reset path after joining the wrong hash chain). Re-entering the same torrent re-syncs from the DHT and online members.';
+
+  @override
+  String videoDecoderSwitch(Object tier) {
+    return 'Switched to the “$tier” decoder';
+  }
 }

@@ -78,9 +78,9 @@
  "chunkSyncing": "〔long message chunks syncing…〕",
  "renameGroup": "Rename group",
  "renameBroadcast": "Broadcast as a signed system message",
- "leaveGroup": "Leave group (keep local history)",
+ "leaveGroup": "Leave group",
  "leaveGroupQ": "Leave group?",
- "leaveGroupHint": "Stops seeding the channel manifest; local history is kept.",
+ "leaveGroupHint": "Ends the private conversation (local history is kept by default).",
  "leave": "Leave",
  "members": "Online members",
  "manifestTorrent": "Manifest torrent",
@@ -571,7 +571,7 @@
  "infohashLabel": "Torrent infohash",
  "roomInviteTitle": "Invite = share this torrent",
  "roomInviteHint": "Send the magnet link or info hash to anyone; adding the torrent enters the same room",
- "leaveRoomHint": "Only unbinds the chat room; the torrent task stays on the Torrents page.",
+ "leaveRoomHint": "Only unbinds the chat room; the torrent task stays on the Torrents page. You can also delete the local history (a chain reset).",
  "network": "Network",
  "defaultTrackers": "Default trackers",
  "defaultTrackersNone": "Not set (DHT/PEX discovery only)",
@@ -668,7 +668,7 @@
  "downloadDirReset": "Reset to default",
  "downloadDirSaved": "Download directory updated",
  "filterScript": "Filter script",
- "filterScriptHint": "Edit, import or export the filter rule script (JSON); paste an LLM-generated script and apply",
+ "filterScriptHint": "Edit, import or export the filter rule script (JSON). Rules match locally on content/nickname/pubkey × contains/equals/regex",
  "filterScriptApply": "Apply",
  "filterScriptApplied": "Filter script applied ({n} rules)",
  "@filterScriptApplied": {
@@ -682,5 +682,25 @@
  "importFile": "Import",
  "exportFile": "Export",
  "rotate": "Rotate 90°",
- "wallpaperBlurOff": "Off"
+ "wallpaperBlurOff": "Off",
+ "wallpaperPadding": "Padding fill",
+ "wallpaperPaddingTransparent": "Transparent",
+ "wallpaperPaddingBlack": "Black",
+ "wallpaperPaddingWhite": "White",
+ "wallpaperPaddingExtend": "Extend edges",
+ "wallpaperEditGestureHint": "Drag to move · pinch to zoom & rotate · double-tap to reset",
+ "wallpaperCropHint": "The canvas is wider than the screen: the saved image is cropped to the screen ratio, so only the dashed area is finally visible",
+ "wallpaperPaddingExtendHint": "The margin is filled by extending the picture's outermost pixels",
+ "videoDecoderChainNote": "Decode ladder: zero-copy hw → hw read-back → software (a stalled picture downgrades automatically and the working rung is remembered)",
+ "videoDecoderSwActive": "software rendering",
+ "deleteLocalHistory": "Also delete local history",
+ "deleteLocalHistoryHint": "Wipes this device's messages and DAG heads (the reset path after joining the wrong hash chain). Re-entering the same torrent re-syncs from the DHT and online members.",
+ "videoDecoderSwitch": "Switched to the “{tier}” decoder",
+ "@videoDecoderSwitch": {
+  "placeholders": {
+   "tier": {
+    "type": "Object"
+   }
+  }
+ }
 }

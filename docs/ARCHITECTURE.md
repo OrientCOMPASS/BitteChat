@@ -78,13 +78,40 @@ Dart↔Rust 只走两条通道：`bc_call(method, json) -> json`（同步，命�
 <data>/groups/<manifest_ih>/bitte-group.benc   仅遗留清单频道（v0.5.2 起 DM 无种子）
 <data>/downloads/<ih>/<文件名>       BT 下载与聊天附件（种子群聊即普通任务）
 <data>/resume/<ih>.fastresume        libtorrent 断点快照（120s/完成/退出时刷新，添加任务时自动回挂——重启不重新校验、进度不清零）
-<data>/logs/core.log(.1/.2)          核心滚动日志（2MB×3，逐行落盘）；Dart 侧 logs/app.log；设置页可导出到 Download
+<data>/logs/core.log                 核心日志（单文件定长，超 64 KiB 删前一半行数；逐行落盘）
+<data>/logs/app.log                  Dart 侧日志（同一策略）；设置页可导出到 Download
+<data>/video_prefs.json              视频解码档位记忆（黑屏自动降级后记住本机可用档，下次直接起步）
 <data>/tmp/                          RSS 导入暂存
 ```
 **种子即群聊**：普通群聊没有专属目录——房间就是 downloads/<infohash> 下的普通 BT
 任务（gid = infohash，头签名密钥 SHA-256 派生，见 PROTOCOL §1.2）。重启后
 restore_state 从 SQLite（groups + torrents 表）直接重建运行时并重新 add_magnet，
 群名在元数据事件到达时自动跟随种子名（用户改名优先）。
+
+### 8. 视频解码降级链 (app/lib/core/video_decode.dart)
+libmpv 在 Android 上的 MediaCodec 零拷贝 interop（`hwdec_aimagereader`）在部分老式
+OMX 硬解上会「解码器在跑、一帧都取不出来」，且 mpv 对此**不自动回退**（`mapper_map`
+在 `acquireLatestImage` 失败时返回假成功），表现就是有声无画。应用侧因此实现三档降级：
+`mediacodec`（零拷贝）→ `mediacodec-copy`（硬解回读，绕开 interop）→ `no`（软解）。
+触发依据两条：mpv 日志停摆指纹（≥3 行立即降）、首帧看门狗（收到真实 video-params 后
+N 秒内没有 `waitUntilFirstFrameRendered`）。降级 = 重建 Player/VideoController 并恢复
+播放位置；稳定 10s 后把档位写入 `<data>/video_prefs.json`，下次直接起步。
+完整证据链与日志读法见 [VIDEO-PLAYBACK.md](VIDEO-PLAYBACK.md)。
+
+### 9. 壁纸缓存与绘制 (app/lib/core/wallpaper.dart)
+壁纸解码结果放在 **app 级单例 LRU 缓存**里，key = 路径 + 内容版本 + 目标宽度 + 模糊 sigma
+（**不含不透明度**）。这样路由切换/Activity 重建/根 Builder 重绘都只是一次 Map 查找：
+既不会重新读盘解码（此前从聊天详情页返回主页时背景要隔一会儿才出现），也不会在拖不透明度
+滑杆时每 tick 重解码。绘制走 `CustomPainter` + `Paint.color` 的 alpha 调制（cover 适配），
+**不用 `Opacity`**：`Opacity` 对 0<α<1 会插入全屏离屏合成层，壁纸每帧都要付这个代价。
+新图解码期间旧图继续挂着，所以不会先黑一下再出现；main() 在 runApp 之前预热，首帧即有壁纸。
+
+### 10. 日志：单文件定长而非多代滚动
+`core.log` 与 `app.log` 各自是**一个** 64 KiB 上限的文件：超过就**删掉前一半行数**
+（不是按字节切，避免出现半行），写入一行 `[... trimmed: N older lines dropped]` 标记后
+继续积累，直到再次触发。相比旧的 `*.1.log/*.2.log` 三代滚动，同样的磁盘预算下导出包里
+是**连续的最新上下文**，也不会出现「最新一段在 core.log、上一段在 core.1.log」的拼接顺序
+问题。Rust 侧纯函数 `truncate_front_half`、Dart 侧 `trimFrontHalf` 均有单测。
 
 ## 线程一览 (Rust 侧)
 
@@ -116,4 +143,8 @@ CI 缓存 build/android-deps/{downloads,src,deps,build}（key=versions.env+脚�
 2. **e2e mock 测试**（tests/e2e_mock.rs）：双节点全流程（做种进房、裸 hash 加入、
    默认 tracker 应用、退群保留任务）、离线 DHT 恢复、附件、分块、篡改拒绝、BT 页生命周期。
 3. **CI android job**：真实交叉编译链验证 C++/链接正确性（沙盒内不构建）。
-4. **Flutter**：`flutter analyze` + widget 测试（纯 Dart 逻辑：models、桥接解析）。
+4. **Flutter**：`flutter analyze` + `dart format --set-exit-if-changed` + 测试
+   （纯 Dart 逻辑：models、桥接解析、日志截断策略、壁纸留白像素填充/边缘延展、
+   解码降级链的停摆指纹判定与取景几何，见 `app/test/v056_test.dart`）。
+5. **emulator-smoke**（非阻断）：模拟器实播真实样片，断言当前解码档位无停摆指纹、
+   时钟推进（见 [VIDEO-PLAYBACK.md](VIDEO-PLAYBACK.md) §6）。

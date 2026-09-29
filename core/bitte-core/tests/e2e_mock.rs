@@ -401,6 +401,76 @@ fn e2e_offline_dht_sync() {
         .any(|t| t["infohash"].as_str() == Some(gid.as_str())));
 }
 
+/// Leaving a room with `delete_history` wipes the LOCAL chain (messages +
+/// heads + outbox) so re-entering the same infohash starts from scratch —
+/// the recovery path for "I joined the wrong hash chain".
+#[test]
+fn e2e_leave_group_can_reset_local_history() {
+    let bus = MockBus::new();
+    let (a, _ta) = spawn_node(&bus);
+    let (b, _tb) = spawn_node(&bus);
+
+    let (gid, magnet) = seed_room(&a, "reset");
+    join_room(&b, &magnet);
+    call(
+        &a,
+        "chat.send",
+        json!({"group_id": gid, "text": "会被清掉的一条"}),
+    );
+    wait_until(&[&a, &b], T, || {
+        if texts(&b, &gid).contains(&"会被清掉的一条".to_string()) {
+            Some(())
+        } else {
+            None
+        }
+    });
+
+    // leaving WITHOUT delete_history keeps the local chain (existing behavour)
+    call(&b, "chat.leave_group", json!({"group_id": gid}));
+    assert_eq!(join_room(&b, &gid), gid);
+    assert!(
+        texts(&b, &gid).contains(&"会被清掉的一条".to_string()),
+        "leave without delete_history must keep the local history"
+    );
+
+    // leaving WITH delete_history drops everything local, heads included
+    call(
+        &b,
+        "chat.leave_group",
+        json!({"group_id": gid, "delete_history": true}),
+    );
+    assert_eq!(join_room(&b, &gid), gid);
+    assert!(
+        texts(&b, &gid).is_empty(),
+        "delete_history must wipe the local chain: {:?}",
+        texts(&b, &gid)
+    );
+    let detail = call(&b, "chat.group_detail", json!({"group_id": gid}));
+    assert_eq!(
+        detail["messages"].as_i64().unwrap_or(-1),
+        0,
+        "purged room must report zero stored messages: {detail}"
+    );
+    assert!(
+        detail["heads"]
+            .as_array()
+            .map(|h| h.is_empty())
+            .unwrap_or(false),
+        "purged room must have no DAG heads left: {detail}"
+    );
+
+    // the reset is LOCAL only: the chain still lives in the swarm/DHT, so a
+    // fresh sync pulls it back (i.e. we deleted our copy, not the room)
+    call(&b, "chat.sync", json!({"group_id": gid}));
+    wait_until(&[&a, &b], T, || {
+        if texts(&b, &gid).contains(&"会被清掉的一条".to_string()) {
+            Some(())
+        } else {
+            None
+        }
+    });
+}
+
 #[test]
 fn e2e_attachment_transfer() {
     let bus = MockBus::new();

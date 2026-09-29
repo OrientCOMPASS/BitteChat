@@ -14,6 +14,7 @@ import '../core/prefs.dart';
 import '../core/files.dart';
 import '../models.dart';
 import '../widgets/audio_row.dart';
+import '../widgets/photo_view.dart';
 import 'media_pages.dart';
 import '../widgets/avatar.dart';
 import '../widgets/time_fmt.dart';
@@ -757,29 +758,19 @@ class _AttachmentBody extends StatelessWidget {
 
   bool get _have => message.haveFile && message.localPath != null;
 
+  /// Full-screen viewer: the picture is contain-fitted to the screen (one
+  /// side touches the edge, nothing is cropped) — the old dialog handed the
+  /// image loose constraints, so it laid out at its intrinsic pixel size and
+  /// got clipped by the screen.
   void _openImage(BuildContext context, String path) {
-    showDialog<void>(
-      context: context,
-      builder: (ctx) => Dialog.fullscreen(
-        child: Stack(
-          children: [
-            Center(
-              child: InteractiveViewer(
-                child: Image.file(File(path), fit: BoxFit.contain),
-              ),
-            ),
-            Positioned(
-              top: 12,
-              right: 12,
-              child: IconButton.filled(
-                onPressed: () => Navigator.pop(ctx),
-                icon: Icon(Icons.close),
-              ),
-            ),
-          ],
-        ),
+    final att = message.attachment;
+    Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => PhotoViewerPage(
+        path: path,
+        title: att?.name,
+        subtitle: att == null ? null : formatBytes(att.size),
       ),
-    );
+    ));
   }
 
   Future<void> _openMedia(BuildContext context) async {
@@ -1378,28 +1369,21 @@ class _GroupDetailSheetState extends State<GroupDetailSheet> {
             icon: Icon(Icons.logout),
             label: Text(L.t.leaveGroup),
             onPressed: () async {
-              final confirmed = await showDialog<bool>(
+              // Leaving deletes the LOCAL chain by default: the usual reason
+              // to leave is "I ended up in the wrong hash chain", and keeping
+              // a stale local DAG would just re-merge the wrong history on
+              // re-entry. The box can be unticked to keep it.
+              final res = await showDialog<_LeaveChoice>(
                 context: context,
-                builder: (ctx) => AlertDialog(
-                  title: Text(L.t.leaveGroupQ),
-                  content: Text(isDm ? L.t.leaveGroupHint : L.t.leaveRoomHint),
-                  actions: [
-                    TextButton(
-                        onPressed: () => Navigator.pop(ctx, false),
-                        child: Text(L.t.cancel)),
-                    TextButton(
-                        onPressed: () => Navigator.pop(ctx, true),
-                        child: Text(L.t.leave)),
-                  ],
-                ),
+                builder: (ctx) => _LeaveDialog(isDm: isDm),
               );
-              if (confirmed == true && context.mounted) {
-                try {
-                  _api.leaveGroup(widget.groupId);
-                  if (context.mounted) Navigator.pop(context);
-                } catch (e) {
-                  if (context.mounted) showError(context, e);
-                }
+              if (res == null || !context.mounted) return;
+              try {
+                _api.leaveGroup(widget.groupId,
+                    deleteHistory: res.deleteHistory);
+                if (context.mounted) Navigator.pop(context);
+              } catch (e) {
+                if (context.mounted) showError(context, e);
               }
             },
           ),
@@ -1483,6 +1467,65 @@ class _BlockedGap extends StatelessWidget {
                 blockedMark: true,
               ),
             ),
+      ],
+    );
+  }
+}
+
+/// What the leave confirmation returns: leave, and whether to purge the
+/// local messages + DAG heads.
+class _LeaveChoice {
+  const _LeaveChoice(this.deleteHistory);
+
+  final bool deleteHistory;
+}
+
+class _LeaveDialog extends StatefulWidget {
+  const _LeaveDialog({required this.isDm});
+
+  /// DM channels have no torrent to keep, so they get their own hint text.
+  final bool isDm;
+
+  @override
+  State<_LeaveDialog> createState() => _LeaveDialogState();
+}
+
+class _LeaveDialogState extends State<_LeaveDialog> {
+  bool _deleteHistory = true;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return AlertDialog(
+      title: Text(L.t.leaveGroupQ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(widget.isDm ? L.t.leaveGroupHint : L.t.leaveRoomHint),
+          const SizedBox(height: 4),
+          CheckboxListTile(
+            value: _deleteHistory,
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            controlAffinity: ListTileControlAffinity.leading,
+            title: Text(L.t.deleteLocalHistory),
+            onChanged: (v) => setState(() => _deleteHistory = v ?? true),
+          ),
+          Text(
+            L.t.deleteLocalHistoryHint,
+            style: theme.textTheme.bodySmall
+                ?.copyWith(color: theme.colorScheme.outline),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.pop(context), child: Text(L.t.cancel)),
+        TextButton(
+            onPressed: () =>
+                Navigator.pop(context, _LeaveChoice(_deleteHistory)),
+            child: Text(L.t.leave)),
       ],
     );
   }

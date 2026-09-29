@@ -569,7 +569,7 @@ abstract class AppLocalizations {
   /// No description provided for @leaveGroup.
   ///
   /// In zh, this message translates to:
-  /// **'退出群聊（保留本地历史）'**
+  /// **'退出群聊'**
   String get leaveGroup;
 
   /// No description provided for @leaveGroupQ.
@@ -581,7 +581,7 @@ abstract class AppLocalizations {
   /// No description provided for @leaveGroupHint.
   ///
   /// In zh, this message translates to:
-  /// **'将停止做种频道清单，本地聊天记录默认保留。'**
+  /// **'将停止私聊会话（本地记录默认保留）。'**
   String get leaveGroupHint;
 
   /// No description provided for @leave.
@@ -1733,7 +1733,7 @@ abstract class AppLocalizations {
   /// No description provided for @leaveRoomHint.
   ///
   /// In zh, this message translates to:
-  /// **'只解除群聊绑定，种子任务保留在种子页。'**
+  /// **'只解除群聊绑定，种子任务保留在种子页；可同时删除本地聊天记录（重置哈希链）。'**
   String get leaveRoomHint;
 
   /// No description provided for @network.
@@ -1877,7 +1877,7 @@ abstract class AppLocalizations {
   /// No description provided for @videoDecoderHint.
   ///
   /// In zh, this message translates to:
-  /// **'遇到视频"有声无画"请保持软件解码；硬件解码更省电，但部分机型/编码会黑屏。切换后对新打开的视频生效'**
+  /// **'遇到视频\"有声无画\"请保持软件解码；硬件解码更省电，但部分机型/编码会黑屏。切换后对新打开的视频生效'**
   String get videoDecoderHint;
 
   /// No description provided for @videoDecoderTip.
@@ -2063,7 +2063,7 @@ abstract class AppLocalizations {
   /// No description provided for @filterScriptHint.
   ///
   /// In zh, this message translates to:
-  /// **'直接编辑、导入或导出过滤规则脚本（JSON）；可粘贴 LLM 生成的脚本后应用'**
+  /// **'直接编辑、导入或导出过滤规则脚本（JSON）。规则在本地按 内容/昵称/公钥 × 包含/等于/正则 匹配'**
   String get filterScriptHint;
 
   /// No description provided for @filterScriptApply.
@@ -2107,6 +2107,84 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'关'**
   String get wallpaperBlurOff;
+
+  /// No description provided for @wallpaperPadding.
+  ///
+  /// In zh, this message translates to:
+  /// **'留白填充'**
+  String get wallpaperPadding;
+
+  /// No description provided for @wallpaperPaddingTransparent.
+  ///
+  /// In zh, this message translates to:
+  /// **'透明'**
+  String get wallpaperPaddingTransparent;
+
+  /// No description provided for @wallpaperPaddingBlack.
+  ///
+  /// In zh, this message translates to:
+  /// **'纯黑'**
+  String get wallpaperPaddingBlack;
+
+  /// No description provided for @wallpaperPaddingWhite.
+  ///
+  /// In zh, this message translates to:
+  /// **'纯白'**
+  String get wallpaperPaddingWhite;
+
+  /// No description provided for @wallpaperPaddingExtend.
+  ///
+  /// In zh, this message translates to:
+  /// **'边缘扩展'**
+  String get wallpaperPaddingExtend;
+
+  /// No description provided for @wallpaperEditGestureHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'单指拖动 · 双指缩放/旋转 · 双击复位'**
+  String get wallpaperEditGestureHint;
+
+  /// No description provided for @wallpaperCropHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'取景框比屏幕宽一圈，保存后按屏幕比例裁掉两侧；虚线框内为最终显示范围'**
+  String get wallpaperCropHint;
+
+  /// No description provided for @wallpaperPaddingExtendHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'留白按图片最外一圈像素向外延展填充'**
+  String get wallpaperPaddingExtendHint;
+
+  /// No description provided for @videoDecoderChainNote.
+  ///
+  /// In zh, this message translates to:
+  /// **'解码链：零拷贝硬解 → 硬解回读 → 软解（黑屏会自动降级并记住本机可用档位）'**
+  String get videoDecoderChainNote;
+
+  /// No description provided for @videoDecoderSwActive.
+  ///
+  /// In zh, this message translates to:
+  /// **'软解渲染'**
+  String get videoDecoderSwActive;
+
+  /// No description provided for @deleteLocalHistory.
+  ///
+  /// In zh, this message translates to:
+  /// **'同时删除本地聊天记录'**
+  String get deleteLocalHistory;
+
+  /// No description provided for @deleteLocalHistoryHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'清空本机的消息与哈希链头指针（进错哈希链后可用它重置）。重新进入同一种子会从 DHT/在线成员重新同步。'**
+  String get deleteLocalHistoryHint;
+
+  /// No description provided for @videoDecoderSwitch.
+  ///
+  /// In zh, this message translates to:
+  /// **'已切换到「{tier}」解码'**
+  String videoDecoderSwitch(Object tier);
 }
 
 class _AppLocalizationsDelegate

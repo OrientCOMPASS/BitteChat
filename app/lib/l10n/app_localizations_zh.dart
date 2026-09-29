@@ -273,13 +273,13 @@ class AppLocalizationsZh extends AppLocalizations {
   String get renameBroadcast => '以签名系统消息广播给全群';
 
   @override
-  String get leaveGroup => '退出群聊（保留本地历史）';
+  String get leaveGroup => '退出群聊';
 
   @override
   String get leaveGroupQ => '退出群聊？';
 
   @override
-  String get leaveGroupHint => '将停止做种频道清单，本地聊天记录默认保留。';
+  String get leaveGroupHint => '将停止私聊会话（本地记录默认保留）。';
 
   @override
   String get leave => '退出';
@@ -903,7 +903,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get roomInviteHint => '把磁力链接或 info hash 发给别人，对方添加该种子后即可进入同一群聊';
 
   @override
-  String get leaveRoomHint => '只解除群聊绑定，种子任务保留在种子页。';
+  String get leaveRoomHint => '只解除群聊绑定，种子任务保留在种子页；可同时删除本地聊天记录（重置哈希链）。';
 
   @override
   String get network => '网络';
@@ -988,7 +988,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get videoDecoderHint =>
-      '遇到视频"有声无画"请保持软件解码；硬件解码更省电，但部分机型/编码会黑屏。切换后对新打开的视频生效';
+      '遇到视频\"有声无画\"请保持软件解码；硬件解码更省电，但部分机型/编码会黑屏。切换后对新打开的视频生效';
 
   @override
   String get videoDecoderTip => '无法播放？可点「外部打开」，并到 设置 → 导出日志 反馈';
@@ -1083,7 +1083,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get filterScript => '过滤脚本';
 
   @override
-  String get filterScriptHint => '直接编辑、导入或导出过滤规则脚本（JSON）；可粘贴 LLM 生成的脚本后应用';
+  String get filterScriptHint =>
+      '直接编辑、导入或导出过滤规则脚本（JSON）。规则在本地按 内容/昵称/公钥 × 包含/等于/正则 匹配';
 
   @override
   String get filterScriptApply => '应用';
@@ -1107,4 +1108,46 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get wallpaperBlurOff => '关';
+
+  @override
+  String get wallpaperPadding => '留白填充';
+
+  @override
+  String get wallpaperPaddingTransparent => '透明';
+
+  @override
+  String get wallpaperPaddingBlack => '纯黑';
+
+  @override
+  String get wallpaperPaddingWhite => '纯白';
+
+  @override
+  String get wallpaperPaddingExtend => '边缘扩展';
+
+  @override
+  String get wallpaperEditGestureHint => '单指拖动 · 双指缩放/旋转 · 双击复位';
+
+  @override
+  String get wallpaperCropHint => '取景框比屏幕宽一圈，保存后按屏幕比例裁掉两侧；虚线框内为最终显示范围';
+
+  @override
+  String get wallpaperPaddingExtendHint => '留白按图片最外一圈像素向外延展填充';
+
+  @override
+  String get videoDecoderChainNote => '解码链：零拷贝硬解 → 硬解回读 → 软解（黑屏会自动降级并记住本机可用档位）';
+
+  @override
+  String get videoDecoderSwActive => '软解渲染';
+
+  @override
+  String get deleteLocalHistory => '同时删除本地聊天记录';
+
+  @override
+  String get deleteLocalHistoryHint =>
+      '清空本机的消息与哈希链头指针（进错哈希链后可用它重置）。重新进入同一种子会从 DHT/在线成员重新同步。';
+
+  @override
+  String videoDecoderSwitch(Object tier) {
+    return '已切换到「$tier」解码';
+  }
 }

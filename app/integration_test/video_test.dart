@@ -9,8 +9,12 @@
 //   1. REAL video parameters arrive (w:640 h:360 — the 960x540 rgba entry
 //      is only the controller's initialization placeholder)
 //   2. the playback clock advances (frames are actually being consumed)
-//   3. no renderer-stall signatures in the mpv log (aimagereader timeouts /
-//      MAX_IMAGES -30001 — the on-device black-screen fingerprint)
+//   3. the rung the player SETTLED on is free of renderer-stall signatures
+//      (aimagereader timeouts / -30001 — the on-device black-screen
+//      fingerprint). Earlier rungs may legitimately stall: that is exactly
+//      what the decode ladder exists to recover from, so only the active
+//      rung is asserted on (and any downgrade is reported in the failure
+//      message).
 //   4. no error events at all
 //
 // Run: flutter test integration_test/video_test.dart -d emulator-5554
@@ -73,15 +77,25 @@ void main() {
 
     await tester.pump();
 
-    // 3) no renderer-stall fingerprint
+    // 3) the ACTIVE decode rung must be free of the stall fingerprint; a
+    //    stall on a rung we already abandoned is the ladder doing its job
+    expect(VideoPlayerPage.debugActiveTierStalls, isEmpty,
+        reason: 'the settled decoder (tier '
+            '${VideoPlayerPage.debugActiveTier}, '
+            '${VideoPlayerPage.debugDowngrades} downgrade(s)) still stalls:\n'
+            '${VideoPlayerPage.debugActiveTierStalls.join('\n')}');
+
     final stall = VideoPlayerPage.debugMpvLogs
         .where((l) =>
             l.contains('aimagereader') ||
             l.contains('-30001') ||
             l.contains('Waiting for frame timed out'))
         .toList();
-    expect(stall, isEmpty,
-        reason: 'renderer stall signatures in mpv log: $stall');
+    if (stall.isNotEmpty) {
+      // not a failure, but CI must show that the ladder had to kick in
+      debugPrint('video test: ${stall.length} stall line(s) before settling on '
+          'tier ${VideoPlayerPage.debugActiveTier}');
+    }
 
     // 4) no errors surfaced
     expect(VideoPlayerPage.debugLastError, isNull);

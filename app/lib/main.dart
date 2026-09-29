@@ -1,6 +1,4 @@
 import 'dart:async';
-import 'dart:io';
-import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:bittechat/l10n/app_localizations.dart';
@@ -8,16 +6,19 @@ import 'package:media_kit/media_kit.dart';
 
 import 'core/api.dart';
 import 'core/applog.dart';
-import 'core/ui_flags.dart';
 import 'core/l10n.dart';
 import 'core/intent.dart';
 import 'core/prefs.dart';
+import 'core/video_decode.dart';
+import 'core/wallpaper.dart';
 import 'pages/home.dart';
 
 /// Media stack = media_kit (libmpv) for BOTH video and voice messages.
-/// Video: hardware decode chain (hwdec=mediacodec,auto-safe, no ffmpeg
-/// software fallback) rendered through mpv's EGL surface — the architecture
-/// proven at scale by PiliPala-class apps on mainstream Android hardware.
+/// Video: decode ladder (zero-copy MediaCodec → MediaCodec read-back →
+/// software) rendered through mpv's EGL surface — the rendering architecture
+/// proven at scale by PiliPala-class apps on mainstream Android hardware,
+/// with an automatic downgrade when a device's hwdec interop stalls (see
+/// `core/video_decode.dart`).
 /// Initialized once here; pages create Player instances on demand.
 void initMediaStack() {
   try {
@@ -39,11 +40,46 @@ Future<void> main() async {
     bindIntentChannel();
     final prefs = await UiPrefs.load(api.dataDir);
     initMediaStack();
+    // remember which video decode rung this device settled on, and decode the
+    // wallpaper BEFORE the first frame so page 1 already shows it
+    await VideoDecodeChain.instance.bind(api.dataDir);
+    await prewarmWallpaper(prefs);
     runApp(BitteChatApp(prefs: prefs));
   }, (e, st) {
     appLog('ZONE ERROR: $e\n$st');
   });
 }
+
+/// Decode the configured wallpaper up-front so the very first frame of the app
+/// already has it — the alternative is a visible "background pops in a moment
+/// later" on cold start. Bounded: a corrupt/huge image must never delay the
+/// UI, the layer just starts empty and fills in when the decode lands.
+Future<void> prewarmWallpaper(UiPrefs prefs) async {
+  if (prefs.wallpaperPath == null) return;
+  try {
+    await WallpaperCache.instance
+        .load(wallpaperKeyOf(prefs), () => buildWallpaperFor(prefs))
+        .timeout(const Duration(seconds: 4));
+  } catch (e) {
+    appLog('wallpaper prewarm skipped: $e');
+  }
+}
+
+/// Cache key of the wallpaper described by [prefs]. Opacity is NOT part of it:
+/// it is applied while painting, so dragging the opacity slider never triggers
+/// a re-decode.
+String wallpaperKeyOf(UiPrefs prefs) => WallpaperCache.buildKey(
+      path: prefs.wallpaperPath,
+      rev: prefs.wallpaperRev,
+      sigma: prefs.wallpaperBlurSigma,
+    );
+
+/// Decoder for the wallpaper described by [prefs] (throws if there is none).
+Future<WallpaperEntry> buildWallpaperFor(UiPrefs prefs) => WallpaperCache.build(
+      key: wallpaperKeyOf(prefs),
+      path: prefs.wallpaperPath!,
+      sigma: prefs.wallpaperBlurSigma,
+    );
 
 class BitteChatApp extends StatefulWidget {
   const BitteChatApp({super.key, required this.prefs});
@@ -125,10 +161,11 @@ class _BitteChatAppState extends State<BitteChatApp> {
 /// Global wallpaper layer, rendered under the Navigator so it spans the
 /// whole application (chat, torrents, feeds, settings).
 ///
-/// The image is decoded ONCE into a [ui.Image] (blur baked in when enabled)
-/// and painted with [RawImage]: navigating between pages never re-resolves
-/// or re-decodes anything, so there is no flicker and no load delay — the
-/// old Image.file-based layer visibly lagged route transitions.
+/// All decoding lives in the app-wide [WallpaperCache]: this widget only asks
+/// for a key and paints whatever bitmap the cache has. Rebuilding it (route
+/// changes, prefs notifications, activity recreation) is therefore free — no
+/// re-read, no re-decode, no flash — which is what used to make navigating
+/// back from the chat detail page feel laggy. Opacity changes repaint only.
 class AppWallpaper extends StatefulWidget {
   const AppWallpaper({super.key, required this.prefs});
 
@@ -139,109 +176,58 @@ class AppWallpaper extends StatefulWidget {
 }
 
 class _AppWallpaperState extends State<AppWallpaper> {
-  ui.Image? _image;
-  String? _loadedPath;
-  double? _loadedSigma;
-  int _loadedRev = -1;
-
   @override
   void initState() {
     super.initState();
-    _load();
+    WallpaperCache.instance.addListener(_onChange);
+    _request();
   }
 
   @override
   void didUpdateWidget(AppWallpaper oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // the root state rebuilds us on every prefs notification; reload only
-    // when the image source or the blur flag changed (opacity is a paint
-    // parameter and needs no decode)
-    if (_loadedPath != widget.prefs.wallpaperPath ||
-        _loadedSigma != widget.prefs.wallpaperBlurSigma ||
-        _loadedRev != widget.prefs.wallpaperRev) {
-      _load();
-    }
-  }
-
-  Future<void> _load() async {
-    final path = widget.prefs.wallpaperPath;
-    final sigma = widget.prefs.wallpaperBlurSigma;
-    _loadedPath = path;
-    _loadedSigma = sigma;
-    _loadedRev = widget.prefs.wallpaperRev;
-    if (path == null) {
-      if (_image != null && mounted) {
-        setState(() {
-          _image?.dispose();
-          _image = null;
-        });
-      }
-      return;
-    }
-    try {
-      final bytes = await File(path).readAsBytes();
-      final codec = await ui.instantiateImageCodec(bytes, targetWidth: 1440);
-      final frame = await codec.getNextFrame();
-      codec.dispose();
-      var img = frame.image;
-      if (sigma > 0) img = await _blurred(img, sigma);
-      if (!mounted) {
-        img.dispose();
-        return;
-      }
-      setState(() {
-        _image?.dispose();
-        _image = img;
-      });
-    } catch (e) {
-      appLog('wallpaper load failed: $e');
-      if (mounted) {
-        setState(() {
-          _image?.dispose();
-          _image = null;
-        });
-      }
-    }
-  }
-
-  /// Bake the blur into the decoded bitmap once — an ImageFiltered layer
-  /// would re-render a full-screen blur on every navigation frame.
-  static Future<ui.Image> _blurred(ui.Image src, double sigma) async {
-    final rec = ui.PictureRecorder();
-    final canvas = ui.Canvas(rec);
-    final paint = Paint()
-      ..imageFilter = ui.ImageFilter.blur(sigmaX: sigma, sigmaY: sigma);
-    canvas.drawImage(src, Offset.zero, paint);
-    final pic = rec.endRecording();
-    final out = await pic.toImage(src.width, src.height);
-    pic.dispose();
-    src.dispose();
-    return out;
+    _request();
   }
 
   @override
   void dispose() {
-    _image?.dispose();
+    WallpaperCache.instance.removeListener(_onChange);
     super.dispose();
+  }
+
+  void _onChange() {
+    if (mounted) setState(() {});
+  }
+
+  void _request() {
+    final path = widget.prefs.wallpaperPath;
+    if (path == null) {
+      WallpaperCache.instance.clear();
+      return;
+    }
+    unawaited(WallpaperCache.instance.load(
+        wallpaperKeyOf(widget.prefs), () => buildWallpaperFor(widget.prefs)));
   }
 
   @override
   Widget build(BuildContext context) {
-    final img = _image;
-    if (img == null) return const SizedBox.shrink();
-    return ValueListenableBuilder<bool>(
-      valueListenable: wallpaperSuppressed,
-      builder: (context, suppressed, _) {
-        if (suppressed) return const SizedBox.shrink();
-        return Positioned.fill(
-          child: IgnorePointer(
-            child: Opacity(
-              opacity: widget.prefs.wallpaperOpacity.clamp(0.03, 1.0),
-              child: RawImage(image: img, fit: BoxFit.cover),
+    final entry = WallpaperCache.instance.current;
+    if (entry == null) return const SizedBox.shrink();
+    return Positioned.fill(
+      child: IgnorePointer(
+        child: RepaintBoundary(
+          // opacity rides along in the paint's alpha (WallpaperPainter), so
+          // there is no Opacity layer and no full-screen saveLayer per frame;
+          // the RepaintBoundary keeps route transitions from repainting us
+          child: CustomPaint(
+            size: Size.infinite,
+            painter: WallpaperPainter(
+              image: entry.image,
+              opacity: widget.prefs.wallpaperOpacity,
             ),
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 }
