@@ -221,3 +221,27 @@ video decode tier 0 settled (remembered for this device)
 - **「用其他应用打开」移到右上角**（AppBar action），底部控制条只留
   播放/进度/倍速。
 - 降级到**软解**档时弹 SnackBar 告知（见 §4），不再常驻显示解码档位。
+
+## 10. v0.5.10 → v0.5.11：播放器手势层与音量的正确姿势（踩坑记录）
+
+实机反馈：「UI 显示时任何单指手势都失效（含单击收起 UI）、横滑/竖滑要双指、
+音量调下去立刻弹回 100%」。根因都在 `media_kit_video` 的 `Video` 内部结构
+（`video_texture.dart`），不在我们的控制条：
+
+- `Video` 把画面包在 **`InteractiveViewer`** 里（默认 `scaleEnabled: true`，
+  自带 ScaleGestureRecognizer）。把 `GestureDetector` 作为 `Video` 的**祖先**
+  且沿用默认 `HitTestBehavior.deferToChild` 时，单指手势在竞技场里输给/卡在
+  media_kit 内部识别器上 —— 表现为「单指全死、双指才有反应」。
+- **正确做法（v0.5.11）**：画面本身不挂任何手势；在 Stack 中于画面**之上**、
+  控制条**之下**放一层
+  `Positioned.fill + GestureDetector(behavior: HitTestBehavior.opaque)`。
+  `RenderStack` 的命中测试遇到第一个命中的子节点即停止，于是该层稳定接收
+  播放区的全部指针（单指/双指），并顺带屏蔽 InteractiveViewer；另传
+  `scaleEnabled: false` 关闭画面捏合缩放。锁定态把这层的回调置 null 即可。
+- 控制条必须是**有限高度的条**：用 `Align(topCenter / bottomCenter)` 包裹。
+  裸 Stack 子节点会被 `StackFit.expand` 拉成全屏，其渐变 Container 在 UI
+  显示时吸收全部点击（v0.5.10「遮罩挡住点击/锁定按钮无效」的直接原因）。
+- **音量不要用 `player.state.volume` 做增量**：该值经 stream 回读有延迟，
+  每次 drag update 读到的仍是旧值（100），于是「调到 ~90 立刻弹回 100」。
+  改为 Dart 侧自持 `_volume`（0–100）做增量并 `setVolume`；亮度同理自持
+  `_brightness`（进入页面时从原生 window 亮度读一次基线）。

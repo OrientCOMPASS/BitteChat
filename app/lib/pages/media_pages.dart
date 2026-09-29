@@ -134,6 +134,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
   Timer? _osdTimer;
   bool _vertBrightness = false;
   double? _brightness; // cached 0..1 screen brightness, fetched once
+  double _volume = 100; // our own 0..100 volume; mpv read-back is too slow
 
   // subtitles (embedded tracks + optional external file)
   List<SubtitleTrack> _subtitleTracks = const [];
@@ -377,8 +378,8 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
       _setBrightness(next);
       _showOsd(Icons.brightness_high, next);
     } else {
-      final cur = _player?.state.volume ?? 100;
-      final next = (cur - d.delta.dy / span * 100).clamp(0.0, 100.0);
+      final next = (_volume - d.delta.dy / span * 100).clamp(0.0, 100.0);
+      _volume = next;
       _player?.setVolume(next).catchError((_) {});
       _showOsd(Icons.volume_up, next / 100);
     }
@@ -1087,55 +1088,68 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // picture + tap/drag surface: a single tap toggles the chrome, a
-          // horizontal swipe scrubs the timeline (fine-tune the progress)
-          GestureDetector(
-            onTap: _locked ? null : _toggleUi,
-            onDoubleTapDown: _failed ? null : _onDoubleTapDown,
-            onLongPressStart: _failed ? null : _onLongPressStart,
-            onLongPressEnd: _failed ? null : _onLongPressEnd,
-            onHorizontalDragStart:
-                (_failed || _locked) ? null : _onSeekDragStart,
-            onHorizontalDragUpdate:
-                (_failed || _locked) ? null : _onSeekDragUpdate,
-            onHorizontalDragEnd: (_failed || _locked) ? null : _onSeekDragEnd,
-            onVerticalDragStart:
-                (_failed || _locked) ? null : _onVerticalDragStart,
-            onVerticalDragUpdate:
-                (_failed || _locked) ? null : _onVerticalDragUpdate,
-            onVerticalDragEnd: (_failed || _locked) ? null : _onVerticalDragEnd,
-            child: _failed
-                ? _failurePane()
-                : vc == null
-                    ? const Center(child: CircularProgressIndicator())
-                    : Video(
-                        controller: vc,
-                        controls: NoVideoControls,
-                        fit: _fit,
-                        fill: Colors.black,
-                      ),
-          ),
+          // picture. media_kit's Video embeds an InteractiveViewer (a scale
+          // recognizer), and an ANCESTOR GestureDetector with the default
+          // deferToChild behaviour never reliably wins the arena against it —
+          // that is what made single-finger gestures dead. So the picture
+          // carries no gestures; the opaque layer added right below sits
+          // ABOVE it in the Stack, and RenderStack stops hit-testing at the
+          // first hit child: the layer receives every pointer in the play
+          // area and simultaneously shields the InteractiveViewer.
+          _failed
+              ? _failurePane()
+              : vc == null
+                  ? const Center(child: CircularProgressIndicator())
+                  : Video(
+                      controller: vc,
+                      controls: NoVideoControls,
+                      fit: _fit,
+                      fill: Colors.black,
+                      scaleEnabled: false,
+                    ),
+          // single-finger gesture layer: tap = toggle chrome, double-tap =
+          // play/pause (or ±10s when enabled), horizontal drag = seek,
+          // vertical drag = brightness (left) / volume (right),
+          // long-press = temporary speed
+          if (!_failed && vc != null)
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: _locked ? null : _toggleUi,
+                onDoubleTapDown: _onDoubleTapDown,
+                onLongPressStart: _onLongPressStart,
+                onLongPressEnd: _onLongPressEnd,
+                onHorizontalDragStart: _locked ? null : _onSeekDragStart,
+                onHorizontalDragUpdate: _locked ? null : _onSeekDragUpdate,
+                onHorizontalDragEnd: _locked ? null : _onSeekDragEnd,
+                onVerticalDragStart: _locked ? null : _onVerticalDragStart,
+                onVerticalDragUpdate: _locked ? null : _onVerticalDragUpdate,
+                onVerticalDragEnd: _locked ? null : _onVerticalDragEnd,
+              ),
+            ),
           // drag-to-seek preview: target position + delta from where we began
           if (_dragging)
             Center(
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-                decoration: BoxDecoration(
-                  color: Colors.black54,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text('${_fmt(_dragTargetPos)} / ${_fmt(_duration)}',
-                        style:
-                            const TextStyle(color: Colors.white, fontSize: 18)),
-                    const SizedBox(height: 2),
-                    Text(_fmtDelta(_dragTargetPos - _dragStartPos),
-                        style: const TextStyle(
-                            color: Colors.white70, fontSize: 13)),
-                  ],
+              child: IgnorePointer(
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: Colors.black54,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text('${_fmt(_dragTargetPos)} / ${_fmt(_duration)}',
+                          style: const TextStyle(
+                              color: Colors.white, fontSize: 18)),
+                      const SizedBox(height: 2),
+                      Text(_fmtDelta(_dragTargetPos - _dragStartPos),
+                          style: const TextStyle(
+                              color: Colors.white70, fontSize: 13)),
+                    ],
+                  ),
                 ),
               ),
             ),
