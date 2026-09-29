@@ -10,7 +10,6 @@
 
 import 'dart:io';
 
-import 'package:flutter/gestures.dart' show InteractionEndDetails;
 import 'package:flutter/material.dart';
 
 import '../core/files.dart';
@@ -59,7 +58,7 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
   }
 
   /// If the user released the pinch while zoomed out, animate back to 1x.
-  void _onInteractionEnd(InteractionEndDetails d) {
+  void _onInteractionEnd(ScaleEndDetails d) {
     final scale = _controller.value.getMaxScaleOnAxis();
     if (scale >= 0.999) return;
     _snapFrom = Matrix4.copy(_controller.value);
