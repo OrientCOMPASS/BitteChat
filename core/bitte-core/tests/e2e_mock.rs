@@ -506,20 +506,38 @@ fn e2e_attachment_transfer() {
         })
     });
 
-    // chat-internal torrents must NOT pollute the default BT list (sender
-    // side has the kind=2 registry row; receiver side has nothing yet)
-    for node in [&a, &b] {
-        let list = call(node, "bt.list", json!({}));
-        assert!(
-            !list["torrents"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .any(|t| t["infohash"].as_str() == Some(ih.as_str())),
-            "attachment torrent leaked into user BT list"
-        );
-    }
-    // ...but the sender sees it when explicitly requesting chat torrents
+    // Self-published seeds (kind 4) are their OWN scope: the sender sees the
+    // task in the DEFAULT list, and it seeds IN PLACE (save_path == the source
+    // file's parent, never a copy under the download dir).
+    let list_a = call(&a, "bt.list", json!({}));
+    let row_a = list_a["torrents"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|t| t["infohash"].as_str() == Some(ih.as_str()))
+        .expect("sender's self-published seed must appear in the default list");
+    assert_eq!(
+        row_a["kind"].as_i64(),
+        Some(4),
+        "self-sent seed must be kind 4"
+    );
+    assert_eq!(
+        row_a["save_path"].as_str(),
+        Some(fpath.parent().unwrap().to_string_lossy().as_ref()),
+        "self-sent seed must seed in place, not copy into the download dir"
+    );
+    // Chat-internal kinds 1/2 stay hidden: the receiver (no registry row yet)
+    // must not see the torrent in its default list.
+    let list_b = call(&b, "bt.list", json!({}));
+    assert!(
+        !list_b["torrents"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|t| t["infohash"].as_str() == Some(ih.as_str())),
+        "chat-internal torrent leaked into receiver's default BT list"
+    );
+    // ...and include_chat still surfaces chat-internal rows
     let list = call(&a, "bt.list", json!({"include_chat": true}));
     assert!(list["torrents"]
         .as_array()
