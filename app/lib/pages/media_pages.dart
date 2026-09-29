@@ -413,7 +413,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
       _volume = next;
       if ((widget.prefs?.playVolumeMode ?? 'system') == 'system') {
         _mediaCh.invokeMethod<bool>(
-            'setSystemVolume', {'value': next / 100}).catchError((_) {});
+            'setSystemVolume', {'value': next / 100}).catchError((_) => true);
       } else {
         _player?.setVolume(next).catchError((_) {});
       }
@@ -445,9 +445,25 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     final z = (_pinchBaseZoom * d.scale).clamp(1.0, 4.0);
     _zoom = z;
     _pan = z > 1.0 ? _pan + d.focalPointDelta : Offset.zero;
-    _videoTransform.value = Matrix4.identity()
-      ..translate(_pan.dx, _pan.dy)
-      ..scale(z, z, 1);
+    // column-major: scale z on x/y, translation (_pan) in the last column
+    _videoTransform.value = Matrix4(
+      z,
+      0,
+      0,
+      0,
+      0,
+      z,
+      0,
+      0,
+      0,
+      0,
+      1,
+      0,
+      _pan.dx,
+      _pan.dy,
+      0,
+      1,
+    );
     _showOsd(Icons.zoom_in, (z - 1) / 3);
   }
 
@@ -1203,6 +1219,9 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
                 onVerticalDragStart: _locked ? null : _onVerticalDragStart,
                 onVerticalDragUpdate: _locked ? null : _onVerticalDragUpdate,
                 onVerticalDragEnd: _locked ? null : _onVerticalDragEnd,
+                onScaleStart: _locked ? null : _onScaleStart,
+                onScaleUpdate: _locked ? null : _onScaleUpdate,
+                onScaleEnd: _locked ? null : _onScaleEnd,
               ),
             ),
           // drag-to-seek preview: target position + delta from where we began
