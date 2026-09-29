@@ -1177,47 +1177,53 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
                 ignoring: !_uiVisible,
                 child: SafeArea(
                   bottom: false,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    child: Row(
-                      children: [
-                        IconButton(
-                          color: Colors.white,
-                          icon: const Icon(Icons.arrow_back),
-                          onPressed: () => Navigator.of(context).pop(),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        child: Row(
+                          children: [
+                            IconButton(
+                              color: Colors.white,
+                              icon: const Icon(Icons.arrow_back),
+                              onPressed: () => Navigator.of(context).pop(),
+                            ),
+                            Expanded(
+                              child: Text(widget.title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                      color: Colors.white, fontSize: 15)),
+                            ),
+                            IconButton(
+                              color: Colors.white,
+                              tooltip: L.t.subtitle,
+                              icon: const Icon(Icons.subtitles_outlined,
+                                  size: 20),
+                              onPressed: _openSubtitleMenu,
+                            ),
+                            IconButton(
+                              color: Colors.white,
+                              tooltip: _fit == BoxFit.contain
+                                  ? L.t.fitContain
+                                  : _fit == BoxFit.cover
+                                      ? L.t.fitCover
+                                      : L.t.fitFill,
+                              icon: const Icon(Icons.aspect_ratio, size: 20),
+                              onPressed: _cycleFit,
+                            ),
+                            IconButton(
+                              color: Colors.white,
+                              tooltip: L.t.openWith,
+                              icon: const Icon(Icons.open_in_new, size: 20),
+                              onPressed: () =>
+                                  openWithExternalApp(widget.path, 'video/*'),
+                            ),
+                          ],
                         ),
-                        Expanded(
-                          child: Text(widget.title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                  color: Colors.white, fontSize: 15)),
-                        ),
-                        IconButton(
-                          color: Colors.white,
-                          tooltip: L.t.subtitle,
-                          icon: const Icon(Icons.subtitles_outlined, size: 20),
-                          onPressed: _openSubtitleMenu,
-                        ),
-                        IconButton(
-                          color: Colors.white,
-                          tooltip: _fit == BoxFit.contain
-                              ? L.t.fitContain
-                              : _fit == BoxFit.cover
-                                  ? L.t.fitCover
-                                  : L.t.fitFill,
-                          icon: const Icon(Icons.aspect_ratio, size: 20),
-                          onPressed: _cycleFit,
-                        ),
-                        IconButton(
-                          color: Colors.white,
-                          tooltip: L.t.openWith,
-                          icon: const Icon(Icons.open_in_new, size: 20),
-                          onPressed: () =>
-                              openWithExternalApp(widget.path, 'video/*'),
-                        ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -1233,64 +1239,71 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
                 ignoring: !_uiVisible,
                 child: SafeArea(
                   top: false,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    child: Row(
-                      children: [
-                        IconButton(
-                          color: Colors.white,
-                          icon: Icon(_playing ? Icons.pause : Icons.play_arrow),
-                          onPressed: _playPause,
-                        ),
-                        Text(_fmt(_position),
-                            style: const TextStyle(
-                                color: Colors.white70, fontSize: 12)),
-                        Expanded(
-                          child: Slider(
-                            value: _duration > Duration.zero
-                                ? _position.inMilliseconds
-                                    .clamp(0, _duration.inMilliseconds)
-                                    .toDouble()
-                                : 0,
-                            max: _duration > Duration.zero
-                                ? _duration.inMilliseconds.toDouble()
-                                : 1,
-                            onChanged: (v) => _player
-                                ?.seek(Duration(milliseconds: v.toInt())),
-                          ),
-                        ),
-                        Text(_fmt(_duration),
-                            style: const TextStyle(
-                                color: Colors.white70, fontSize: 12)),
-                        PopupMenuButton<double>(
-                          tooltip: L.t.videoSpeed,
-                          color: Colors.black87,
-                          onOpened: () {
-                            _uiTimer?.cancel();
-                          },
-                          onSelected: _setRate,
-                          itemBuilder: (_) => [
-                            for (final r in kPlaybackRates)
-                              PopupMenuItem(
-                                value: r,
-                                child: Text(
-                                  '${_fmtRate(r)}${r == _rate ? '  ✓' : ''}',
-                                  style: TextStyle(
-                                      color: r == _rate
-                                          ? Colors.white
-                                          : Colors.white70),
-                                ),
-                              ),
-                          ],
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 8),
-                            child: Text(_fmtRate(_rate),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        child: Row(
+                          children: [
+                            IconButton(
+                              color: Colors.white,
+                              icon: Icon(
+                                  _playing ? Icons.pause : Icons.play_arrow),
+                              onPressed: _playPause,
+                            ),
+                            Text(_fmt(_position),
                                 style: const TextStyle(
-                                    color: Colors.white, fontSize: 13)),
-                          ),
+                                    color: Colors.white70, fontSize: 12)),
+                            Expanded(
+                              child: Slider(
+                                value: _duration > Duration.zero
+                                    ? _position.inMilliseconds
+                                        .clamp(0, _duration.inMilliseconds)
+                                        .toDouble()
+                                    : 0,
+                                max: _duration > Duration.zero
+                                    ? _duration.inMilliseconds.toDouble()
+                                    : 1,
+                                onChanged: (v) => _player
+                                    ?.seek(Duration(milliseconds: v.toInt())),
+                              ),
+                            ),
+                            Text(_fmt(_duration),
+                                style: const TextStyle(
+                                    color: Colors.white70, fontSize: 12)),
+                            PopupMenuButton<double>(
+                              tooltip: L.t.videoSpeed,
+                              color: Colors.black87,
+                              onOpened: () {
+                                _uiTimer?.cancel();
+                              },
+                              onSelected: _setRate,
+                              itemBuilder: (_) => [
+                                for (final r in kPlaybackRates)
+                                  PopupMenuItem(
+                                    value: r,
+                                    child: Text(
+                                      '${_fmtRate(r)}${r == _rate ? '  ✓' : ''}',
+                                      style: TextStyle(
+                                          color: r == _rate
+                                              ? Colors.white
+                                              : Colors.white70),
+                                    ),
+                                  ),
+                              ],
+                              child: Padding(
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 8),
+                                child: Text(_fmtRate(_rate),
+                                    style: const TextStyle(
+                                        color: Colors.white, fontSize: 13)),
+                              ),
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ),
               ),

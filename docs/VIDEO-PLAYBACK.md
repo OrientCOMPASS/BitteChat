@@ -286,3 +286,18 @@ IgnorePointer + SafeArea + Padding + Row`，**去掉渐变 Container 与 AppBar*
 （返回键改为显式 IconButton）。`Align/Padding/Row/SafeArea` 自身
 `hitTestSelf == false`，只有按钮/滑杆这些叶子控件命中；条带内的空白区域指针
 直接落到下方的手势层。阴影随之消失（用户本就不想要）。
+
+## 13. v0.5.14：进度条居中回归的修复 + 停止 emulator-smoke
+
+v0.5.12/0.5.13 把控制条的 `Column(mainAxisSize: MainAxisSize.min)` 包裹层去掉后，
+实机进度条/控制行跑到屏幕竖直方向正中。v0.5.11（位置正确）与出错版本的唯一结构
+差异即该 `Column`：它为控制行提供「按内容取高」的最小主轴尺寸；去掉后
+`Row`（含 `Expanded(Slider)`）在 `Align` 的松散约束下取到了满高，控件被
+`crossAxisAlignment` 居中。**`Column` 的 `hitTestSelf == false`**，恢复它不会
+ reintroduce v0.5.13 已修掉的「遮罩」（那是带装饰/材质背景的条带造成的）。
+v0.5.14 在顶/底控制条恢复 `Column(mainAxisSize.min)` 包裹，布局回到 v0.5.11
+的正确位置，同时保持无渐变/无材质的纯控件条（无遮罩、无阴影）。
+
+另：按用户要求，CI 不再运行 `emulator-smoke`（模拟器集成测试）job 及其
+jniLibs 上传步骤；门禁为 detect / core-test / app-analyze / native-smoke /
+android / release。

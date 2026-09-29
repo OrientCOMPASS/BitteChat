@@ -233,15 +233,6 @@ jobs:
           retention-days: 14
           if-no-files-found: warn
 
-      - name: Upload jniLibs for emulator job
-        if: ${{ hashFiles('app/android/app/src/main/jniLibs/**') != '' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: jnilibs-${{ github.sha }}
-          path: app/android/app/src/main/jniLibs/**
-          retention-days: 3
-          if-no-files-found: ignore
-
       - name: Upload native libs (debug aid)
         if: ${{ failure() }}
         uses: actions/upload-artifact@v4
@@ -251,62 +242,6 @@ jobs:
             build/android-deps/build/cpp-*/CMakeFiles/*.dir/*.log
           retention-days: 5
           if-no-files-found: ignore
-
-  # ------------------------------------------------------------------
-  # On-device smoke: install into an Android emulator and run the
-  # integration test against the REAL libtorrent engine + REAL DHT.
-  # Non-gating (continue-on-error) while the harness matures.
-  # ------------------------------------------------------------------
-  emulator-smoke:
-    if: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/') }}
-    continue-on-error: true
-    needs: [android]
-    runs-on: ubuntu-24.04
-    timeout-minutes: 75
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
-      - uses: subosito/flutter-action@v2
-        with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
-          channel: stable
-          cache: true
-      - name: Restore native libs from android job
-        uses: actions/download-artifact@v4
-        with:
-          name: jnilibs-${{ github.sha }}
-          path: app/android/app/src/main/jniLibs
-      - name: Enable KVM
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
-          ls -la /dev/kvm
-      - name: Generate real test video (H.264 + AAC, 6s)
-        run: |
-          if ! command -v ffmpeg >/dev/null 2>&1; then
-            sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
-          fi
-          ffmpeg -y -f lavfi -i testsrc2=size=640x360:rate=25 \
-            -f lavfi -i sine=frequency=440:sample_rate=44100 \
-            -t 6 -c:v libx264 -pix_fmt yuv420p -profile:v high -level 3.1 \
-            -c:a aac -b:a 64k -movflags +faststart /tmp/ci_video.mp4
-          ls -la /tmp/ci_video.mp4
-      - name: Run integration tests on emulator
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 34
-          target: google_apis
-          arch: x86_64
-          profile: pixel_6
-          ram-size: 4096M
-          disable-animations: true
-          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -camera-back none
-          script: |
-            adb wait-for-device && adb push /tmp/ci_video.mp4 /data/local/tmp/ci_video.mp4 && adb shell chmod 644 /data/local/tmp/ci_video.mp4
-            cd app && flutter pub get && flutter test integration_test/app_test.dart -d emulator-5554 --reporter expanded && flutter test integration_test/video_test.dart -d emulator-5554 --reporter expanded
 
   # ------------------------------------------------------------------
   # Release on tag
