@@ -164,9 +164,8 @@
  "seedWallpaper": "壁纸自动取色",
  "seedCustom": "自定义颜色",
  "pickColor": "选择主题色",
- "wallpaper": "聊天背景图",
+ "wallpaper": "背景图",
  "wallpaperNone": "未设置",
- "wallpaperSet": "不透明度 {p}%",
  "wallpaperBlur": "背景模糊",
  "opacity": "不透明度",
  "pickWallpaper": "选择聊天背景图",
@@ -373,13 +372,6 @@
  "@deleteFeedQ": {
   "placeholders": {
    "name": {
-    "type": "Object"
-   }
-  }
- },
- "@wallpaperSet": {
-  "placeholders": {
-   "p": {
     "type": "Object"
    }
   }
@@ -703,6 +695,16 @@
  "fitCover": "铺满裁剪",
  "fitFill": "拉伸填充",
  "speedActive": "倍速中",
+ "language": "语言",
+ "langSystem": "跟随系统",
+ "langZh": "简体中文",
+ "langEn": "English",
+ "actCopy": "复制",
+ "actReply": "回复",
+ "actDm": "私聊",
+ "actBlock": "屏蔽",
+ "actId": "ID",
+ "actSig": "验签",
  "videoSoftwareDecodeNotice": "正在使用软件解码（硬件解码器不支持此编码）",
  "videoSpeed": "倍速"
 }

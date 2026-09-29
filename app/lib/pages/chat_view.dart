@@ -34,6 +34,10 @@ class ChatViewPage extends StatefulWidget {
 class _ChatViewPageState extends State<ChatViewPage> {
   late final BitteApi _api = BitteApi.instance;
   final _input = TextEditingController();
+  final Map<String, Rect> _bubbleRects = {};
+  ChatMessage? _replyTo;
+  double _swipeAccum = 0;
+  bool _swipeArmed = false;
   final _scroll = ScrollController();
   List<ChatMessage> _messages = [];
   List<_ChatEntry> _entries = [];
@@ -181,112 +185,268 @@ class _ChatViewPageState extends State<ChatViewPage> {
     }
   }
 
-  /// QQ-style floating action popup anchored at the selection, shown by the
-  /// message [SelectionArea] on long-press alongside the selection handles
-  /// (replaces the old pull-up bottom sheet).
-  Widget _messageContextMenu(
-      BuildContext ctx, SelectableRegionState state, ChatMessage m) {
-    final theme = Theme.of(ctx);
-    final anchor = state.contextMenuAnchors.primaryAnchor;
-    final screen = MediaQuery.sizeOf(ctx);
-    const menuW = 300.0;
-    final maxLeft = (screen.width - menuW - 8).clamp(8.0, screen.width);
-    final left = (anchor.dx - menuW / 2).clamp(8.0, maxLeft);
-    final top = (anchor.dy + 8).clamp(8.0, screen.height - 140);
-    void run(VoidCallback fn) {
-      state.hideToolbar();
-      fn();
-    }
+  // -------------------------------------------- QQ-style message long-press
 
-    Widget act(IconData icon, String label, VoidCallback fn) {
-      return InkWell(
-        borderRadius: BorderRadius.circular(8),
-        onTap: () => run(fn),
-        child: SizedBox(
-          width: 68,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 20, color: theme.colorScheme.onSurface),
-              const SizedBox(height: 4),
-              Text(label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.labelSmall),
-            ],
-          ),
-        ),
-      );
+  void _onSwipeUpdate(DragUpdateDetails d) {
+    _swipeAccum += d.delta.dx;
+    if (!_swipeArmed && _swipeAccum < -70) {
+      _swipeArmed = true;
+      HapticFeedback.mediumImpact();
     }
+  }
 
-    return Stack(
-      children: [
-        Positioned(
-          left: left,
-          top: top,
-          child: Material(
-            elevation: 8,
-            borderRadius: BorderRadius.circular(12),
-            color: theme.colorScheme.surfaceContainerHighest,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
-              child: SizedBox(
-                width: menuW,
-                child: Wrap(
-                  alignment: WrapAlignment.center,
-                  spacing: 4,
-                  runSpacing: 8,
-                  children: [
-                    if (m.payloadKind == MsgPayloadKind.text)
-                      act(Icons.copy, L.t.copyMessage, () {
-                        Clipboard.setData(ClipboardData(text: m.text));
-                        ScaffoldMessenger.of(context)
-                            .showSnackBar(SnackBar(content: Text(L.t.copied)));
-                      }),
-                    act(Icons.fingerprint, L.t.copyMessageId, () {
-                      Clipboard.setData(ClipboardData(text: m.id));
-                      ScaffoldMessenger.of(context)
-                          .showSnackBar(SnackBar(content: Text(L.t.copiedId)));
-                    }),
-                    if (!m.own && !_isDm)
-                      act(Icons.lock_person_outlined, L.t.startDm,
-                          () => _startDmFromMessage(m)),
-                    if (!m.own)
-                      act(Icons.block, L.t.blockAuthor, () {
-                        try {
-                          _api.blockAuthor(m.authorPk);
-                          _reload();
-                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                              content: Text(L.t.blockedAuthor(m.authorName))));
-                        } catch (e) {
-                          showError(context, e);
-                        }
-                      }),
-                    act(Icons.verified_user, L.t.signatureInfo, () {
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                          content: Text(L.t.sigDetail(
-                              shortHash(m.authorPk, 16),
-                              m.state == 1
-                                  ? L.t.sigConfirmed
-                                  : L.t.sigPending))));
-                    }),
-                  ],
-                ),
-              ),
-            ),
+  /// Swipe-left past the threshold then release = quote-reply in the input.
+  void _onSwipeEnd(ChatMessage m) {
+    final armed = _swipeArmed;
+    _swipeAccum = 0;
+    _swipeArmed = false;
+    if (armed) setState(() => _replyTo = m);
+  }
+
+  Widget _replyBanner(ChatMessage m) {
+    final theme = Theme.of(context);
+    return Container(
+      color: theme.colorScheme.surfaceContainerHighest,
+      padding: const EdgeInsets.fromLTRB(12, 6, 4, 6),
+      child: Row(
+        children: [
+          Icon(Icons.reply, size: 16, color: theme.colorScheme.primary),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text('${m.authorName}: ${m.text}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall),
           ),
-        ),
-      ],
+          IconButton(
+            visualDensity: VisualDensity.compact,
+            icon: const Icon(Icons.close, size: 16),
+            onPressed: () => setState(() => _replyTo = null),
+          ),
+        ],
+      ),
     );
   }
 
+  void _onInputChanged(String v) {
+    // typing a bare "@" (nothing after it) offers the member list to mention
+    if (v.endsWith('@')) _showMentionPicker();
+  }
+
+  void _insertMention(ChatMessage m) {
+    final name = m.authorName.isEmpty ? L.t.anonymous : m.authorName;
+    _input.text = '${_input.text}@$name ';
+    _input.selection = TextSelection.fromPosition(
+        TextSelectionPosition(position: _input.text.length));
+  }
+
+  Future<void> _showMentionPicker() async {
+    final members = _api.members(_gid);
+    if (!mounted || members.isEmpty) return;
+    final picked = await showModalBottomSheet<Map<String, dynamic>>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final mm in members)
+              ListTile(
+                dense: true,
+                leading: KeyAvatar(
+                    keyHex: '${mm['pk'] ?? ''}',
+                    name: '${mm['name'] ?? ''}',
+                    size: 32),
+                title: Text('${mm['name'] ?? ''}'),
+                onTap: () => Navigator.pop(ctx, mm),
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (picked == null || !mounted) return;
+    final t = _input.text;
+    final base = t.endsWith('@') ? t.substring(0, t.length - 1) : t;
+    _input.text = '$base@${picked['name'] ?? ''} ';
+    _input.selection = TextSelection.fromPosition(
+        TextSelectionPosition(position: _input.text.length));
+  }
+
+  /// SelectionArea's context menu (text long-press): the popup anchored to the
+  /// message card, alongside the selection handles.
+  Widget _selectionMenu(
+      BuildContext ctx, SelectableRegionState state, ChatMessage m) {
+    return Stack(children: [_positionedPopup(ctx, m, state.hideToolbar)]);
+  }
+
+  /// Non-text long-press (avatar/timestamp/padding): same popup via overlay.
+  void _showPopupOverlay(ChatMessage m) {
+    final overlay = Overlay.of(context);
+    late final OverlayEntry entry;
+    entry = OverlayEntry(
+      builder: (ctx) => Stack(
+        children: [
+          Positioned.fill(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => entry.remove(),
+              child: const ColoredBox(color: Colors.transparent),
+            ),
+          ),
+          _positionedPopup(ctx, m, () => entry.remove()),
+        ],
+      ),
+    );
+    overlay.insert(entry);
+  }
+
+  /// Anchor the popup directly BELOW the message card, or ABOVE it when there
+  /// is not enough room below (QQ behaviour).
+  Positioned _positionedPopup(
+      BuildContext ctx, ChatMessage m, VoidCallback dismiss) {
+    final screen = MediaQuery.sizeOf(ctx);
+    const menuH = 76.0;
+    final card = _bubbleRects[m.id];
+    double? top;
+    double? bottom;
+    double? left;
+    double? right;
+    if (card == null) {
+      top = screen.height * 0.4;
+      left = 16;
+      right = 16;
+    } else {
+      final below = card.bottom + 6;
+      if (below + menuH <= screen.height - 8) {
+        top = below;
+      } else {
+        bottom =
+            (screen.height - card.top + 6).clamp(8.0, screen.height).toDouble();
+      }
+      if (m.own) {
+        right =
+            (screen.width - card.right).clamp(8.0, screen.width - 8).toDouble();
+      } else {
+        left = card.left.clamp(8.0, screen.width - 8).toDouble();
+      }
+    }
+    return Positioned(
+      top: top,
+      bottom: bottom,
+      left: left,
+      right: right,
+      child: _msgPopupCard(m, dismiss),
+    );
+  }
+
+  /// The floating action card: fit-content width, short 2-char labels,
+  /// vertical separators between action groups (QQ visual language).
+  Widget _msgPopupCard(ChatMessage m, VoidCallback dismiss) {
+    final theme = Theme.of(context);
+    Widget item(IconData ic, String label, VoidCallback fn) => InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: () {
+            dismiss();
+            fn();
+          },
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(ic, size: 20, color: theme.colorScheme.onSurface),
+                const SizedBox(height: 4),
+                Text(label, style: theme.textTheme.labelSmall),
+              ],
+            ),
+          ),
+        );
+    Widget sep() => Container(
+        width: 1, height: 34, color: theme.colorScheme.outlineVariant);
+    final groups = <List<Widget>>[
+      [
+        if (m.payloadKind == MsgPayloadKind.text)
+          item(Icons.copy, L.t.actCopy, () => _copyText(m)),
+        item(Icons.reply, L.t.actReply, () => setState(() => _replyTo = m)),
+      ],
+      [
+        if (!m.own && !_isDm)
+          item(Icons.lock_person_outlined, L.t.actDm,
+              () => _startDmFromMessage(m)),
+        if (!m.own) item(Icons.block, L.t.actBlock, () => _blockAuthorOf(m)),
+      ],
+      [
+        item(Icons.fingerprint, L.t.actId, () => _copyId(m)),
+        item(Icons.verified_user, L.t.actSig, () => _showSig(m)),
+      ],
+    ];
+    final filled = groups.where((g) => g.isNotEmpty).toList();
+    final row = <Widget>[];
+    for (var i = 0; i < filled.length; i++) {
+      if (i > 0) row.add(sep());
+      row.addAll(filled[i]);
+    }
+    return Material(
+      elevation: 8,
+      borderRadius: BorderRadius.circular(12),
+      color: theme.colorScheme.surfaceContainerHighest,
+      child: ConstrainedBox(
+        constraints:
+            BoxConstraints(maxWidth: MediaQuery.sizeOf(ctx).width - 16),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(mainAxisSize: MainAxisSize.min, children: row),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _copyText(ChatMessage m) {
+    Clipboard.setData(ClipboardData(text: m.text));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(L.t.copied)));
+  }
+
+  void _copyId(ChatMessage m) {
+    Clipboard.setData(ClipboardData(text: m.id));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(L.t.copiedId)));
+  }
+
+  void _showSig(ChatMessage m) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(L.t.sigDetail(shortHash(m.authorPk, 16),
+            m.state == 1 ? L.t.sigConfirmed : L.t.sigPending))));
+  }
+
+  void _blockAuthorOf(ChatMessage m) {
+    try {
+      _api.blockAuthor(m.authorPk);
+      _reload();
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(L.t.blockedAuthor(m.authorName))));
+    } catch (e) {
+      showError(context, e);
+    }
+  }
+
   void _send() {
-    final text = _input.text.trim();
+    var text = _input.text.trim();
     if (text.isEmpty || _sending) return;
+    final r = _replyTo;
+    if (r != null) {
+      final q = r.text.length > 60 ? '${r.text.substring(0, 60)}…' : r.text;
+      text = '> @${r.authorName}: $q\n$text';
+    }
     setState(() => _sending = true);
     try {
       _api.sendText(_gid, text);
       _input.clear();
+      _replyTo = null;
       _reload();
     } catch (e) {
       showError(context, e);
@@ -509,14 +669,22 @@ class _ChatViewPageState extends State<ChatViewPage> {
                                 // selection cursors (SelectionArea) and an
                                 // anchored floating action popup (custom
                                 // context menu) — not a bottom sheet.
-                                SelectionArea(
-                                  contextMenuBuilder: (ctx, state) =>
-                                      _messageContextMenu(ctx, state, m),
-                                  child: MessageBubble(
-                                    message: m,
-                                    showAuthor: showAuthor,
-                                    onDownload: () => _downloadAttachment(m),
-                                    prefs: widget.prefs,
+                                _RectReporter(
+                                  id: m.id,
+                                  rects: _bubbleRects,
+                                  child: GestureDetector(
+                                    onHorizontalDragUpdate: _onSwipeUpdate,
+                                    onHorizontalDragEnd: (_) => _onSwipeEnd(m),
+                                    onLongPress: () => _showPopupOverlay(m),
+                                    child: MessageBubble(
+                                      message: m,
+                                      showAuthor: showAuthor,
+                                      onDownload: () => _downloadAttachment(m),
+                                      prefs: widget.prefs,
+                                      selectionMenuBuilder: (ctx, state) =>
+                                          _selectionMenu(ctx, state, m),
+                                      onMention: () => _insertMention(m),
+                                    ),
                                   ),
                                 ),
                               ],
@@ -551,11 +719,13 @@ class _ChatViewPageState extends State<ChatViewPage> {
                     ),
                   ),
                 ),
+              if (_replyTo != null) _replyBanner(_replyTo!),
               _InputBar(
                 controller: _input,
                 sending: _sending,
                 onSend: _send,
                 onAttach: _pickAndSendFile,
+                onChanged: _onInputChanged,
               ),
             ],
           ),
@@ -644,6 +814,8 @@ class MessageBubble extends StatelessWidget {
     this.onDownload,
     this.blockedMark = false,
     this.prefs,
+    this.selectionMenuBuilder,
+    this.onMention,
   });
 
   final ChatMessage message;
@@ -651,6 +823,9 @@ class MessageBubble extends StatelessWidget {
   final VoidCallback? onDownload;
   final bool blockedMark;
   final UiPrefs? prefs;
+  final Widget Function(BuildContext, SelectableRegionState)?
+      selectionMenuBuilder;
+  final VoidCallback? onMention;
 
   @override
   Widget build(BuildContext context) {
@@ -706,7 +881,11 @@ class MessageBubble extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   if (!own) ...[
-                    KeyAvatar(keyHex: m.authorPk, name: m.authorName, size: 30),
+                    GestureDetector(
+                      onLongPress: onMention,
+                      child: KeyAvatar(
+                          keyHex: m.authorPk, name: m.authorName, size: 30),
+                    ),
                     SizedBox(width: 6),
                   ],
                   Flexible(
@@ -725,7 +904,12 @@ class MessageBubble extends StatelessWidget {
                       child: m.payloadKind == MsgPayloadKind.attachment
                           ? _AttachmentBody(
                               message: m, onDownload: onDownload, prefs: prefs)
-                          : _TextBody(message: m),
+                          : selectionMenuBuilder == null
+                              ? _TextBody(message: m)
+                              : SelectionArea(
+                                  contextMenuBuilder: selectionMenuBuilder!,
+                                  child: _TextBody(message: m),
+                                ),
                     ),
                   ),
                   if (own) ...[
@@ -787,7 +971,7 @@ class _TextBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SelectableText(
+    return Text(
       message.text,
       style: const TextStyle(fontSize: 15, height: 1.35),
     );
@@ -1073,12 +1257,14 @@ class _InputBar extends StatelessWidget {
     required this.sending,
     required this.onSend,
     required this.onAttach,
+    this.onChanged,
   });
 
   final TextEditingController controller;
   final bool sending;
   final VoidCallback onSend;
   final VoidCallback onAttach;
+  final ValueChanged<String>? onChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -1105,6 +1291,7 @@ class _InputBar extends StatelessWidget {
                 minLines: 1,
                 maxLines: 5,
                 textInputAction: TextInputAction.send,
+                onChanged: onChanged,
                 onSubmitted: (_) => onSend(),
                 decoration: InputDecoration(
                   hintText: L.t.inputHint,
@@ -1574,4 +1761,46 @@ class _LeaveDialogState extends State<_LeaveDialog> {
       ],
     );
   }
+}
+
+/// Records each message card's global rect so the long-press popup can anchor
+/// directly below/above the card (QQ-style) instead of at the selection point.
+class _RectReporter extends StatefulWidget {
+  const _RectReporter({
+    required this.id,
+    required this.rects,
+    required this.child,
+  });
+
+  final String id;
+  final Map<String, Rect> rects;
+  final Widget child;
+
+  @override
+  State<_RectReporter> createState() => _RectReporterState();
+}
+
+class _RectReporterState extends State<_RectReporter> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _report());
+  }
+
+  @override
+  void didUpdateWidget(_RectReporter oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _report());
+  }
+
+  void _report() {
+    if (!mounted) return;
+    final box = context.findRenderObject();
+    if (box is RenderBox && box.hasSize) {
+      widget.rects[widget.id] = box.localToGlobal(Offset.zero) & box.size;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }

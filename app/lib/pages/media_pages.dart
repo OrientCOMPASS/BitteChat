@@ -1147,53 +1147,60 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
           if (_longPressSpeedActive) _buildSpeedChip(),
           // lock / unlock on the left edge — the only control while locked
           if (!_failed && (_uiVisible || _locked)) _buildLockButton(),
-          // top chrome
-          AnimatedOpacity(
-            opacity: _uiVisible ? 1 : 0,
-            duration: const Duration(milliseconds: 180),
-            child: IgnorePointer(
-              ignoring: !_uiVisible,
-              child: Container(
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [Colors.black87, Colors.transparent],
+          // top chrome. NOTE: must be wrapped in Align — a bare Stack child is
+          // expanded to the FULL screen by StackFit.expand, and its gradient
+          // Container then swallows every tap while the UI is visible (the
+          // lock button and single-finger seek became unreachable). Align keeps
+          // the hit-testable strip limited to the AppBar height.
+          Align(
+            alignment: Alignment.topCenter,
+            child: AnimatedOpacity(
+              opacity: _uiVisible ? 1 : 0,
+              duration: const Duration(milliseconds: 180),
+              child: IgnorePointer(
+                ignoring: !_uiVisible,
+                child: Container(
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [Colors.black87, Colors.transparent],
+                    ),
                   ),
-                ),
-                child: AppBar(
-                  backgroundColor: Colors.transparent,
-                  foregroundColor: Colors.white,
-                  title: Text(widget.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style:
-                          const TextStyle(color: Colors.white, fontSize: 15)),
-                  actions: [
-                    IconButton(
-                      color: Colors.white,
-                      tooltip: L.t.subtitle,
-                      icon: const Icon(Icons.subtitles_outlined, size: 20),
-                      onPressed: _openSubtitleMenu,
-                    ),
-                    IconButton(
-                      color: Colors.white,
-                      tooltip: _fit == BoxFit.contain
-                          ? L.t.fitContain
-                          : _fit == BoxFit.cover
-                              ? L.t.fitCover
-                              : L.t.fitFill,
-                      icon: const Icon(Icons.aspect_ratio, size: 20),
-                      onPressed: _cycleFit,
-                    ),
-                    IconButton(
-                      color: Colors.white,
-                      tooltip: L.t.openWith,
-                      icon: const Icon(Icons.open_in_new, size: 20),
-                      onPressed: () =>
-                          openWithExternalApp(widget.path, 'video/*'),
-                    ),
-                  ],
+                  child: AppBar(
+                    backgroundColor: Colors.transparent,
+                    foregroundColor: Colors.white,
+                    title: Text(widget.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style:
+                            const TextStyle(color: Colors.white, fontSize: 15)),
+                    actions: [
+                      IconButton(
+                        color: Colors.white,
+                        tooltip: L.t.subtitle,
+                        icon: const Icon(Icons.subtitles_outlined, size: 20),
+                        onPressed: _openSubtitleMenu,
+                      ),
+                      IconButton(
+                        color: Colors.white,
+                        tooltip: _fit == BoxFit.contain
+                            ? L.t.fitContain
+                            : _fit == BoxFit.cover
+                                ? L.t.fitCover
+                                : L.t.fitFill,
+                        icon: const Icon(Icons.aspect_ratio, size: 20),
+                        onPressed: _cycleFit,
+                      ),
+                      IconButton(
+                        color: Colors.white,
+                        tooltip: L.t.openWith,
+                        icon: const Icon(Icons.open_in_new, size: 20),
+                        onPressed: () =>
+                            openWithExternalApp(widget.path, 'video/*'),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),

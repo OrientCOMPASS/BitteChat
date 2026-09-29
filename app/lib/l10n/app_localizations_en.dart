@@ -565,10 +565,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get wallpaperNone => 'Not set';
 
   @override
-  String wallpaperSet(Object p) {
-    return 'Opacity $p%';
-  }
-
   @override
   String get wallpaperBlur => 'Blur wallpaper';
 
@@ -1208,6 +1204,37 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get speedActive => 'speed';
+
+  @override
+  @override
+  String get language => 'Language';
+
+  @override
+  String get langSystem => 'Follow system';
+
+  @override
+  String get langZh => 'Simplified Chinese';
+
+  @override
+  String get langEn => 'English';
+
+  @override
+  String get actCopy => 'Copy';
+
+  @override
+  String get actReply => 'Reply';
+
+  @override
+  String get actDm => 'DM';
+
+  @override
+  String get actBlock => 'Block';
+
+  @override
+  String get actId => 'ID';
+
+  @override
+  String get actSig => 'Verify';
 
   @override
   String get videoSoftwareDecodeNotice =>

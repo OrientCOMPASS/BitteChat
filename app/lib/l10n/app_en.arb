@@ -164,9 +164,8 @@
  "seedWallpaper": "Wallpaper auto-extract",
  "seedCustom": "Custom color",
  "pickColor": "Pick a theme color",
- "wallpaper": "Chat wallpaper",
+ "wallpaper": "Background image",
  "wallpaperNone": "Not set",
- "wallpaperSet": "Opacity {p}%",
  "wallpaperBlur": "Blur wallpaper",
  "opacity": "Opacity",
  "pickWallpaper": "Pick a wallpaper",
@@ -373,13 +372,6 @@
  "@deleteFeedQ": {
   "placeholders": {
    "name": {
-    "type": "Object"
-   }
-  }
- },
- "@wallpaperSet": {
-  "placeholders": {
-   "p": {
     "type": "Object"
    }
   }
@@ -703,6 +695,16 @@
  "fitCover": "Crop to fill",
  "fitFill": "Stretch to fill",
  "speedActive": "speed",
+ "language": "Language",
+ "langSystem": "Follow system",
+ "langZh": "Simplified Chinese",
+ "langEn": "English",
+ "actCopy": "Copy",
+ "actReply": "Reply",
+ "actDm": "DM",
+ "actBlock": "Block",
+ "actId": "ID",
+ "actSig": "Verify",
  "videoSoftwareDecodeNotice": "Using software decoding (hardware decoder lacks this codec)",
  "videoSpeed": "Playback speed"
 }

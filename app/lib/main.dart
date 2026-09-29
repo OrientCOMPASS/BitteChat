@@ -147,6 +147,7 @@ class _BitteChatAppState extends State<BitteChatApp> {
       theme: _theme(Brightness.light),
       darkTheme: _theme(Brightness.dark),
       themeMode: widget.prefs.materialThemeMode(),
+      locale: widget.prefs.localeOverride(),
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
       builder: (context, child) {

@@ -40,6 +40,20 @@ class UiPrefs extends ChangeNotifier {
   /// Playback rate applied when a video is opened.
   double playDefaultSpeed = 1.0;
 
+  /// UI language override: 'system' | 'zh' | 'en'.
+  String localePref = 'system';
+
+  Locale? localeOverride() {
+    switch (localePref) {
+      case 'zh':
+        return const Locale('zh');
+      case 'en':
+        return const Locale('en');
+      default:
+        return null; // follow the system
+    }
+  }
+
   /// 运行时缓存：从壁纸提取的主色
   Color? wallpaperSeed;
 
@@ -76,6 +90,7 @@ class UiPrefs extends ChangeNotifier {
               (j['playLongPressSpeed'] as num?)?.toDouble() ?? 2.0;
           prefs.playDefaultSpeed =
               (j['playDefaultSpeed'] as num?)?.toDouble() ?? 1.0;
+          prefs.localePref = (j['locale'] as String?) ?? 'system';
         }
       }
     } catch (_) {}
@@ -96,6 +111,7 @@ class UiPrefs extends ChangeNotifier {
         'playDoubleTapSideSeek': playDoubleTapSideSeek,
         'playLongPressSpeed': playLongPressSpeed,
         'playDefaultSpeed': playDefaultSpeed,
+        'locale': localePref,
       }));
     } catch (_) {}
     notifyListeners();

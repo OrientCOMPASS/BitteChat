@@ -497,6 +497,41 @@ class _SettingsPageState extends State<SettingsPage> {
   /// `1.0× / 1.5× / 2.0×` — one decimal keeps the picker column tidy.
   String _fmtX(double r) => r == r.roundToDouble() ? '${r.toInt()}.0×' : '$r×';
 
+  String _localeLabel(String v) {
+    switch (v) {
+      case 'zh':
+        return L.t.langZh;
+      case 'en':
+        return L.t.langEn;
+      default:
+        return L.t.langSystem;
+    }
+  }
+
+  Future<void> _pickLocale(BuildContext context) async {
+    final picked = await showDialog<String>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: Text(L.t.language),
+        children: [
+          for (final o in const ['system', 'zh', 'en'])
+            ListTile(
+              dense: true,
+              leading: Icon(o == widget.prefs.localePref
+                  ? Icons.radio_button_checked
+                  : Icons.radio_button_off),
+              title: Text(_localeLabel(o)),
+              onTap: () => Navigator.pop(ctx, o),
+            ),
+        ],
+      ),
+    );
+    if (picked == null) return;
+    widget.prefs.localePref = picked;
+    await widget.prefs.save();
+    if (mounted) setState(() {});
+  }
+
   /// Radio-style picker used by the playback-speed settings.
   Future<void> _pickSpeed(
     BuildContext context, {
@@ -733,13 +768,17 @@ class _SettingsPageState extends State<SettingsPage> {
             onTap: () => _pickSeedSource(context),
           ),
           ListTile(
+            leading: Icon(Icons.language),
+            title: Text(L.t.language),
+            trailing: Text(_localeLabel(widget.prefs.localePref)),
+            onTap: () => _pickLocale(context),
+          ),
+          ListTile(
             leading: Icon(Icons.image_outlined),
             title: Text(L.t.wallpaper),
-            subtitle: Text(widget.prefs.wallpaperPath == null
-                ? L.t.wallpaperNone
-                : L.t.wallpaperSet(
-                        (widget.prefs.wallpaperOpacity * 100).round()) +
-                    (widget.prefs.wallpaperBlur ? L.t.blurredMark : '')),
+            subtitle: widget.prefs.wallpaperPath == null
+                ? Text(L.t.wallpaperNone)
+                : (widget.prefs.wallpaperBlur ? Text(L.t.blurredMark) : null),
             trailing: widget.prefs.wallpaperPath != null
                 ? Row(
                     mainAxisSize: MainAxisSize.min,
@@ -807,6 +846,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       },
                     ),
                   ),
+                  Text('${(widget.prefs.wallpaperOpacity * 100).round()}%'),
                 ],
               ),
             ),
@@ -913,7 +953,7 @@ class _SettingsPageState extends State<SettingsPage> {
           AboutListTile(
             icon: Icon(Icons.favorite_outline),
             applicationName: 'BitteChat',
-            applicationVersion: '${_info['version'] ?? '0.5.9'}',
+            applicationVersion: '${_info['version'] ?? '0.5.10'}',
             aboutBoxChildren: [
               Text(
                 '${L.t.aboutDesc}${L.t.aboutDesc2}'

@@ -1,7 +1,7 @@
 name: bittechat
 description: "BitteChat — 去中心化 BitTorrent 群聊客户端（种子即群聊，消息哈希链防篡改）"
 publish_to: "none"
-version: 0.5.9+14
+version: 0.5.10+15
 
 environment:
   sdk: ">=3.5.0 <4.0.0"

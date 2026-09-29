@@ -1094,12 +1094,6 @@ abstract class AppLocalizations {
   /// **'未设置'**
   String get wallpaperNone;
 
-  /// No description provided for @wallpaperSet.
-  ///
-  /// In zh, this message translates to:
-  /// **'不透明度 {p}%'**
-  String wallpaperSet(Object p);
-
   /// No description provided for @wallpaperBlur.
   ///
   /// In zh, this message translates to:
@@ -2227,6 +2221,66 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'倍速中'**
   String get speedActive;
+
+  /// No description provided for @language.
+  ///
+  /// In zh, this message translates to:
+  /// **'语言'**
+  String get language;
+
+  /// No description provided for @langSystem.
+  ///
+  /// In zh, this message translates to:
+  /// **'跟随系统'**
+  String get langSystem;
+
+  /// No description provided for @langZh.
+  ///
+  /// In zh, this message translates to:
+  /// **'简体中文'**
+  String get langZh;
+
+  /// No description provided for @langEn.
+  ///
+  /// In zh, this message translates to:
+  /// **'English'**
+  String get langEn;
+
+  /// No description provided for @actCopy.
+  ///
+  /// In zh, this message translates to:
+  /// **'复制'**
+  String get actCopy;
+
+  /// No description provided for @actReply.
+  ///
+  /// In zh, this message translates to:
+  /// **'回复'**
+  String get actReply;
+
+  /// No description provided for @actDm.
+  ///
+  /// In zh, this message translates to:
+  /// **'私聊'**
+  String get actDm;
+
+  /// No description provided for @actBlock.
+  ///
+  /// In zh, this message translates to:
+  /// **'屏蔽'**
+  String get actBlock;
+
+  /// No description provided for @actId.
+  ///
+  /// In zh, this message translates to:
+  /// **'ID'**
+  String get actId;
+
+  /// No description provided for @actSig.
+  ///
+  /// In zh, this message translates to:
+  /// **'验签'**
+  String get actSig;
 
   /// No description provided for @videoSoftwareDecodeNotice.
   ///

@@ -551,10 +551,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get wallpaperNone => '未设置';
 
   @override
-  String wallpaperSet(Object p) {
-    return '不透明度 $p%';
-  }
-
   @override
   String get wallpaperBlur => '背景模糊';
 
@@ -1168,6 +1164,37 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get speedActive => '倍速中';
+
+  @override
+  @override
+  String get language => '语言';
+
+  @override
+  String get langSystem => '跟随系统';
+
+  @override
+  String get langZh => '简体中文';
+
+  @override
+  String get langEn => 'English';
+
+  @override
+  String get actCopy => '复制';
+
+  @override
+  String get actReply => '回复';
+
+  @override
+  String get actDm => '私聊';
+
+  @override
+  String get actBlock => '屏蔽';
+
+  @override
+  String get actId => 'ID';
+
+  @override
+  String get actSig => '验签';
 
   @override
   String get videoSoftwareDecodeNotice => '正在使用软件解码（硬件解码器不支持此编码）';

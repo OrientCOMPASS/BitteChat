@@ -293,8 +293,8 @@ class _ChatTabState extends State<ChatTab> {
                         : _GroupTile(
                             group: _groups[i],
                             onTap: () => _openGroup(_groups[i]),
-                            onLongPress: () =>
-                                _showConversationMenu(_groups[i]),
+                            onLongPress: (pos) =>
+                                _showConversationMenu(_groups[i], pos),
                           ),
                   ),
                 ),
@@ -343,96 +343,63 @@ class _ChatTabState extends State<ChatTab> {
 
   // ------------------------------------------------------- long-press menu
 
-  /// Long-press a conversation row for quick actions (mark read / rename note /
-  /// copy invite / resync / block / leave) without opening the room. Mirrors
-  /// the actions in the room's own info sheet, using the same strings.
-  void _showConversationMenu(GroupSummary g) {
-    HapticFeedback.mediumImpact();
-    showModalBottomSheet<void>(
+  /// Long-press a conversation row: a floating popup menu anchored at the
+  /// press point (NOT a bottom sheet). DMs only offer read/block — rename and
+  /// leave are group-only.
+  Future<void> _showConversationMenu(GroupSummary g, Offset pos) async {
+    final size = MediaQuery.sizeOf(context);
+    final action = await showMenu<String>(
       context: context,
-      showDragHandle: true,
-      builder: (ctx) {
-        final theme = Theme.of(ctx);
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                child: Row(
-                  children: [
-                    GroupAvatar(name: g.name, keyHex: g.id, size: 36),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(g.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontWeight: FontWeight.w600)),
-                    ),
-                  ],
-                ),
-              ),
-              const Divider(height: 1),
-              if (g.unread > 0)
-                ListTile(
-                  leading: const Icon(Icons.mark_chat_read_outlined),
-                  title: Text(L.t.markAsRead),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    _markRead(g);
-                  },
-                ),
-              ListTile(
-                leading: const Icon(Icons.edit_outlined),
-                title: Text(L.t.renameGroup),
-                subtitle: Text(L.t.renameLocalNote),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _renameGroup(g);
-                },
-              ),
-              if (!g.dm)
-                ListTile(
-                  leading: const Icon(Icons.link),
-                  title: Text(L.t.copyInviteLink),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    _copyInvite(g);
-                  },
-                ),
-              if (!g.dm)
-                ListTile(
-                  leading: const Icon(Icons.sync),
-                  title: Text(L.t.resync),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    _resync(g);
-                  },
-                ),
-              if (g.dm)
-                ListTile(
-                  leading: const Icon(Icons.block),
-                  title: Text(L.t.block),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    _blockPeer(g);
-                  },
-                ),
-              ListTile(
-                leading: Icon(Icons.logout, color: theme.colorScheme.error),
-                title: Text(L.t.leaveGroup,
-                    style: TextStyle(color: theme.colorScheme.error)),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _leaveGroup(g);
-                },
-              ),
-              const SizedBox(height: 8),
-            ],
-          ),
-        );
-      },
+      position: RelativeRect.fromRect(
+          Rect.fromLTWH(pos.dx, pos.dy, 1, 1), Offset.zero & size),
+      items: [
+        if (g.unread > 0)
+          PopupMenuItem(
+              value: 'read',
+              icon: const Icon(Icons.mark_chat_read_outlined),
+              child: Text(L.t.markAsRead)),
+        if (!g.dm)
+          PopupMenuItem(
+              value: 'rename',
+              icon: const Icon(Icons.edit_outlined),
+              child: Text(L.t.renameGroup)),
+        if (!g.dm)
+          PopupMenuItem(
+              value: 'copy',
+              icon: const Icon(Icons.link),
+              child: Text(L.t.copyInviteLink)),
+        if (!g.dm)
+          PopupMenuItem(
+              value: 'sync',
+              icon: const Icon(Icons.sync),
+              child: Text(L.t.resync)),
+        if (g.dm)
+          PopupMenuItem(
+              value: 'block',
+              icon: const Icon(Icons.block),
+              child: Text(L.t.block)),
+        if (!g.dm)
+          PopupMenuItem(
+              value: 'leave',
+              icon: const Icon(Icons.logout),
+              child: Text(L.t.leaveGroup)),
+      ],
     );
+    if (action == null || !mounted) return;
+    switch (action) {
+      case 'read':
+        _markRead(g);
+      case 'rename':
+        _renameGroup(g);
+      case 'copy':
+        _copyInvite(g);
+      case 'sync':
+        _resync(g);
+      case 'block':
+        _blockPeer(g);
+      case 'leave':
+        _leaveGroup(g);
+    }
   }
 
   void _markRead(GroupSummary g) {
@@ -560,7 +527,7 @@ class _GroupTile extends StatelessWidget {
 
   final GroupSummary group;
   final VoidCallback onTap;
-  final VoidCallback? onLongPress;
+  final void Function(Offset globalPosition)? onLongPress;
 
   @override
   Widget build(BuildContext context) {
@@ -570,7 +537,17 @@ class _GroupTile extends StatelessWidget {
         : '${group.previewOwn ? '我' : group.previewAuthor}: ${group.previewText}';
     return ListTile(
       onTap: onTap,
-      onLongPress: onLongPress,
+      onLongPress: onLongPress == null
+          ? null
+          : () {
+              // ListTile gives no position; read the row rect instead so the
+              // popup anchors to the entry, not the raw finger point.
+              final box = context.findRenderObject();
+              final off = box is RenderBox
+                  ? box.localToGlobal(Offset(0, box.size.height * 0.5))
+                  : Offset.zero;
+              onLongPress!(off);
+            },
       leading: Stack(
         children: [
           GroupAvatar(name: group.name, keyHex: group.id, size: 48),
