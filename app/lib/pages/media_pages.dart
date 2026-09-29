@@ -589,10 +589,8 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     final h = v.h ?? 0;
     if (w == 0 || h == 0) return;
     // mpv reports the stored frame plus a rotation to apply; 90/270 swap the
-    // displayed axes. `rotate` may surface as int or double across media_kit
-    // versions, so normalise through num.
-    final r = v.rotate;
-    final rot = (r is num ? r.toDouble() : 0.0).abs() % 360;
+    // displayed axes. `rotate` is a nullable int (degrees).
+    final rot = (v.rotate ?? 0).toDouble().abs() % 360;
     final swap = (rot - 90).abs() < 0.5 || (rot - 270).abs() < 0.5;
     final dw = swap ? h : w;
     final dh = swap ? w : h;
