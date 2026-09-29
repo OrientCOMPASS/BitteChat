@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 
 import '../core/applog.dart';
+import '../core/media_focus.dart';
 
 /// Process-wide audio player shared by all [AudioRow]s.
 class _SharedAudio {
@@ -50,6 +51,19 @@ class _SharedAudio {
       await p.stop();
     } catch (_) {}
     currentPath = null;
+    // we are no longer making noise: give the system audio focus back (a no-op
+    // if another in-app surface, e.g. the video page, already took it over)
+    await MediaFocus.instance.release(instance);
+  }
+
+  /// Focus-loss / hand-off callback: pause without tearing down the loaded
+  /// file, so the row can resume. Used as the [MediaFocus] onStop for audio.
+  Future<void> stopForFocus() async {
+    final p = _player;
+    if (p == null) return;
+    try {
+      await p.pause();
+    } catch (_) {}
   }
 }
 
@@ -98,6 +112,8 @@ class _AudioRowState extends State<AudioRow> {
             _completed = v;
             if (v) _playing = false;
           });
+          // playback finished on its own: stop holding the system audio focus
+          if (v) unawaited(MediaFocus.instance.release(_SharedAudio.instance));
         }
       }),
       p.stream.position.listen((v) {
@@ -128,8 +144,17 @@ class _AudioRowState extends State<AudioRow> {
     if (p == null || !mounted) return;
     if (_mine && _playing) {
       await p.pause();
+      // user paused: give the system audio focus back so other media resumes,
+      // and do not let it be yanked again until the user presses play
+      await MediaFocus.instance.release(shared);
       return;
     }
+    // starting/resuming: take over the audio path. This is the "playback
+    // preemption" — it pauses whatever else is playing on the device (music
+    // app, browser) AND our own video player, instead of mixing on top.
+    await MediaFocus.instance.setAcceptGain(true);
+    await MediaFocus.instance.acquire(shared, shared.stopForFocus);
+    if (!mounted) return;
     if (_mine && _completed) {
       setState(() => _completed = false);
       await p.seek(Duration.zero);

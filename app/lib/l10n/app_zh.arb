@@ -627,10 +627,6 @@
   }
  },
  "exportLogsFail": "导出失败：",
- "videoDecoder": "视频解码",
- "videoDecoderSoftware": "软件解码（兼容优先）",
- "videoDecoderHardware": "硬件解码优先（省电）",
- "videoDecoderHint": "遇到视频\"有声无画\"请保持软件解码；硬件解码更省电，但部分机型/编码会黑屏。切换后对新打开的视频生效",
  "videoDecoderTip": "无法播放？可点「外部打开」，并到 设置 → 导出日志 反馈",
  "avatarLocalOnly": "头像与昵称仅保存在本机，不会广播给其他用户",
  "renameLocalNote": "备注仅自己可见，不会广播",
@@ -657,7 +653,6 @@
  "attPhaseCopy": "正在复制到做种目录…",
  "attPhaseSeed": "正在做种并发送…",
  "attachFailed": "附件发送失败",
- "videoDecoderHardwareOnly": "硬件解码（MediaCodec）· 解码失败将明确报错",
  "dmRequestSubtitle": "请求与你私聊",
  "block": "屏蔽",
  "dmBlocked": "已屏蔽该用户",
@@ -687,21 +682,10 @@
  "wallpaperPaddingTransparent": "透明",
  "wallpaperPaddingBlack": "纯黑",
  "wallpaperPaddingWhite": "纯白",
- "wallpaperPaddingExtend": "边缘扩展",
  "wallpaperEditGestureHint": "单指拖动 · 双指缩放/旋转 · 双击复位",
  "wallpaperCropHint": "取景框比屏幕宽一圈，保存后按屏幕比例裁掉两侧；虚线框内为最终显示范围",
- "wallpaperPaddingExtendHint": "留白按图片最外一圈像素向外延展填充",
- "videoDecoderChainNote": "解码链：零拷贝硬解 → 硬解回读 → 软解（黑屏会自动降级并记住本机可用档位）",
- "videoDecoderSwActive": "软解渲染",
  "deleteLocalHistory": "同时删除本地聊天记录",
  "deleteLocalHistoryHint": "清空本机的消息与哈希链头指针（进错哈希链后可用它重置）。重新进入同一种子会从 DHT/在线成员重新同步。",
- "videoDecoderSwitch": "已切换到「{tier}」解码",
- "@videoDecoderSwitch": {
-  "placeholders": {
-   "tier": {
-    "type": "Object"
-   }
-  }
- },
+ "videoSoftwareDecodeNotice": "正在使用软件解码（硬件解码器不支持此编码）",
  "videoSpeed": "倍速"
 }

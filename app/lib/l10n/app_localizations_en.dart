@@ -1008,19 +1008,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get exportLogsFail => 'Export failed: ';
 
   @override
-  String get videoDecoder => 'Video decoding';
-
-  @override
-  String get videoDecoderSoftware => 'Software (compatibility first)';
-
-  @override
-  String get videoDecoderHardware => 'Hardware first (battery saver)';
-
-  @override
-  String get videoDecoderHint =>
-      'Keep software decoding if videos play audio with a black picture; hardware decoding saves battery but renders black on some device/codec combinations. Applies to newly opened videos';
-
-  @override
   String get videoDecoderTip =>
       'Playback failed? Use \"Open with\" and report it via Settings → Export logs';
 
@@ -1083,10 +1070,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get attachFailed => 'Attachment failed';
-
-  @override
-  String get videoDecoderHardwareOnly =>
-      'Hardware decoding (MediaCodec) · failures are reported explicitly';
 
   @override
   String get dmRequestSubtitle => 'wants to start a private chat';
@@ -1159,26 +1142,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get wallpaperPaddingWhite => 'White';
 
   @override
-  String get wallpaperPaddingExtend => 'Extend edges';
-
-  @override
   String get wallpaperEditGestureHint =>
       'Drag to move · pinch to zoom & rotate · double-tap to reset';
 
   @override
   String get wallpaperCropHint =>
       'The canvas is wider than the screen: the saved image is cropped to the screen ratio, so only the dashed area is finally visible';
-
-  @override
-  String get wallpaperPaddingExtendHint =>
-      'The margin is filled by extending the picture\'s outermost pixels';
-
-  @override
-  String get videoDecoderChainNote =>
-      'Decode ladder: zero-copy hw → hw read-back → software (a stalled picture downgrades automatically and the working rung is remembered)';
-
-  @override
-  String get videoDecoderSwActive => 'software rendering';
 
   @override
   String get deleteLocalHistory => 'Also delete local history';
@@ -1188,9 +1157,8 @@ class AppLocalizationsEn extends AppLocalizations {
       'Wipes this device\'s messages and DAG heads (the reset path after joining the wrong hash chain). Re-entering the same torrent re-syncs from the DHT and online members.';
 
   @override
-  String videoDecoderSwitch(Object tier) {
-    return 'Switched to the “$tier” decoder';
-  }
+  String get videoSoftwareDecodeNotice =>
+      'Using software decoding (hardware decoder lacks this codec)';
 
   @override
   String get videoSpeed => 'Playback speed';

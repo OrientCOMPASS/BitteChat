@@ -978,19 +978,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get exportLogsFail => '导出失败：';
 
   @override
-  String get videoDecoder => '视频解码';
-
-  @override
-  String get videoDecoderSoftware => '软件解码（兼容优先）';
-
-  @override
-  String get videoDecoderHardware => '硬件解码优先（省电）';
-
-  @override
-  String get videoDecoderHint =>
-      '遇到视频\"有声无画\"请保持软件解码；硬件解码更省电，但部分机型/编码会黑屏。切换后对新打开的视频生效';
-
-  @override
   String get videoDecoderTip => '无法播放？可点「外部打开」，并到 设置 → 导出日志 反馈';
 
   @override
@@ -1048,9 +1035,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get attachFailed => '附件发送失败';
-
-  @override
-  String get videoDecoderHardwareOnly => '硬件解码（MediaCodec）· 解码失败将明确报错';
 
   @override
   String get dmRequestSubtitle => '请求与你私聊';
@@ -1122,22 +1106,10 @@ class AppLocalizationsZh extends AppLocalizations {
   String get wallpaperPaddingWhite => '纯白';
 
   @override
-  String get wallpaperPaddingExtend => '边缘扩展';
-
-  @override
   String get wallpaperEditGestureHint => '单指拖动 · 双指缩放/旋转 · 双击复位';
 
   @override
   String get wallpaperCropHint => '取景框比屏幕宽一圈，保存后按屏幕比例裁掉两侧；虚线框内为最终显示范围';
-
-  @override
-  String get wallpaperPaddingExtendHint => '留白按图片最外一圈像素向外延展填充';
-
-  @override
-  String get videoDecoderChainNote => '解码链：零拷贝硬解 → 硬解回读 → 软解（黑屏会自动降级并记住本机可用档位）';
-
-  @override
-  String get videoDecoderSwActive => '软解渲染';
 
   @override
   String get deleteLocalHistory => '同时删除本地聊天记录';
@@ -1147,9 +1119,7 @@ class AppLocalizationsZh extends AppLocalizations {
       '清空本机的消息与哈希链头指针（进错哈希链后可用它重置）。重新进入同一种子会从 DHT/在线成员重新同步。';
 
   @override
-  String videoDecoderSwitch(Object tier) {
-    return '已切换到「$tier」解码';
-  }
+  String get videoSoftwareDecodeNotice => '正在使用软件解码（硬件解码器不支持此编码）';
 
   @override
   String get videoSpeed => '倍速';

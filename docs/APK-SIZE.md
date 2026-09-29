@@ -1,5 +1,13 @@
 # 安装包体积构成分析（v0.4.5 与 v0.5.0 均为实测）
 
+> **v0.5.8 更新**：§4 的方案 A（分 ABI 发布）**已实施**——CI 用
+> `flutter build apk --release --split-per-abi` 产出 `arm64-v8a` / `x86_64`
+> 两个**架构专用包**（命名 `BitteChat-<版本>-android-<abi>.apk`），Release 同时
+> 挂出，真机只下自己那一半。下文 §1/§3 的 fvp（libmdk+libffmpeg）数字是
+> **v0.5.0 的历史实测**：该播放后端已在 v0.5.2 整体换成 media_kit(libmpv)
+> （见 §3.1），`libffmpeg.so`/`libmdk.so`/`libass.so`/`libfvp.so` 均不再随包发行
+> （当前 FFmpeg 仅以 libmpv 内部依赖形式存在，不再有独立的 `libffmpeg.so`）。
+>
 > 实测对象：
 > **v0.4.5**：GitHub Release `app-release.apk`（universal，arm64-v8a + x86_64），79,748,897 字节 ≈ **79.7 MB**（约 76 MiB，即用户看到"约 70MB"的那个包）。
 > **v0.5.0**：CI artifact（commit `d789a6e`，同配置 universal），105,967,177 字节 ≈ **106.0 MB**。
@@ -86,18 +94,19 @@ media_kit(libmpv)，音频播放亦从 audioplayers 并入 mpv。universal 包�
 按架构切分：**arm64-v8a ≈ 53.1 MB，x86_64 ≈ 59.0 MB，架构无关 ≈ 1.0 MB**
 → 分 ABI 后真机（arm64）APK ≈ **54.1 MB**（方案 A 的收益不变，见 §4）。
 
-## 4. 瘦身选项（待确认，暂未实施）
+## 4. 瘦身选项（A 已于 v0.5.8 实施）
 
 | 方案 | 效果（实测口径） | 代价 |
 |---|---|---|
-| **A. 分 ABI 发布**（`flutter build apk --split-per-abi`，Release 同时挂 arm64-v8a / x86_64 两个 APK） | 真机下载 **v0.5.0：106 → ~52 MB（-51%）**；v0.4.5 口径：79.7 → ~39 MB | 无功能损失；Release 页多一个文件（普通用户下 arm64 版） |
+| ✅ **A. 分 ABI 发布**（v0.5.8 已落地：`flutter build apk --release --split-per-abi`，Release 同时挂 arm64-v8a / x86_64 两个 APK） | 真机下载 **v0.5.0：106 → ~52 MB（-51%）**；v0.4.5 口径：79.7 → ~39 MB | 无功能损失；Release 页多一个文件（普通用户下 arm64 版） |
 | B. 发布只保留 arm64-v8a（x86_64 仅 CI 模拟器用） | 单 APK ~52 MB | x86 设备/模拟器用户需自取 CI artifact |
 | C. Rust profile 再压：`lto="fat"` + `codegen-units=1` + `opt-level="s"` | libbitte_core.so 预计 -15~30%（每架构 -3~5 MB） | CI 构建时间上升；BT 吞吐路径性能略降（本应用为 I/O 密集，影响可忽略） |
-| D. 裁掉 fvp 的 libass（内封字幕渲染） | arm64 约 -1.4 MB（x86_64 本就未打包） | 播放内封字幕的影片无字幕 |
-| E. fvp 只保留 arm64（真机）而 x86_64 用平台解码器 | x86_64 包 -13.1 MB（对真机用户无意义，仅 CI/模拟器受益） | 模拟器上视频行为与真机不一致 |
 | F. 上架 Google Play 用 AAB | 商店按设备投递 ~52 MB | 与 GitHub Release APK 分发无关 |
 
-**建议**：A（必做，零代价砍半）+ C（可选）；D/E 收益有限，视需求决定。
+> 旧表的 D/E（裁 fvp 的 libass、fvp 只留 arm64）随 fvp 在 v0.5.2 被 media_kit
+> 取代而作废，已删除。
+
+**结论**：A 已实施（零代价砍半）；C 可选（进一步压 Rust 核心）；B/F 视分发渠道决定。
 
 ## 5. 复测方法
 

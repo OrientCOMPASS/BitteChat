@@ -41,20 +41,71 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
   Matrix4? _snapFrom;
   String? _error;
 
+  /// Native pixel size of the picture, resolved once — lets the zoom-out floor
+  /// be resolution-aware (see [_minScaleFor]).
+  Size? _native;
+  ImageStream? _stream;
+  ImageStreamListener? _listener;
+
   static const double _zoomedScale = 2.5;
 
-  /// Users asked to be able to pinch the WHOLE picture smaller than the screen
-  /// (to see it in context), springing back to fit-size on release — like the
-  /// iOS/WeChat photo viewers.
+  /// Default zoom-out floor (fraction of the fit-to-screen size). The effective
+  /// floor is LOWERED for pictures that `contain` upscales, so the user can
+  /// always shrink the image down to 50% of its ORIGINAL size (the v0.5.7
+  /// "pinch the whole picture smaller, spring back on release" behaviour, just
+  /// with a longer reach). See [_minScaleFor].
   static const double _minScale = 0.3;
 
   @override
+  void initState() {
+    super.initState();
+    _resolveNativeSize();
+  }
+
+  void _resolveNativeSize() {
+    final provider = FileImage(File(widget.path));
+    _stream = provider.resolve(const ImageConfiguration());
+    _listener = ImageStreamListener(
+      (info, _) {
+        if (mounted) {
+          setState(() => _native = Size(
+              info.image.width.toDouble(), info.image.height.toDouble()));
+        }
+      },
+      // a decode error leaves _native null → we fall back to the fixed floor
+      onError: (e, st) {},
+    );
+    _stream!.addListener(_listener!);
+  }
+
+  @override
   void dispose() {
+    final s = _stream;
+    final l = _listener;
+    if (s != null && l != null) s.removeListener(l);
     _snap
       ..removeListener(_onSnapTick)
       ..dispose();
     _controller.dispose();
     super.dispose();
+  }
+
+  /// Zoom-out floor for a [box]-sized viewport: low enough that the picture can
+  /// be shrunk to 50% of its ORIGINAL pixel size, but never higher than the
+  /// [_minScale] default. A big photo (which `contain` already shrinks) keeps
+  /// the default; a small picture that `contain` UPSCALES gets a lower floor so
+  /// 50%-of-original stays reachable.
+  double _minScaleFor(Size box) {
+    final n = _native;
+    if (n == null || n.width <= 0 || n.height <= 0) return _minScale;
+    if (box.width <= 0 || box.height <= 0) return _minScale;
+    final fit = (box.width / n.width) < (box.height / n.height)
+        ? box.width / n.width
+        : box.height / n.height;
+    if (fit <= 0) return _minScale;
+    final target = 0.5 / fit; // InteractiveViewer scale == 50% of original
+    if (target < 0.01) return 0.01;
+    return target > _minScale ? _minScale : target;
   }
 
   /// If the user released the pinch while zoomed out, animate back to 1x.
@@ -132,33 +183,36 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
                     style: const TextStyle(color: Colors.white70)),
               ),
             )
-          : InteractiveViewer(
-              transformationController: _controller,
-              // constrained: true hands the viewport's TIGHT constraints to
-              // the child, so `BoxFit.contain` fits the picture to the screen
-              // instead of laying it out at its intrinsic pixel size
-              minScale: _minScale,
-              maxScale: 6,
-              boundaryMargin: const EdgeInsets.all(96),
-              onInteractionEnd: _onInteractionEnd,
-              child: GestureDetector(
-                onDoubleTap: _onDoubleTap,
-                child: SizedBox.expand(
-                  child: Image.file(
-                    File(widget.path),
-                    fit: BoxFit.contain,
-                    gaplessPlayback: true,
-                    filterQuality: FilterQuality.high,
-                    errorBuilder: (_, e, ___) {
-                      WidgetsBinding.instance.addPostFrameCallback((_) {
-                        if (mounted && _error == null) {
-                          setState(() => _error = '$e');
-                        }
-                      });
-                      return const Center(
-                        child: CircularProgressIndicator(color: Colors.white38),
-                      );
-                    },
+          : LayoutBuilder(
+              builder: (context, constraints) => InteractiveViewer(
+                transformationController: _controller,
+                // constrained: true hands the viewport's TIGHT constraints to
+                // the child, so `BoxFit.contain` fits the picture to the screen
+                // instead of laying it out at its intrinsic pixel size
+                minScale: _minScaleFor(constraints.biggest),
+                maxScale: 6,
+                boundaryMargin: const EdgeInsets.all(96),
+                onInteractionEnd: _onInteractionEnd,
+                child: GestureDetector(
+                  onDoubleTap: _onDoubleTap,
+                  child: SizedBox.expand(
+                    child: Image.file(
+                      File(widget.path),
+                      fit: BoxFit.contain,
+                      gaplessPlayback: true,
+                      filterQuality: FilterQuality.high,
+                      errorBuilder: (_, e, ___) {
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          if (mounted && _error == null) {
+                            setState(() => _error = '$e');
+                          }
+                        });
+                        return const Center(
+                          child:
+                              CircularProgressIndicator(color: Colors.white38),
+                        );
+                      },
+                    ),
                   ),
                 ),
               ),

@@ -1856,30 +1856,6 @@ abstract class AppLocalizations {
   /// **'导出失败：'**
   String get exportLogsFail;
 
-  /// No description provided for @videoDecoder.
-  ///
-  /// In zh, this message translates to:
-  /// **'视频解码'**
-  String get videoDecoder;
-
-  /// No description provided for @videoDecoderSoftware.
-  ///
-  /// In zh, this message translates to:
-  /// **'软件解码（兼容优先）'**
-  String get videoDecoderSoftware;
-
-  /// No description provided for @videoDecoderHardware.
-  ///
-  /// In zh, this message translates to:
-  /// **'硬件解码优先（省电）'**
-  String get videoDecoderHardware;
-
-  /// No description provided for @videoDecoderHint.
-  ///
-  /// In zh, this message translates to:
-  /// **'遇到视频\"有声无画\"请保持软件解码；硬件解码更省电，但部分机型/编码会黑屏。切换后对新打开的视频生效'**
-  String get videoDecoderHint;
-
   /// No description provided for @videoDecoderTip.
   ///
   /// In zh, this message translates to:
@@ -1993,12 +1969,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'附件发送失败'**
   String get attachFailed;
-
-  /// No description provided for @videoDecoderHardwareOnly.
-  ///
-  /// In zh, this message translates to:
-  /// **'硬件解码（MediaCodec）· 解码失败将明确报错'**
-  String get videoDecoderHardwareOnly;
 
   /// No description provided for @dmRequestSubtitle.
   ///
@@ -2132,12 +2102,6 @@ abstract class AppLocalizations {
   /// **'纯白'**
   String get wallpaperPaddingWhite;
 
-  /// No description provided for @wallpaperPaddingExtend.
-  ///
-  /// In zh, this message translates to:
-  /// **'边缘扩展'**
-  String get wallpaperPaddingExtend;
-
   /// No description provided for @wallpaperEditGestureHint.
   ///
   /// In zh, this message translates to:
@@ -2149,24 +2113,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'取景框比屏幕宽一圈，保存后按屏幕比例裁掉两侧；虚线框内为最终显示范围'**
   String get wallpaperCropHint;
-
-  /// No description provided for @wallpaperPaddingExtendHint.
-  ///
-  /// In zh, this message translates to:
-  /// **'留白按图片最外一圈像素向外延展填充'**
-  String get wallpaperPaddingExtendHint;
-
-  /// No description provided for @videoDecoderChainNote.
-  ///
-  /// In zh, this message translates to:
-  /// **'解码链：零拷贝硬解 → 硬解回读 → 软解（黑屏会自动降级并记住本机可用档位）'**
-  String get videoDecoderChainNote;
-
-  /// No description provided for @videoDecoderSwActive.
-  ///
-  /// In zh, this message translates to:
-  /// **'软解渲染'**
-  String get videoDecoderSwActive;
 
   /// No description provided for @deleteLocalHistory.
   ///
@@ -2180,11 +2126,11 @@ abstract class AppLocalizations {
   /// **'清空本机的消息与哈希链头指针（进错哈希链后可用它重置）。重新进入同一种子会从 DHT/在线成员重新同步。'**
   String get deleteLocalHistoryHint;
 
-  /// No description provided for @videoDecoderSwitch.
+  /// No description provided for @videoSoftwareDecodeNotice.
   ///
   /// In zh, this message translates to:
-  /// **'已切换到「{tier}」解码'**
-  String videoDecoderSwitch(Object tier);
+  /// **'正在使用软件解码（硬件解码器不支持此编码）'**
+  String get videoSoftwareDecodeNotice;
 
   /// No description provided for @videoSpeed.
   ///

@@ -9,9 +9,14 @@
 //     `vo/gpu/aimagereader … Waiting for frame timed out! / acquireLatestImage
 //     failed: -30001`），所以从 v0.5.6 起按「零拷贝硬解 → 硬解回读 → 软解」
 //     三档自动降级续播，并把该机型最终可用的档位记下来。
-//   * 播放体验（v0.5.7）：播放中控制条 **3 秒无操作自动隐藏**（点按唤回，隐藏
-//     时进入沉浸模式）；**倍速 0.5×–3×**；开始出声时申请 **Android 音频焦点**
-//     并停掉应用内共享语音条，避免和别的媒体叠播。
+//   * 播放体验（v0.5.8）：单击画面**切换控制条显隐**（隐藏时进入沉浸模式，
+//     3 秒无操作自动隐藏）；**画面上左右滑动微调进度**（带目标位置预览）；
+//     **按视频宽高比自动决定全屏方向**（宽→横屏、竖→竖屏，离开页面恢复）；
+//     「用其他应用打开」移到**右上角**；**倍速 0.5×–3×**。降级到**软解**档时
+//     用 SnackBar 明确告知（硬解不支持该编码），不再常驻显示解码档位。
+//   * 音频抢断（v0.5.8）：出声即经 core/media_focus.dart 申请 **Android 音频
+//     焦点（AUDIOFOCUS_GAIN）**，让系统里其他正在播放的媒体暂停；并停掉应用内
+//     另一个媒体（视频 ↔ 语音条互斥）；用户暂停 / 系统夺焦时不会把焦点抢回来。
 //   * 诊断（v0.5.7 起瘦身）：mpv 的逐行日志只进内存（供降级判定与 CI 断言），
 //     落盘的只有 error 级 + 每代前两条停摆指纹 + 档位/首帧/降级事件；logcat
 //     快照只在**降级或报错时**采集，正常播放不再写那两大段。
@@ -27,6 +32,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 import '../core/applog.dart';
 import '../core/files.dart';
 import '../core/l10n.dart';
+import '../core/media_focus.dart';
 import '../core/video_decode.dart';
 import '../widgets/audio_row.dart';
 
@@ -86,6 +92,18 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
   Timer? _uiTimer;
   static const Duration _uiHideAfter = Duration(seconds: 3);
 
+  // --- drag-to-seek: swipe left/right on the picture to fine-tune progress -
+  bool _dragging = false;
+  double _dragAccum = 0.0;
+  Duration _dragStartPos = Duration.zero;
+  Duration _dragTargetPos = Duration.zero;
+
+  // --- fullscreen orientation derived from the video aspect ratio ---------
+  bool _orientationApplied = false;
+
+  // --- one-shot "we fell back to software decode" notice ------------------
+  bool _notifiedSoftware = false;
+
   // --- decode chain state -------------------------------------------------
   int _generation = 0;
   int _tierIndex = 0;
@@ -97,7 +115,6 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
   bool _videoParamsSeen = false;
   bool _watchdogArmed = false;
   bool _switching = false;
-  bool _focusHeld = false;
   Timer? _watchdog;
   Timer? _promoteTimer;
 
@@ -131,31 +148,31 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
 
   // ------------------------------------------------------------ audio focus
 
-  /// Take over the audio path: pause our own shared voice player and ask
-  /// Android to interrupt whatever else is playing (music app, browser...).
-  Future<void> _takeAudioFocus() async {
-    if (_focusHeld) return;
-    _focusHeld = true;
+  /// Take over the audio path through the shared [MediaFocus]: stops the
+  /// in-app voice row, then asks Android to interrupt whatever else is playing
+  /// (music app, browser…) — the actual "playback preemption".
+  Future<void> _acquireFocus() async {
+    // Acquire first: a hand-off from the voice row keeps the system focus (no
+    // abandon/re-request blip in other apps) and pauses it; then fully stop the
+    // shared voice player. release() inside stopAll() is a no-op once we own it.
+    await MediaFocus.instance.acquire(this, _onFocusLost);
     await SharedVoicePlayer.stopAll();
-    if (!Platform.isAndroid) return;
-    try {
-      const ch = MethodChannel('bittechat/media');
-      final ok = await ch.invokeMethod<bool>('requestAudioFocus');
-      appLog('video audio focus: granted=$ok');
-    } catch (e) {
-      appLog('video audio focus request failed: $e');
-    }
   }
 
-  Future<void> _releaseAudioFocus() async {
-    if (!_focusHeld) return;
-    _focusHeld = false;
-    if (!Platform.isAndroid) return;
-    try {
-      await const MethodChannel('bittechat/media')
-          .invokeMethod<bool>('abandonAudioFocus');
-    } catch (_) {}
+  /// Android revoked our focus (another app grabbed it / a call came in):
+  /// pause, and block the next `playing=true` from stealing focus straight
+  /// back until playback genuinely stops or the page closes.
+  Future<void> _onFocusLost() async {
+    final p = _player;
+    if (p != null && _playing) {
+      try {
+        await p.pause();
+      } catch (_) {}
+    }
+    await MediaFocus.instance.setAcceptGain(false);
   }
+
+  Future<void> _releaseFocus() => MediaFocus.instance.release(this);
 
   // ---------------------------------------------------------------- chrome
 
@@ -191,6 +208,57 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     }
   }
 
+  // ------------------------------------------------------------- seek drag
+
+  /// A full screen-width of horizontal drag scrubs this many seconds — fine
+  /// enough to "微调" the position without jumping the whole timeline.
+  static const double _seekSecondsPerScreenWidth = 90;
+
+  void _onSeekDragStart(DragStartDetails d) {
+    _uiTimer?.cancel();
+    _dragAccum = 0;
+    _dragStartPos = _position;
+    _dragTargetPos = _position;
+    setState(() => _dragging = true);
+  }
+
+  void _onSeekDragUpdate(DragUpdateDetails d) {
+    final width = MediaQuery.sizeOf(context).width;
+    final span = width > 0 ? width : 1;
+    _dragAccum += d.delta.dx;
+    var targetMs = _dragStartPos.inMilliseconds +
+        (_dragAccum / span * _seekSecondsPerScreenWidth * 1000).round();
+    final maxMs = _duration.inMilliseconds;
+    if (maxMs > 0) {
+      targetMs = targetMs.clamp(0, maxMs).toInt();
+    } else if (targetMs < 0) {
+      targetMs = 0;
+    }
+    setState(() => _dragTargetPos = Duration(milliseconds: targetMs));
+  }
+
+  void _onSeekDragEnd(DragEndDetails d) {
+    final target = _dragTargetPos;
+    setState(() => _dragging = false);
+    try {
+      _player?.seek(target);
+    } catch (e) {
+      appLog('video drag-seek failed: $e');
+    }
+    // reflect the scrub immediately; the position stream reconciles it
+    setState(() => _position = target);
+    _showUi();
+  }
+
+  /// `+01:23` / `-00:45` — the scrub delta shown under the target position.
+  static String _fmtDelta(Duration d) {
+    final a = d.abs();
+    final sign = d.isNegative ? '-' : '+';
+    final m = a.inMinutes.toString().padLeft(2, '0');
+    final s = a.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return '$sign$m:$s';
+  }
+
   Future<void> _setRate(double v) async {
     setState(() => _rate = v);
     try {
@@ -224,6 +292,19 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     VideoPlayerPage.debugActiveTierStalls.clear();
     appLog('video decode tier -> ${tier.label} '
         '(hwdec=${tier.hwdec}, gen=$gen, resume=${seekTo?.inMilliseconds ?? 0}ms)');
+
+    // The last rung is software decode — the hardware decoder could not handle
+    // this codec. Tell the user once (a SnackBar over the fullscreen picture)
+    // rather than keeping a persistent decode readout on screen.
+    if (!tier.hardware && !_notifiedSoftware) {
+      _notifiedSoftware = true;
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(L.t.videoSoftwareDecodeNotice),
+          duration: const Duration(seconds: 5),
+        ));
+      }
+    }
 
     // tear the previous stack down first: one SurfaceTexture per player, and
     // two live mpv instances competing for MediaCodec is exactly the kind of
@@ -353,9 +434,14 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     if (!mounted || gen != _generation) return;
     setState(() => _playing = v);
     if (v) {
-      unawaited(_takeAudioFocus());
+      // re-arm focus, then take it over: this is what pauses the system's
+      // other "now playing" media (and our own voice row) instead of mixing
+      unawaited(MediaFocus.instance.setAcceptGain(true));
+      unawaited(_acquireFocus());
       _scheduleHideUi();
     } else {
+      // user/system paused: do NOT yank focus back on the next playing=true
+      unawaited(MediaFocus.instance.setAcceptGain(false));
       _showUi();
     }
   }
@@ -414,13 +500,9 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     // the logcat snapshot is a *diagnostic* capture: only pay for it when
     // something actually went wrong
     captureOwnLogcat('video-stall');
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content:
-            Text(L.t.videoDecoderSwitch(VideoDecodeChain.tier(next).label)),
-        duration: const Duration(seconds: 3),
-      ));
-    }
+    // NB: no "switched decoder" toast here — the decode rung is an internal
+    // detail. The user is only told when we land on SOFTWARE decode (see
+    // _openAt), which is the one rung worth surfacing.
     await _openAt(next, seekTo: resume);
     _switching = false;
   }
@@ -487,6 +569,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     // decoded; the all-null params mpv emits while switching tracks do not
     if (v.w != null && v.h != null && v.w != 0) {
       _videoParamsSeen = true;
+      _applyOrientation(v);
       _armWatchdog(gen, _tier);
       // one compact line per generation instead of every params event
       if (_loggedParams != text) {
@@ -495,6 +578,37 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
             'hw=${v.hwPixelformat} rotate=${v.rotate}');
       }
     }
+  }
+
+  /// Lock the fullscreen orientation to the picture's aspect ratio: a wide
+  /// video plays landscape, a tall one portrait (PiliPlus-style). Applied once
+  /// per page; [dispose] restores the system/sensor default.
+  void _applyOrientation(VideoParams v) {
+    if (_orientationApplied) return;
+    final w = v.w ?? 0;
+    final h = v.h ?? 0;
+    if (w == 0 || h == 0) return;
+    // mpv reports the stored frame plus a rotation to apply; 90/270 swap the
+    // displayed axes. `rotate` may surface as int or double across media_kit
+    // versions, so normalise through num.
+    final r = v.rotate;
+    final rot = (r is num ? r.toDouble() : 0.0).abs() % 360;
+    final swap = (rot - 90).abs() < 0.5 || (rot - 270).abs() < 0.5;
+    final dw = swap ? h : w;
+    final dh = swap ? w : h;
+    _orientationApplied = true;
+    final landscape = dw >= dh;
+    SystemChrome.setPreferredOrientations(landscape
+        ? const [
+            DeviceOrientation.landscapeLeft,
+            DeviceOrientation.landscapeRight,
+          ]
+        : const [
+            DeviceOrientation.portraitUp,
+            DeviceOrientation.portraitDown,
+          ]);
+    appLog('video orientation: ${dw}x$dh rotate=$rot -> '
+        '${landscape ? "landscape" : "portrait"}');
   }
 
   /// Forensic snapshot of the file on disk — distinguishes "player broken"
@@ -573,7 +687,13 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     _promoteTimer?.cancel();
     _uiTimer?.cancel();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-    unawaited(_releaseAudioFocus());
+    if (_orientationApplied) {
+      // restore the app's default (system/sensor) orientation on the way out
+      SystemChrome.setPreferredOrientations(const []);
+    }
+    // leaving the page ends this media session: re-arm focus for the next one
+    unawaited(MediaFocus.instance.setAcceptGain(true));
+    unawaited(_releaseFocus());
     WidgetsBinding.instance.removeObserver(this);
     for (final s in _subs) {
       s.cancel();
@@ -598,9 +718,13 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // picture + tap surface
+          // picture + tap/drag surface: a single tap toggles the chrome, a
+          // horizontal swipe scrubs the timeline (fine-tune the progress)
           GestureDetector(
             onTap: _toggleUi,
+            onHorizontalDragStart: _failed ? null : _onSeekDragStart,
+            onHorizontalDragUpdate: _failed ? null : _onSeekDragUpdate,
+            onHorizontalDragEnd: _failed ? null : _onSeekDragEnd,
             child: _failed
                 ? _failurePane()
                 : vc == null
@@ -612,6 +736,30 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
                         fill: Colors.black,
                       ),
           ),
+          // drag-to-seek preview: target position + delta from where we began
+          if (_dragging)
+            Center(
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                decoration: BoxDecoration(
+                  color: Colors.black54,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text('${_fmt(_dragTargetPos)} / ${_fmt(_duration)}',
+                        style: const TextStyle(
+                            color: Colors.white, fontSize: 18)),
+                    const SizedBox(height: 2),
+                    Text(_fmtDelta(_dragTargetPos - _dragStartPos),
+                        style: const TextStyle(
+                            color: Colors.white70, fontSize: 13)),
+                  ],
+                ),
+              ),
+            ),
           // top chrome
           AnimatedOpacity(
             opacity: _uiVisible ? 1 : 0,
@@ -634,6 +782,15 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
                       overflow: TextOverflow.ellipsis,
                       style:
                           const TextStyle(color: Colors.white, fontSize: 15)),
+                  actions: [
+                    IconButton(
+                      color: Colors.white,
+                      tooltip: L.t.openWith,
+                      icon: const Icon(Icons.open_in_new, size: 20),
+                      onPressed: () =>
+                          openWithExternalApp(widget.path, 'video/*'),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -716,23 +873,8 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
                                           color: Colors.white, fontSize: 13)),
                                 ),
                               ),
-                              IconButton(
-                                color: Colors.white,
-                                tooltip: L.t.openWith,
-                                icon: const Icon(Icons.open_in_new, size: 20),
-                                onPressed: () =>
-                                    openWithExternalApp(widget.path, 'video/*'),
-                              ),
                             ],
                           ),
-                        ),
-                        // which decode rung is feeding the picture — makes a
-                        // field report readable without exporting logs
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 4),
-                          child: Text(_decoderNote(),
-                              style: const TextStyle(
-                                  color: Colors.white38, fontSize: 10.5)),
                         ),
                       ],
                     ),
@@ -749,14 +891,6 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
   /// `0.5× / 1.0× / 1.25× / 3.0×` — one decimal keeps the menu column tidy.
   static String _fmtRate(double r) =>
       r == r.roundToDouble() ? '${r.toInt()}.0×' : '$r×';
-
-  /// Renders as `视频解码: <档位名>`, plus a `软解渲染` marker while no hardware
-  /// pixel format has been reported. Makes a field report readable without
-  /// exporting logs.
-  String _decoderNote() {
-    final sw = _hwDecodeObserved ? '' : ' · ${L.t.videoDecoderSwActive}';
-    return '${L.t.videoDecoder}: ${_tier.label}$sw';
-  }
 
   Widget _failurePane() {
     return Center(
@@ -785,10 +919,6 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
             Text(L.t.videoDecoderTip,
                 textAlign: TextAlign.center,
                 style: const TextStyle(color: Colors.white38, fontSize: 12)),
-            const SizedBox(height: 4),
-            Text(L.t.videoDecoderChainNote,
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.white38, fontSize: 11)),
           ],
         ),
       ),

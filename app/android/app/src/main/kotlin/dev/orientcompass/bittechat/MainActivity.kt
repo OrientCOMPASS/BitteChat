@@ -12,9 +12,18 @@ import io.flutter.plugin.common.MethodChannel
  */
 class MainActivity : FlutterActivity() {
     private var channel: MethodChannel? = null
+    private var mediaChannel: MethodChannel? = null
     private var pendingMagnet: String? = null
     private var launchConsumed = false
     private var focusRequest: android.media.AudioFocusRequest? = null
+
+    // Whether a fresh AUDIOFOCUS_GAIN request should be honoured. Dart flips
+    // this to false after the user pauses (or the system revokes focus) so a
+    // video that keeps emitting `playing=true` cannot yank focus back and
+    // re-interrupt the user's own music; it is set true again when playback
+    // really stops. See core/media_focus.dart.
+    @Volatile
+    private var acceptAudioFocusGain = true
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -46,9 +55,13 @@ class MainActivity : FlutterActivity() {
 
         // Audio focus: a playing video/voice message must INTERRUPT whatever
         // other app is making noise (music player, browser, ...) instead of
-        // mixing on top of it. minSdk is 28, so AudioFocusRequest is safe.
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "bittechat/media")
-            .setMethodCallHandler { call, result ->
+        // mixing on top of it, and must itself pause when focus is revoked.
+        // minSdk is 28, so AudioFocusRequest is safe. Focus changes are
+        // forwarded to Dart (core/media_focus.dart) so the active player pauses.
+        val media = MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger, "bittechat/media")
+        mediaChannel = media
+        media.setMethodCallHandler { call, result ->
                 val am = getSystemService(android.content.Context.AUDIO_SERVICE)
                         as? android.media.AudioManager
                 if (am == null) {
@@ -57,24 +70,47 @@ class MainActivity : FlutterActivity() {
                 }
                 when (call.method) {
                     "requestAudioFocus" -> {
-                        val req = focusRequest ?: android.media.AudioFocusRequest
-                            .Builder(android.media.AudioManager.AUDIOFOCUS_GAIN)
-                            .setAudioAttributes(
-                                android.media.AudioAttributes.Builder()
-                                    .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
-                                    .setContentType(
-                                        android.media.AudioAttributes.CONTENT_TYPE_MUSIC)
-                                    .build())
-                            .setOnAudioFocusChangeListener { /* we never lose
-                                permanently; loss is handled by pausing in Dart */ }
-                            .build()
-                            .also { focusRequest = it }
-                        val r = am.requestAudioFocus(req)
-                        result.success(r == android.media.AudioManager.AUDIOFOCUS_REQUEST_GRANTED)
+                        if (!acceptAudioFocusGain) {
+                            // the user (or the system) asked us to be quiet;
+                            // do not steal focus back until playback stops
+                            result.success(false)
+                        } else {
+                            val req = focusRequest ?: android.media.AudioFocusRequest
+                                .Builder(android.media.AudioManager.AUDIOFOCUS_GAIN)
+                                .setAudioAttributes(
+                                    android.media.AudioAttributes.Builder()
+                                        .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
+                                        .setContentType(
+                                            android.media.AudioAttributes.CONTENT_TYPE_MUSIC)
+                                        .build())
+                                .setOnAudioFocusChangeListener { change ->
+                                    // GAIN(>=0) re-arms us; any LOSS pauses Dart
+                                    acceptAudioFocusGain = change >= 0
+                                    runOnUiThread {
+                                        try {
+                                            mediaChannel?.invokeMethod(
+                                                "audioFocusChange", change)
+                                        } catch (e: Exception) {
+                                            android.util.Log.w(
+                                                "bittechat", "focus forward failed: $e")
+                                        }
+                                    }
+                                }
+                                .build()
+                                .also { focusRequest = it }
+                            val r = am.requestAudioFocus(req)
+                            result.success(
+                                r == android.media.AudioManager.AUDIOFOCUS_REQUEST_GRANTED)
+                        }
                     }
                     "abandonAudioFocus" -> {
                         focusRequest?.let { am.abandonAudioFocusRequest(it) }
                         focusRequest = null
+                        acceptAudioFocusGain = true
+                        result.success(true)
+                    }
+                    "setAcceptAudioFocusGain" -> {
+                        acceptAudioFocusGain = call.argument<Boolean>("accept") ?: true
                         result.success(true)
                     }
                     else -> result.notImplemented()

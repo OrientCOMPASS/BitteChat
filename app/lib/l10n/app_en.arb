@@ -627,10 +627,6 @@
   }
  },
  "exportLogsFail": "Export failed: ",
- "videoDecoder": "Video decoding",
- "videoDecoderSoftware": "Software (compatibility first)",
- "videoDecoderHardware": "Hardware first (battery saver)",
- "videoDecoderHint": "Keep software decoding if videos play audio with a black picture; hardware decoding saves battery but renders black on some device/codec combinations. Applies to newly opened videos",
  "videoDecoderTip": "Playback failed? Use \"Open with\" and report it via Settings → Export logs",
  "avatarLocalOnly": "Avatar and nickname stay on this device and are never broadcast",
  "renameLocalNote": "Local note — only visible to you",
@@ -657,7 +653,6 @@
  "attPhaseCopy": "Copying into the seed folder…",
  "attPhaseSeed": "Seeding and sending…",
  "attachFailed": "Attachment failed",
- "videoDecoderHardwareOnly": "Hardware decoding (MediaCodec) · failures are reported explicitly",
  "dmRequestSubtitle": "wants to start a private chat",
  "block": "Block",
  "dmBlocked": "User blocked",
@@ -687,21 +682,10 @@
  "wallpaperPaddingTransparent": "Transparent",
  "wallpaperPaddingBlack": "Black",
  "wallpaperPaddingWhite": "White",
- "wallpaperPaddingExtend": "Extend edges",
  "wallpaperEditGestureHint": "Drag to move · pinch to zoom & rotate · double-tap to reset",
  "wallpaperCropHint": "The canvas is wider than the screen: the saved image is cropped to the screen ratio, so only the dashed area is finally visible",
- "wallpaperPaddingExtendHint": "The margin is filled by extending the picture's outermost pixels",
- "videoDecoderChainNote": "Decode ladder: zero-copy hw → hw read-back → software (a stalled picture downgrades automatically and the working rung is remembered)",
- "videoDecoderSwActive": "software rendering",
  "deleteLocalHistory": "Also delete local history",
  "deleteLocalHistoryHint": "Wipes this device's messages and DAG heads (the reset path after joining the wrong hash chain). Re-entering the same torrent re-syncs from the DHT and online members.",
- "videoDecoderSwitch": "Switched to the “{tier}” decoder",
- "@videoDecoderSwitch": {
-  "placeholders": {
-   "tier": {
-    "type": "Object"
-   }
-  }
- },
+ "videoSoftwareDecodeNotice": "Using software decoding (hardware decoder lacks this codec)",
  "videoSpeed": "Playback speed"
 }

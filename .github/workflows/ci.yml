@@ -184,46 +184,52 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Build APK
+      - name: Build APK (split per ABI)
         if: ${{ hashFiles('app/pubspec.yaml') != '' }}
         working-directory: app
         run: |
           flutter pub get
-          # universal APK restricted to the ABIs we build the native core
-          # for (also strips v7a engine libs from the package)
-          flutter build apk --release --target-platform android-arm64,android-x64
+          # Per-ABI release packages instead of one universal APK: every phone
+          # downloads only its own architecture (~half the bytes — see
+          # docs/APK-SIZE.md §4 "分 ABI 发布"). Restricted to the ABIs we build
+          # the native core for (arm64-v8a + x86_64); the gradle abiFilters +
+          # jniLibs excludes keep armeabi-v7a engine libs out of the packages.
+          flutter build apk --release --split-per-abi \
+            --target-platform android-arm64,android-x64
 
       - name: List outputs
         run: |
           find app/android/app/src/main/jniLibs -type f | sort || true
           ls -la app/build/app/outputs/flutter-apk/ 2>/dev/null || true
 
-      # Release assets must be self-describing: `app-release.apk` says nothing
-      # about which app or version it is once it sits in a Downloads folder
-      # next to every other APK. Name it BitteChat-<version>-<abi>.apk from
-      # the pubspec version (+build), and upload THAT so the Release carries
-      # the same name.
-      - name: Name the APK (app + version + abi)
+      # Release assets must be self-describing: `app-arm64-v8a-release.apk`
+      # says nothing about which app or version it is once it sits in a
+      # Downloads folder next to every other APK. Name each split
+      # BitteChat-<version>-android-<abi>.apk from the pubspec version (+build)
+      # and upload THOSE so the Release carries the same names.
+      - name: Name the APKs (app + version + abi)
         id: apkname
         run: |
           set -euo pipefail
           VER=$(sed -n 's/^version:[[:space:]]*\([0-9][^+]*\).*/\1/p' app/pubspec.yaml)
           BUILD=$(sed -n 's/^version:[[:space:]]*[^+]*+\([0-9]*\).*/\1/p' app/pubspec.yaml)
           [ -n "$VER" ] || { echo "cannot read version from app/pubspec.yaml"; exit 1; }
-          NAME="BitteChat-v${VER}+${BUILD:-0}-android-universal-arm64-v8a_x86_64.apk"
           DIR=app/build/app/outputs/flutter-apk
-          cp "$DIR/app-release.apk" "$DIR/$NAME"
-          echo "apk_name=$NAME" >> "$GITHUB_OUTPUT"
+          for abi in arm64-v8a x86_64; do
+            SRC="$DIR/app-${abi}-release.apk"
+            [ -f "$SRC" ] || { echo "::error::missing split APK $SRC"; exit 1; }
+            cp "$SRC" "$DIR/BitteChat-v${VER}+${BUILD:-0}-android-${abi}.apk"
+          done
           echo "apk_version=$VER" >> "$GITHUB_OUTPUT"
           ls -la "$DIR"
 
       - name: Upload APKs
-        if: ${{ hashFiles('app/build/app/outputs/flutter-apk/*.apk') != '' }}
+        if: ${{ hashFiles('app/build/app/outputs/flutter-apk/BitteChat-*.apk') != '' }}
         uses: actions/upload-artifact@v4
         with:
           name: bittechat-apk-${{ github.sha }}
           path: |
-            app/build/app/outputs/flutter-apk/${{ steps.apkname.outputs.apk_name }}
+            app/build/app/outputs/flutter-apk/BitteChat-*.apk
           retention-days: 14
           if-no-files-found: warn
 

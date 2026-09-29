@@ -831,7 +831,7 @@ class _SettingsPageState extends State<SettingsPage> {
           AboutListTile(
             icon: Icon(Icons.favorite_outline),
             applicationName: 'BitteChat',
-            applicationVersion: '${_info['version'] ?? '0.5.2'}',
+            applicationVersion: '${_info['version'] ?? '0.5.8'}',
             aboutBoxChildren: [
               Text(
                 '${L.t.aboutDesc}${L.t.aboutDesc2}'
