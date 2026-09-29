@@ -58,11 +58,14 @@ fn truncate_front_half(data: &[u8]) -> (usize, Vec<u8>) {
     if keep_from_line == 0 {
         return (0, data.to_vec());
     }
-    let offset = if keep_from_line < ends.len() {
-        ends[keep_from_line]
+    // `ends[k]` is the START of line k+1, so keeping lines
+    // [keep_from_line, total) begins at ends[keep_from_line - 1]
+    // (keep_from_line >= 1 here: 0 returned above).
+    let offset = if keep_from_line <= ends.len() {
+        ends[keep_from_line - 1]
     } else {
-        // keep only the unterminated tail fragment
-        *ends.last().unwrap()
+        // only an unterminated fragment exists past `ends` — nothing to keep
+        data.len()
     };
     let dropped = if offset >= data.len() {
         total

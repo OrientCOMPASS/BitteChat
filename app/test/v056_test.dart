@@ -179,11 +179,12 @@ void main() {
           WallpaperEditPageState.baseSizeFor(const Size(1600, 900), canvas);
       expect(wide.width, closeTo(540, 1e-9));
       expect(wide.height, lessThan(960));
-      // a taller picture is limited by height
+      // a taller picture is limited by height (900x2000 = 0.45, narrower
+      // than the 0.5625 canvas — note 900x1600 would match it exactly)
       final tall =
-          WallpaperEditPageState.baseSizeFor(const Size(900, 1600), canvas);
+          WallpaperEditPageState.baseSizeFor(const Size(900, 2000), canvas);
       expect(tall.height, closeTo(960, 1e-9));
-      expect(tall.width, lessThan(540));
+      expect(tall.width, closeTo(432, 1e-9));
       // same proportion fills both
       final same =
           WallpaperEditPageState.baseSizeFor(const Size(135, 240), canvas);
