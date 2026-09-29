@@ -1628,27 +1628,18 @@ impl Api {
             .file_name()
             .map(|s| s.to_string_lossy().to_string())
             .unwrap_or_else(|| display_name.to_string());
-        // SEED IN PLACE: no copy into downloads/ — the torrent's save dir is
-        // the file's own parent directory (multi-GB videos are no longer
-        // duplicated on disk and sends return almost instantly). Exception:
-        // files inside volatile cache directories (file_picker copies) are
-        // moved into the download dir, because the OS may purge them.
-        let in_cache = {
-            let ps = path.to_string();
-            ps.contains("/cache/") || ps.contains("/cached_files/")
-        };
-        let dest_dir = if in_cache {
-            progress("copy");
-            let d = self.downloads_dir().join(&ih_hex);
-            std::fs::create_dir_all(&d)?;
-            std::fs::copy(src, d.join(&orig_name))?;
-            d
-        } else {
-            src.parent()
-                .filter(|p| !p.as_os_str().is_empty())
-                .map(|p| p.to_path_buf())
-                .unwrap_or_else(|| self.downloads_dir().join(&ih_hex))
-        };
+        // SEED IN PLACE, unconditionally: the torrent's save dir is the file's
+        // own parent directory. Self-published seeds keep their original —
+        // possibly scattered — locations and are NEVER duplicated into the
+        // download dir; they form their own scope (kind 4, see bt_list).
+        // (v0.5.16 removes the old cache-copy exception: picker cache files
+        // are now seeded where they are, trading OS-purge risk for no
+        // duplicate multi-GB copies, per product decision.)
+        let dest_dir = src
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| self.downloads_dir().join(&ih_hex));
         std::fs::create_dir_all(&dest_dir)?;
         progress("seed");
         self.inner

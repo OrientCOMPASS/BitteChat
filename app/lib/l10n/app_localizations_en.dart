@@ -1246,6 +1246,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get volumeModePlayer => 'Player volume';
 
   @override
+  String get mySeedsScope => 'My published seeds (in place)';
+
+  @override
+  String get otherTasksScope => 'Other tasks';
+
+  @override
   String get videoSoftwareDecodeNotice =>
       'Using software decoding (hardware decoder lacks this codec)';
 

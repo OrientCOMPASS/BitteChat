@@ -1206,6 +1206,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get volumeModePlayer => '播放器音量';
 
   @override
+  String get mySeedsScope => '我发布的做种（文件原地）';
+
+  @override
+  String get otherTasksScope => '其他任务';
+
+  @override
   String get videoSoftwareDecodeNotice => '正在使用软件解码（硬件解码器不支持此编码）';
 
   @override

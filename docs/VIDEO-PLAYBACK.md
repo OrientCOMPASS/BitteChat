@@ -316,3 +316,16 @@ android / release。
   自持，避免回读迟滞）。
 - **字幕选择器移除 `#auto` / `#no` 伪轨**：`tracks.subtitle` 里 id 为
   `auto`/`no` 的项过滤掉，「关闭字幕」由菜单项承担，避免误导。
+
+## 15. v0.5.16：移除双指缩放；自发种子一律原地 + 独立 scope
+
+- **移除双指缩放/平移**：实机太难触发、易误操作。删除 `onScale*`、
+  `TransformationController`、`_zoom/_pan/_pinching` 等全部遗留代码；
+  `Video` 保持 `scaleEnabled:false`（内嵌 InteractiveViewer 仍关闭）。
+- **自发种子一律原地做种**：`attachment_job` 删除「cache 目录则拷贝进
+  downloads/<ih>」的例外，`dest_dir` 恒为源文件父目录（即文件原地做种，
+  不再产生下载目录副本）。代价：file_picker 的 cache 副本若被系统清理，
+  该做种任务会丢源（产品已接受，换取不复制多 GB 文件）。
+- **kind 4 独立 scope**：`bt_list` 不再把 kind 4 藏在 include_chat 开关后
+  （该开关只控制聊天内部 kind 1/2）；种子页对 kind 4 单独成组显示
+  （「我发布的做种（文件原地）」表头），与下载/订阅/聊天附件分开。

@@ -138,14 +138,6 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
   bool _volumeReady = false;
   String? _volumeModeInit;
 
-  // two-finger pinch/pan of the picture (drives media_kit's
-  // transformationController; the video's own InteractiveViewer stays off)
-  final TransformationController _videoTransform = TransformationController();
-  bool _pinching = false;
-  double _zoom = 1;
-  double _pinchBaseZoom = 1;
-  Offset _pan = Offset.zero;
-
   // subtitles (embedded tracks + optional external file)
   List<SubtitleTrack> _subtitleTracks = const [];
   String _activeSubtitleId = '';
@@ -423,58 +415,6 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
 
   void _onVerticalDragEnd(DragEndDetails d) {
     if (_locked || _failed) return;
-    _hideOsdSoon();
-  }
-
-  // ---------------------------------------------- two-finger pinch / pan
-
-  /// A second pointer switches the input from seek/volume/brightness to
-  /// picture zoom+pan (the single-finger recognizers lose the arena to the
-  /// scale recognizer, and we drop any in-flight single gesture here).
-  void _onScaleStart(ScaleStartDetails d) {
-    if (_locked || _failed) return;
-    _pinching = true;
-    _pinchBaseZoom = _zoom;
-    if (_dragging) setState(() => _dragging = false);
-    _osdTimer?.cancel();
-    setState(() => _osdLevel = null);
-  }
-
-  void _onScaleUpdate(ScaleUpdateDetails d) {
-    if (_locked || _failed || !_pinching) return;
-    final z = (_pinchBaseZoom * d.scale).clamp(1.0, 4.0);
-    _zoom = z;
-    _pan = z > 1.0 ? _pan + d.focalPointDelta : Offset.zero;
-    // column-major: scale z on x/y, translation (_pan) in the last column
-    _videoTransform.value = Matrix4(
-      z,
-      0,
-      0,
-      0,
-      0,
-      z,
-      0,
-      0,
-      0,
-      0,
-      1,
-      0,
-      _pan.dx,
-      _pan.dy,
-      0,
-      1,
-    );
-    _showOsd(Icons.zoom_in, (z - 1) / 3);
-  }
-
-  void _onScaleEnd(ScaleEndDetails d) {
-    if (!_pinching) return;
-    _pinching = false;
-    if (_zoom <= 1.01) {
-      _zoom = 1;
-      _pan = Offset.zero;
-      _videoTransform.value = Matrix4.identity();
-    }
     _hideOsdSoon();
   }
 
@@ -1051,7 +991,6 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     _uiTimer?.cancel();
     _osdTimer?.cancel();
     _seekFlashTimer?.cancel();
-    _videoTransform.dispose();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     if (_orientationApplied) {
       // restore the app's default (system/sensor) orientation on the way out
@@ -1199,7 +1138,6 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
                       fit: _fit,
                       fill: Colors.black,
                       scaleEnabled: false,
-                      transformationController: _videoTransform,
                     ),
           // single-finger gesture layer: tap = toggle chrome, double-tap =
           // play/pause (or ±10s when enabled), horizontal drag = seek,
@@ -1219,9 +1157,6 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
                 onVerticalDragStart: _locked ? null : _onVerticalDragStart,
                 onVerticalDragUpdate: _locked ? null : _onVerticalDragUpdate,
                 onVerticalDragEnd: _locked ? null : _onVerticalDragEnd,
-                onScaleStart: _locked ? null : _onScaleStart,
-                onScaleUpdate: _locked ? null : _onScaleUpdate,
-                onScaleEnd: _locked ? null : _onScaleEnd,
               ),
             ),
           // drag-to-seek preview: target position + delta from where we began

@@ -708,6 +708,8 @@
  "volumeMode": "Volume control",
  "volumeModeSystem": "System volume (default)",
  "volumeModePlayer": "Player volume",
+ "mySeedsScope": "My published seeds (in place)",
+ "otherTasksScope": "Other tasks",
  "videoSoftwareDecodeNotice": "Using software decoding (hardware decoder lacks this codec)",
  "videoSpeed": "Playback speed"
 }

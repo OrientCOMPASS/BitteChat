@@ -50,6 +50,22 @@ class _BtTabState extends State<BtTab> {
     super.dispose();
   }
 
+  /// kind 4 (self-published, seeded in place) is its OWN scope: it gets a
+  /// header and is listed separately from downloads / subscriptions / chat
+  /// attachments, because those files live scattered at their original paths.
+  List<Object> _scopeRows() {
+    final mine = _torrents.where((t) => t.kind == 4).toList();
+    if (mine.isEmpty) return List<Object>.from(_torrents);
+    final rest = _torrents.where((t) => t.kind != 4).toList();
+    return [
+      _ScopeHeader(title: L.t.mySeedsScope, count: mine.length),
+      ...mine,
+      if (rest.isNotEmpty)
+        _ScopeHeader(title: L.t.otherTasksScope, count: rest.length),
+      ...rest,
+    ];
+  }
+
   void _reload() {
     if (!mounted) return;
     try {
@@ -165,6 +181,7 @@ class _BtTabState extends State<BtTab> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final rows = _scopeRows();
     return Scaffold(
       appBar: AppBar(
         title: Text(L.t.btTab),
@@ -224,30 +241,37 @@ class _BtTabState extends State<BtTab> {
                     ),
                   )
                 : ListView.separated(
-                    itemCount: _torrents.length,
-                    separatorBuilder: (_, __) => const Divider(height: 1),
-                    itemBuilder: (_, i) => _TorrentTile(
-                      torrent: _torrents[i],
-                      onTap: () => _openDetail(_torrents[i]),
-                      onEnterChat: () => _enterChat(_torrents[i]),
-                      onControl: (op, {bool deleteFiles = false}) {
-                        try {
-                          _api.btControl(_torrents[i].infohash, op,
-                              deleteFiles: deleteFiles);
-                          _reload();
-                        } catch (e) {
-                          if (mounted) showError(context, e);
-                        }
-                      },
-                      onCopyMagnet: () async {
-                        await Clipboard.setData(
-                            ClipboardData(text: _torrents[i].magnet));
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text(L.t.magnetCopied)));
-                        }
-                      },
-                    ),
+                    itemCount: rows.length,
+                    separatorBuilder: (_, i) => rows[i] is _ScopeHeader
+                        ? const SizedBox(height: 8)
+                        : const Divider(height: 1),
+                    itemBuilder: (_, i) {
+                      final r = rows[i];
+                      if (r is _ScopeHeader) return r;
+                      final t = r as TorrentInfo;
+                      return _TorrentTile(
+                        torrent: t,
+                        onTap: () => _openDetail(t),
+                        onEnterChat: () => _enterChat(t),
+                        onControl: (op, {bool deleteFiles = false}) {
+                          try {
+                            _api.btControl(t.infohash, op,
+                                deleteFiles: deleteFiles);
+                            _reload();
+                          } catch (e) {
+                            if (mounted) showError(context, e);
+                          }
+                        },
+                        onCopyMagnet: () async {
+                          await Clipboard.setData(
+                              ClipboardData(text: t.magnet));
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text(L.t.magnetCopied)));
+                          }
+                        },
+                      );
+                    },
                   ),
           ),
         ],
@@ -842,6 +866,31 @@ class _TorrentDetailSheetState extends State<TorrentDetailSheet> {
                 ),
               )),
           SizedBox(height: 24),
+        ],
+      ),
+    );
+  }
+}
+
+/// Section header separating the self-published-seed scope from other tasks.
+class _ScopeHeader extends StatelessWidget {
+  const _ScopeHeader({required this.title, required this.count});
+
+  final String title;
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
+      child: Row(
+        children: [
+          Text(title, style: theme.textTheme.titleSmall),
+          const SizedBox(width: 6),
+          Text('$count',
+              style: theme.textTheme.labelSmall
+                  ?.copyWith(color: theme.colorScheme.outline)),
         ],
       ),
     );

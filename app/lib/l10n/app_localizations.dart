@@ -2300,6 +2300,18 @@ abstract class AppLocalizations {
   /// **'播放器音量'**
   String get volumeModePlayer;
 
+  /// No description provided for @mySeedsScope.
+  ///
+  /// In zh, this message translates to:
+  /// **'我发布的做种（文件原地）'**
+  String get mySeedsScope;
+
+  /// No description provided for @otherTasksScope.
+  ///
+  /// In zh, this message translates to:
+  /// **'其他任务'**
+  String get otherTasksScope;
+
   /// No description provided for @videoSoftwareDecodeNotice.
   ///
   /// In zh, this message translates to:
