@@ -129,6 +129,23 @@ class MainActivity : FlutterActivity() {
                         }
                         result.success(v.coerceIn(0.02f, 1f))
                     }
+                    "getSystemVolume" -> {
+                        val max = am.getStreamMaxVolume(
+                            android.media.AudioManager.STREAM_MUSIC)
+                        val cur = am.getStreamVolume(
+                            android.media.AudioManager.STREAM_MUSIC)
+                        result.success(if (max > 0) cur.toDouble() / max else 0.0)
+                    }
+                    "setSystemVolume" -> {
+                        val v = (call.argument<Double>("value") ?: 0.5)
+                            .coerceIn(0.0, 1.0)
+                        val max = am.getStreamMaxVolume(
+                            android.media.AudioManager.STREAM_MUSIC)
+                        am.setStreamVolume(
+                            android.media.AudioManager.STREAM_MUSIC,
+                            (v * max).toInt(), 0)
+                        result.success(true)
+                    }
                     "setBrightness" -> {
                         val v = (call.argument<Double>("value") ?: 0.5)
                             .toFloat().coerceIn(0.02f, 1f)

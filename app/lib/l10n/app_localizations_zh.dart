@@ -1197,6 +1197,15 @@ class AppLocalizationsZh extends AppLocalizations {
   String get actSig => '验签';
 
   @override
+  String get volumeMode => '音量控制';
+
+  @override
+  String get volumeModeSystem => '系统音量（默认）';
+
+  @override
+  String get volumeModePlayer => '播放器音量';
+
+  @override
   String get videoSoftwareDecodeNotice => '正在使用软件解码（硬件解码器不支持此编码）';
 
   @override

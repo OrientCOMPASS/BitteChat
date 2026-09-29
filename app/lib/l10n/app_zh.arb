@@ -705,6 +705,9 @@
  "actBlock": "屏蔽",
  "actId": "ID",
  "actSig": "验签",
+ "volumeMode": "音量控制",
+ "volumeModeSystem": "系统音量（默认）",
+ "volumeModePlayer": "播放器音量",
  "videoSoftwareDecodeNotice": "正在使用软件解码（硬件解码器不支持此编码）",
  "videoSpeed": "倍速"
 }

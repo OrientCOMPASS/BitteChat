@@ -1237,6 +1237,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get actSig => 'Verify';
 
   @override
+  String get volumeMode => 'Volume control';
+
+  @override
+  String get volumeModeSystem => 'System volume (default)';
+
+  @override
+  String get volumeModePlayer => 'Player volume';
+
+  @override
   String get videoSoftwareDecodeNotice =>
       'Using software decoding (hardware decoder lacks this codec)';
 

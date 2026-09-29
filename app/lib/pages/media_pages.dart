@@ -135,6 +135,16 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
   bool _vertBrightness = false;
   double? _brightness; // cached 0..1 screen brightness, fetched once
   double _volume = 100; // our own 0..100 volume; mpv read-back is too slow
+  bool _volumeReady = false;
+  String? _volumeModeInit;
+
+  // two-finger pinch/pan of the picture (drives media_kit's
+  // transformationController; the video's own InteractiveViewer stays off)
+  final TransformationController _videoTransform = TransformationController();
+  bool _pinching = false;
+  double _zoom = 1;
+  double _pinchBaseZoom = 1;
+  Offset _pan = Offset.zero;
 
   // subtitles (embedded tracks + optional external file)
   List<SubtitleTrack> _subtitleTracks = const [];
@@ -362,7 +372,27 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     if (_locked || _failed) return;
     final width = MediaQuery.sizeOf(context).width;
     _vertBrightness = d.localPosition.dx < width / 2;
+    if (!_vertBrightness) unawaited(_ensureVolumeBase());
     _uiTimer?.cancel();
+  }
+
+  /// Seed [_volume] from the ACTIVE target (system stream by default, mpv
+  /// volume when the user switched) so the OSD and increments start right.
+  Future<void> _ensureVolumeBase() async {
+    final mode = widget.prefs?.playVolumeMode ?? 'system';
+    if (_volumeReady && _volumeModeInit == mode) return;
+    _volumeModeInit = mode;
+    if (mode == 'system') {
+      try {
+        final v = await _mediaCh.invokeMethod<double>('getSystemVolume');
+        _volume = v == null ? 100 : (v * 100).clamp(0.0, 100.0);
+      } catch (_) {
+        _volume = 100;
+      }
+    } else {
+      _volume = 100;
+    }
+    _volumeReady = true;
   }
 
   void _onVerticalDragUpdate(DragUpdateDetails d) {
@@ -378,15 +408,57 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
       _setBrightness(next);
       _showOsd(Icons.brightness_high, next);
     } else {
+      if (!_volumeReady) return;
       final next = (_volume - d.delta.dy / span * 100).clamp(0.0, 100.0);
       _volume = next;
-      _player?.setVolume(next).catchError((_) {});
+      if ((widget.prefs?.playVolumeMode ?? 'system') == 'system') {
+        _mediaCh.invokeMethod<bool>(
+            'setSystemVolume', {'value': next / 100}).catchError((_) {});
+      } else {
+        _player?.setVolume(next).catchError((_) {});
+      }
       _showOsd(Icons.volume_up, next / 100);
     }
   }
 
   void _onVerticalDragEnd(DragEndDetails d) {
     if (_locked || _failed) return;
+    _hideOsdSoon();
+  }
+
+  // ---------------------------------------------- two-finger pinch / pan
+
+  /// A second pointer switches the input from seek/volume/brightness to
+  /// picture zoom+pan (the single-finger recognizers lose the arena to the
+  /// scale recognizer, and we drop any in-flight single gesture here).
+  void _onScaleStart(ScaleStartDetails d) {
+    if (_locked || _failed) return;
+    _pinching = true;
+    _pinchBaseZoom = _zoom;
+    if (_dragging) setState(() => _dragging = false);
+    _osdTimer?.cancel();
+    setState(() => _osdLevel = null);
+  }
+
+  void _onScaleUpdate(ScaleUpdateDetails d) {
+    if (_locked || _failed || !_pinching) return;
+    final z = (_pinchBaseZoom * d.scale).clamp(1.0, 4.0);
+    _zoom = z;
+    _pan = z > 1.0 ? _pan + d.focalPointDelta : Offset.zero;
+    _videoTransform.value = Matrix4.identity()
+      ..translate(_pan.dx, _pan.dy)
+      ..scale(z, z, 1);
+    _showOsd(Icons.zoom_in, (z - 1) / 3);
+  }
+
+  void _onScaleEnd(ScaleEndDetails d) {
+    if (!_pinching) return;
+    _pinching = false;
+    if (_zoom <= 1.01) {
+      _zoom = 1;
+      _pan = Offset.zero;
+      _videoTransform.value = Matrix4.identity();
+    }
     _hideOsdSoon();
   }
 
@@ -641,8 +713,12 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
         player.stream.tracks.listen((t) {
           if (mounted && gen == _generation) {
             setState(() {
-              _subtitleTracks = t.subtitle;
-              final sel = t.subtitle.where((s) => s.selected);
+              // media_kit exposes pseudo-tracks 'auto'/'no' — hide them so the
+              // picker only lists real subtitle streams (off is a menu item).
+              _subtitleTracks = t.subtitle
+                  .where((s) => s.id != 'auto' && s.id != 'no')
+                  .toList();
+              final sel = _subtitleTracks.where((s) => s.selected);
               _activeSubtitleId = sel.isEmpty ? '' : sel.first.id;
             });
           }
@@ -959,6 +1035,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     _uiTimer?.cancel();
     _osdTimer?.cancel();
     _seekFlashTimer?.cancel();
+    _videoTransform.dispose();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     if (_orientationApplied) {
       // restore the app's default (system/sensor) orientation on the way out
@@ -1106,6 +1183,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
                       fit: _fit,
                       fill: Colors.black,
                       scaleEnabled: false,
+                      transformationController: _videoTransform,
                     ),
           // single-finger gesture layer: tap = toggle chrome, double-tap =
           // play/pause (or ±10s when enabled), horizontal drag = seek,

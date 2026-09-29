@@ -2282,6 +2282,24 @@ abstract class AppLocalizations {
   /// **'验签'**
   String get actSig;
 
+  /// No description provided for @volumeMode.
+  ///
+  /// In zh, this message translates to:
+  /// **'音量控制'**
+  String get volumeMode;
+
+  /// No description provided for @volumeModeSystem.
+  ///
+  /// In zh, this message translates to:
+  /// **'系统音量（默认）'**
+  String get volumeModeSystem;
+
+  /// No description provided for @volumeModePlayer.
+  ///
+  /// In zh, this message translates to:
+  /// **'播放器音量'**
+  String get volumeModePlayer;
+
   /// No description provided for @videoSoftwareDecodeNotice.
   ///
   /// In zh, this message translates to:

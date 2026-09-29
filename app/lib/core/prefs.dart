@@ -43,6 +43,10 @@ class UiPrefs extends ChangeNotifier {
   /// UI language override: 'system' | 'zh' | 'en'.
   String localePref = 'system';
 
+  /// Volume control target: 'system' (default, what users expect) | 'player'
+  /// (mpv-independent volume).
+  String playVolumeMode = 'system';
+
   Locale? localeOverride() {
     switch (localePref) {
       case 'zh':
@@ -91,6 +95,7 @@ class UiPrefs extends ChangeNotifier {
           prefs.playDefaultSpeed =
               (j['playDefaultSpeed'] as num?)?.toDouble() ?? 1.0;
           prefs.localePref = (j['locale'] as String?) ?? 'system';
+          prefs.playVolumeMode = (j['playVolumeMode'] as String?) ?? 'system';
         }
       }
     } catch (_) {}
@@ -112,6 +117,7 @@ class UiPrefs extends ChangeNotifier {
         'playLongPressSpeed': playLongPressSpeed,
         'playDefaultSpeed': playDefaultSpeed,
         'locale': localePref,
+        'playVolumeMode': playVolumeMode,
       }));
     } catch (_) {}
     notifyListeners();

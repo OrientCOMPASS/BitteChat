@@ -705,6 +705,9 @@
  "actBlock": "Block",
  "actId": "ID",
  "actSig": "Verify",
+ "volumeMode": "Volume control",
+ "volumeModeSystem": "System volume (default)",
+ "volumeModePlayer": "Player volume",
  "videoSoftwareDecodeNotice": "Using software decoding (hardware decoder lacks this codec)",
  "videoSpeed": "Playback speed"
 }

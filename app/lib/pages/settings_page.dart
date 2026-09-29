@@ -532,6 +532,31 @@ class _SettingsPageState extends State<SettingsPage> {
     if (mounted) setState(() {});
   }
 
+  Future<void> _pickVolumeMode(BuildContext context) async {
+    final picked = await showDialog<String>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: Text(L.t.volumeMode),
+        children: [
+          for (final o in const ['system', 'player'])
+            ListTile(
+              dense: true,
+              leading: Icon(o == widget.prefs.playVolumeMode
+                  ? Icons.radio_button_checked
+                  : Icons.radio_button_off),
+              title: Text(
+                  o == 'system' ? L.t.volumeModeSystem : L.t.volumeModePlayer),
+              onTap: () => Navigator.pop(ctx, o),
+            ),
+        ],
+      ),
+    );
+    if (picked == null) return;
+    widget.prefs.playVolumeMode = picked;
+    await widget.prefs.save();
+    if (mounted) setState(() {});
+  }
+
   /// Radio-style picker used by the playback-speed settings.
   Future<void> _pickSpeed(
     BuildContext context, {
@@ -899,6 +924,14 @@ class _SettingsPageState extends State<SettingsPage> {
               },
             ),
           ),
+          ListTile(
+            leading: Icon(Icons.volume_up),
+            title: Text(L.t.volumeMode),
+            trailing: Text(widget.prefs.playVolumeMode == 'system'
+                ? L.t.volumeModeSystem
+                : L.t.volumeModePlayer),
+            onTap: () => _pickVolumeMode(context),
+          ),
           const Divider(),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -953,7 +986,7 @@ class _SettingsPageState extends State<SettingsPage> {
           AboutListTile(
             icon: Icon(Icons.favorite_outline),
             applicationName: 'BitteChat',
-            applicationVersion: '${_info['version'] ?? '0.5.14'}',
+            applicationVersion: '${_info['version'] ?? '0.5.15'}',
             aboutBoxChildren: [
               Text(
                 '${L.t.aboutDesc}${L.t.aboutDesc2}'

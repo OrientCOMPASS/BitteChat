@@ -91,6 +91,7 @@ cd app && flutter build apk --release --split-per-abi
 - [x] ~~v0.5.12 播放器输入层彻底重写~~（**已撤回**：实机布局回归，release/tag 已删除）
 - [x] v0.5.13 播放器「遮罩」根治：控制条改**纯控件**（去掉渐变 Container 与 AppBar 材质背景——带装饰/材质的条带会在 UI 显示时吸收整条指针，即用户看到的上半屏黑色渐变遮罩）；返回键改显式按钮；阴影移除；详见 docs/VIDEO-PLAYBACK.md §12
 - [x] v0.5.14 修复 0.5.12/0.5.13 的进度条居中回归（恢复控制条 `Column(mainAxisSize.min)` 包裹，位置回到 0.5.11 且仍无遮罩/阴影）；**CI 停止 emulator-smoke**（门禁：detect/core-test/app-analyze/native-smoke/android/release）
+- [x] v0.5.15 播放器：**双指缩放/平移**（第二触点切换为 pinch/pan，驱动 transformationController，不再误判为进度/音量/亮度）；**音量默认控制系统音量**（设置→播放可切播放器音量）；**字幕选择器移除 #auto/#no 伪轨**
 - [ ] 路线图：**LLM 内容过滤** —— 用 LLM 直接判断一条消息是否应被屏蔽（语义级判定，取代当前 包含/等于/正则 的文本匹配；不是"用 LLM 生成过滤脚本"）
 - [ ] 路线图：接入 **PBH（Peer Black Hole / IBD peer 黑名单）** 屏蔽恶意与吸血 peer
 - [ ] 路线图：**桌面端适配** —— Windows / Linux / macOS 三平台（核心是纯 Rust + libtorrent，已有 `build-linux-native.sh` 主机构建链；主要工作在桌面窗口工程、托盘与文件关联）

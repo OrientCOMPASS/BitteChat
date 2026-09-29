@@ -301,3 +301,18 @@ v0.5.14 在顶/底控制条恢复 `Column(mainAxisSize.min)` 包裹，布局回�
 另：按用户要求，CI 不再运行 `emulator-smoke`（模拟器集成测试）job 及其
 jniLibs 上传步骤；门禁为 detect / core-test / app-analyze / native-smoke /
 android / release。
+
+## 14. v0.5.15：双指缩放、系统音量默认、字幕伪轨清理
+
+- **双指缩放/平移**：单指识别器（tap/doubletap/longpress/横滑/竖滑）与
+  `onScale*` 同挂在不透明手势层上。第二个触点落下时 ScaleGestureRecognizer
+  赢得竞技场 → 单指手势被 reject，`onScaleStart` 清掉进行中的进度/OSD，
+  `onScaleUpdate` 以 `scale`(1–4×) 与 `focalPointDelta`(平移) 驱动传给
+  `Video` 的 `transformationController`（`scaleEnabled:false`，视频自身的
+  InteractiveViewer 不参与）。松手时若回到 1× 则复位平移。
+- **音量目标可切换，默认系统音量**：右竖滑默认改 `AudioManager`
+  STREAM_MUSIC（原生 `getSystemVolume/setSystemVolume`），设置→播放可切到
+  「播放器音量」（mpv `setVolume`）。拖动起点按当前目标取基线（`_volume`
+  自持，避免回读迟滞）。
+- **字幕选择器移除 `#auto` / `#no` 伪轨**：`tracks.subtitle` 里 id 为
+  `auto`/`no` 的项过滤掉，「关闭字幕」由菜单项承担，避免误导。
