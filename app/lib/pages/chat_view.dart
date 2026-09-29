@@ -236,8 +236,7 @@ class _ChatViewPageState extends State<ChatViewPage> {
   void _insertMention(ChatMessage m) {
     final name = m.authorName.isEmpty ? L.t.anonymous : m.authorName;
     _input.text = '${_input.text}@$name ';
-    _input.selection = TextSelection.fromPosition(
-        TextSelectionPosition(position: _input.text.length));
+    _input.selection = TextSelection.collapsed(offset: _input.text.length);
   }
 
   Future<void> _showMentionPicker() async {
@@ -269,8 +268,7 @@ class _ChatViewPageState extends State<ChatViewPage> {
     final t = _input.text;
     final base = t.endsWith('@') ? t.substring(0, t.length - 1) : t;
     _input.text = '$base@${picked['name'] ?? ''} ';
-    _input.selection = TextSelection.fromPosition(
-        TextSelectionPosition(position: _input.text.length));
+    _input.selection = TextSelection.collapsed(offset: _input.text.length);
   }
 
   /// SelectionArea's context menu (text long-press): the popup anchored to the
@@ -393,7 +391,7 @@ class _ChatViewPageState extends State<ChatViewPage> {
       color: theme.colorScheme.surfaceContainerHighest,
       child: ConstrainedBox(
         constraints:
-            BoxConstraints(maxWidth: MediaQuery.sizeOf(ctx).width - 16),
+            BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width - 16),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
           child: SingleChildScrollView(

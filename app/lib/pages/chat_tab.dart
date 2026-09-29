@@ -356,33 +356,21 @@ class _ChatTabState extends State<ChatTab> {
         if (g.unread > 0)
           PopupMenuItem(
               value: 'read',
-              icon: const Icon(Icons.mark_chat_read_outlined),
-              child: Text(L.t.markAsRead)),
+              child: _mi(Icons.mark_chat_read_outlined, L.t.markAsRead)),
         if (!g.dm)
           PopupMenuItem(
               value: 'rename',
-              icon: const Icon(Icons.edit_outlined),
-              child: Text(L.t.renameGroup)),
+              child: _mi(Icons.edit_outlined, L.t.renameGroup)),
         if (!g.dm)
           PopupMenuItem(
-              value: 'copy',
-              icon: const Icon(Icons.link),
-              child: Text(L.t.copyInviteLink)),
+              value: 'copy', child: _mi(Icons.link, L.t.copyInviteLink)),
         if (!g.dm)
-          PopupMenuItem(
-              value: 'sync',
-              icon: const Icon(Icons.sync),
-              child: Text(L.t.resync)),
+          PopupMenuItem(value: 'sync', child: _mi(Icons.sync, L.t.resync)),
         if (g.dm)
-          PopupMenuItem(
-              value: 'block',
-              icon: const Icon(Icons.block),
-              child: Text(L.t.block)),
+          PopupMenuItem(value: 'block', child: _mi(Icons.block, L.t.block)),
         if (!g.dm)
           PopupMenuItem(
-              value: 'leave',
-              icon: const Icon(Icons.logout),
-              child: Text(L.t.leaveGroup)),
+              value: 'leave', child: _mi(Icons.logout, L.t.leaveGroup)),
       ],
     );
     if (action == null || !mounted) return;
@@ -514,6 +502,12 @@ class _ChatTabState extends State<ChatTab> {
     );
   }
 }
+
+/// icon + label row for a popup menu item.
+Widget _mi(IconData icon, String label) => Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [Icon(icon, size: 20), const SizedBox(width: 10), Text(label)],
+    );
 
 String shortPkLabel(String pk) =>
     pk.length > 12 ? '${pk.substring(0, 12)}…' : pk;
