@@ -53,12 +53,8 @@ class VideoPlayerPage extends StatefulWidget {
   final String title;
 
   /// Playback preferences (double-tap side-seek / long-press speed / default
-  /// speed) come from the shared [UiPrefs] (Settings → Playback). Nullable so
-  /// the page still works in demo/test contexts without prefs.
+  /// speed) come from the shared [UiPrefs] (Settings → Playback).
   final UiPrefs? prefs;
-
-  bool get _sideSeekOn => prefs?.playDoubleTapSideSeek ?? false;
-  double get _longPressSpeed => prefs?.playLongPressSpeed ?? 2.0;
 
   /// Test/observability hooks — the CI real-video test asserts on these
   /// instead of pixel-diffing a software-rendered emulator.
@@ -89,6 +85,17 @@ class VideoPlayerPage extends StatefulWidget {
   State<VideoPlayerPage> createState() => _VideoPlayerPageState();
 }
 
+/// v0.5.12 rewrite, modelled on PiliPlus's player (pl_player): the picture
+/// carries NO gestures and NO gesture-arena participants. A single raw
+/// [Listener] layer (HitTestBehavior.opaque) sits above the picture and below
+/// the chrome and classifies pointers MANUALLY (tap / double-tap / long-press /
+/// horizontal scrub / vertical brightness-volume). Because it never enters the
+/// gesture arena, media_kit's internal InteractiveViewer recognizers (or any
+/// other descendant) can no longer starve single-finger input — the failure
+/// mode of v0.5.10/v0.5.11 where every one-finger gesture died while the chrome
+/// was visible. See docs/VIDEO-PLAYBACK.md §10–§11.
+enum _GestureKind { none, horizontal, vertical }
+
 class _VideoPlayerPageState extends State<VideoPlayerPage>
     with WidgetsBindingObserver {
   Player? _player;
@@ -107,40 +114,43 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
   Timer? _uiTimer;
   static const Duration _uiHideAfter = Duration(seconds: 3);
 
-  // --- drag-to-seek: swipe left/right on the picture to fine-tune progress -
+  // --- raw-pointer gesture state (no gesture arena) ------------------------
+  int _ptrCount = 0;
+  Offset _downLocal = Offset.zero;
+  Offset _accum = Offset.zero;
+  bool _moved = false;
+  _GestureKind _kind = _GestureKind.none;
+  bool _longPressActive = false;
+  Timer? _longPressTimer;
+  Timer? _tapTimer;
+  int _lastTapMs = 0;
+  Offset _lastTapLocal = Offset.zero;
+  static const double _slop = 12;
+  static const int _doubleTapMs = 300;
+
+  // --- scrub / osd ---------------------------------------------------------
   bool _dragging = false;
-  double _dragAccum = 0.0;
+  double _dragAccum = 0;
   Duration _dragStartPos = Duration.zero;
   Duration _dragTargetPos = Duration.zero;
-
-  // --- fullscreen orientation derived from the video aspect ratio ---------
-  bool _orientationApplied = false;
-
-  // --- one-shot "we fell back to software decode" notice ------------------
-  bool _notifiedSoftware = false;
-
-  // --- v0.5.9 player UX (PiliPlus-inspired, filtered) --------------------
-  bool _locked = false;
-  BoxFit _fit = BoxFit.contain;
-  bool _longPressSpeedActive = false;
-
-  // double-tap side-seek flash (signed seconds), cleared after a beat
   int? _seekFlash;
   Timer? _seekFlashTimer;
-
-  // vertical-drag OSD: volume (right half) / brightness (left half)
   double? _osdLevel;
   IconData? _osdIcon;
   Timer? _osdTimer;
   bool _vertBrightness = false;
-  double? _brightness; // cached 0..1 screen brightness, fetched once
-  double _volume = 100; // our own 0..100 volume; mpv read-back is too slow
+  double? _brightness;
+  double _volume = 100;
 
-  // subtitles (embedded tracks + optional external file)
+  // --- lock / fit / orientation / subtitles --------------------------------
+  bool _locked = false;
+  BoxFit _fit = BoxFit.contain;
+  bool _orientationApplied = false;
+  bool _notifiedSoftware = false;
   List<SubtitleTrack> _subtitleTracks = const [];
   String _activeSubtitleId = '';
 
-  // --- decode chain state -------------------------------------------------
+  // --- decode chain state --------------------------------------------------
   int _generation = 0;
   int _tierIndex = 0;
   int _stallHits = 0;
@@ -155,6 +165,9 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
   Timer? _promoteTimer;
 
   VideoDecodeTier get _tier => VideoDecodeChain.tier(_tierIndex);
+
+  bool get _sideSeekOn => widget.prefs?.playDoubleTapSideSeek ?? false;
+  double get _longPressSpeed => widget.prefs?.playLongPressSpeed ?? 2.0;
 
   @override
   void initState() {
@@ -175,8 +188,6 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // backgrounding: quiesce mpv — surface races during fast
-    // background/foreground switches were a native-crash suspect
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.inactive) {
       _player?.pause().catchError((_) {});
@@ -187,20 +198,11 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
 
   // ------------------------------------------------------------ audio focus
 
-  /// Take over the audio path through the shared [MediaFocus]: stops the
-  /// in-app voice row, then asks Android to interrupt whatever else is playing
-  /// (music app, browser…) — the actual "playback preemption".
   Future<void> _acquireFocus() async {
-    // Acquire first: a hand-off from the voice row keeps the system focus (no
-    // abandon/re-request blip in other apps) and pauses it; then fully stop the
-    // shared voice player. release() inside stopAll() is a no-op once we own it.
     await MediaFocus.instance.acquire(this, _onFocusLost);
     await SharedVoicePlayer.stopAll();
   }
 
-  /// Android revoked our focus (another app grabbed it / a call came in):
-  /// pause, and block the next `playing=true` from stealing focus straight
-  /// back until playback genuinely stops or the page closes.
   Future<void> _onFocusLost() async {
     final p = _player;
     if (p != null && _playing) {
@@ -218,7 +220,6 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
   void _setUiVisible(bool v) {
     if (_uiVisible == v) return;
     setState(() => _uiVisible = v);
-    // immersive while the chrome is hidden so "fullscreen" really is full
     SystemChrome.setEnabledSystemUIMode(
       v ? SystemUiMode.edgeToEdge : SystemUiMode.immersiveSticky,
     );
@@ -234,11 +235,12 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     _uiTimer?.cancel();
     if (!_playing) return; // paused / failed: keep the controls reachable
     _uiTimer = Timer(_uiHideAfter, () {
-      if (mounted && _uiVisible && _playing) _setUiVisible(false);
+      if (mounted && _uiVisible && _playing && !_locked) _setUiVisible(false);
     });
   }
 
   void _toggleUi() {
+    if (_locked) return;
     if (_uiVisible) {
       _uiTimer?.cancel();
       _setUiVisible(false);
@@ -247,62 +249,168 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     }
   }
 
-  // ------------------------------------------------------------- seek drag
+  Future<void> _setRate(double v) async {
+    setState(() => _rate = v);
+    try {
+      await _player?.setRate(v);
+    } catch (e) {
+      appLog('video setRate($v) failed: $e');
+    }
+  }
 
-  /// A full screen-width of horizontal drag scrubs this many seconds — fine
-  /// enough to "微调" the position without jumping the whole timeline.
-  static const double _seekSecondsPerScreenWidth = 90;
+  // ------------------------------------------- raw-pointer gesture handling
 
-  void _onSeekDragStart(DragStartDetails d) {
-    _uiTimer?.cancel();
+  void _onPointerDown(PointerDownEvent e) {
+    if (_locked || _failed) return;
+    _ptrCount++;
+    if (_ptrCount > 1) {
+      // multi-touch: abandon any in-flight single-pointer gesture
+      _longPressTimer?.cancel();
+      _tapTimer?.cancel();
+      _longPressActive = false;
+      _kind = _GestureKind.none;
+      if (_dragging) setState(() => _dragging = false);
+      return;
+    }
+    _downLocal = e.localPosition;
+    _accum = Offset.zero;
+    _moved = false;
+    _kind = _GestureKind.none;
     _dragAccum = 0;
     _dragStartPos = _position;
     _dragTargetPos = _position;
-    setState(() => _dragging = true);
+    _uiTimer?.cancel();
+    _longPressTimer?.cancel();
+    _longPressTimer = Timer(const Duration(milliseconds: 350), () {
+      if (!mounted || _moved || _ptrCount != 1) return;
+      _longPressActive = true;
+      HapticFeedback.selectionClick();
+      _player?.setRate(_longPressSpeed).catchError((_) {});
+      setState(() {});
+    });
   }
 
-  void _onSeekDragUpdate(DragUpdateDetails d) {
+  void _onPointerMove(PointerMoveEvent e) {
+    if (_locked || _failed || _ptrCount != 1) return;
+    _accum += e.delta;
+    if (!_moved && _accum.distance > _slop) {
+      _moved = true;
+      _longPressTimer?.cancel();
+      _tapTimer?.cancel();
+      final dx = _accum.dx.abs();
+      final dy = _accum.dy.abs();
+      if (dx > dy) {
+        _kind = _GestureKind.horizontal;
+        setState(() => _dragging = true);
+      } else {
+        _kind = _GestureKind.vertical;
+        final width = MediaQuery.sizeOf(context).width;
+        _vertBrightness = _downLocal.dx < width / 2;
+      }
+    }
+    if (!_moved) return;
+    if (_kind == _GestureKind.horizontal) {
+      final width = MediaQuery.sizeOf(context).width;
+      final span = width > 0 ? width : 1;
+      _dragAccum += e.delta.dx;
+      var targetMs = _dragStartPos.inMilliseconds +
+          (_dragAccum / span * _seekSecondsPerScreenWidth * 1000).round();
+      final maxMs = _duration.inMilliseconds;
+      if (maxMs > 0) {
+        targetMs = targetMs.clamp(0, maxMs).toInt();
+      } else if (targetMs < 0) {
+        targetMs = 0;
+      }
+      setState(() => _dragTargetPos = Duration(milliseconds: targetMs));
+    } else if (_kind == _GestureKind.vertical) {
+      final height = MediaQuery.sizeOf(context).height;
+      final span = height > 0 ? height : 1;
+      if (_vertBrightness) {
+        final cur = _brightness ?? 0.5;
+        final next = (cur - e.delta.dy / span).clamp(0.02, 1.0);
+        _brightness = next;
+        _setBrightness(next);
+        _showOsd(Icons.brightness_high, next);
+      } else {
+        final next = (_volume - e.delta.dy / span * 100).clamp(0.0, 100.0);
+        _volume = next;
+        _player?.setVolume(next).catchError((_) {});
+        _showOsd(Icons.volume_up, next / 100);
+      }
+    }
+  }
+
+  void _onPointerUp(PointerUpEvent e) {
+    if (_locked || _failed) return;
+    _ptrCount = (_ptrCount - 1).clamp(0, 8);
+    if (_ptrCount != 0) return;
+    _longPressTimer?.cancel();
+    if (_longPressActive) {
+      _longPressActive = false;
+      _player?.setRate(_rate).catchError((_) {});
+      setState(() {});
+      _scheduleHideUi();
+      return;
+    }
+    if (_kind == _GestureKind.horizontal) {
+      final target = _dragTargetPos;
+      setState(() => _dragging = false);
+      try {
+        _player?.seek(target);
+      } catch (err) {
+        appLog('video drag-seek failed: $err');
+      }
+      setState(() => _position = target);
+      _showUi();
+      return;
+    }
+    if (_kind == _GestureKind.vertical) {
+      _hideOsdSoon();
+      _scheduleHideUi();
+      return;
+    }
+    // no movement: tap / double-tap
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final isDouble = (now - _lastTapMs) < _doubleTapMs &&
+        (_downLocal - _lastTapLocal).distance < 60;
+    _tapTimer?.cancel();
+    if (isDouble) {
+      _lastTapMs = 0;
+      _onDoubleTap(_downLocal);
+    } else {
+      _lastTapMs = now;
+      _lastTapLocal = _downLocal;
+      _tapTimer = Timer(const Duration(milliseconds: _doubleTapMs), () {
+        if (mounted) _toggleUi();
+      });
+    }
+  }
+
+  void _onPointerCancel(PointerCancelEvent e) {
+    _ptrCount = 0;
+    _longPressTimer?.cancel();
+    _longPressActive = false;
+    if (_dragging) setState(() => _dragging = false);
+    _kind = _GestureKind.none;
+  }
+
+  /// A full screen-width of horizontal drag scrubs this many seconds.
+  static const double _seekSecondsPerScreenWidth = 90;
+
+  void _onDoubleTap(Offset local) {
+    if (_locked || _failed) return;
     final width = MediaQuery.sizeOf(context).width;
-    final span = width > 0 ? width : 1;
-    _dragAccum += d.delta.dx;
-    var targetMs = _dragStartPos.inMilliseconds +
-        (_dragAccum / span * _seekSecondsPerScreenWidth * 1000).round();
-    final maxMs = _duration.inMilliseconds;
-    if (maxMs > 0) {
-      targetMs = targetMs.clamp(0, maxMs).toInt();
-    } else if (targetMs < 0) {
-      targetMs = 0;
+    if (_sideSeekOn && width > 0 && local.dx < width * 0.25) {
+      _seekBy(const Duration(seconds: -10));
+      _flashSeek(-10);
+    } else if (_sideSeekOn && width > 0 && local.dx > width * 0.75) {
+      _seekBy(const Duration(seconds: 10));
+      _flashSeek(10);
+    } else {
+      _playPause();
     }
-    setState(() => _dragTargetPos = Duration(milliseconds: targetMs));
   }
 
-  void _onSeekDragEnd(DragEndDetails d) {
-    final target = _dragTargetPos;
-    setState(() => _dragging = false);
-    try {
-      _player?.seek(target);
-    } catch (e) {
-      appLog('video drag-seek failed: $e');
-    }
-    // reflect the scrub immediately; the position stream reconciles it
-    setState(() => _position = target);
-    _showUi();
-  }
-
-  /// `+01:23` / `-00:45` — the scrub delta shown under the target position.
-  static String _fmtDelta(Duration d) {
-    final a = d.abs();
-    final sign = d.isNegative ? '-' : '+';
-    final m = a.inMinutes.toString().padLeft(2, '0');
-    final s = a.inSeconds.remainder(60).toString().padLeft(2, '0');
-    return '$sign$m:$s';
-  }
-
-  // ------------------------------------------------- v0.5.9 gesture extras
-
-  static const MethodChannel _mediaCh = MethodChannel('bittechat/media');
-
-  /// Relative/absolute seek used by double-tap side-seek.
   Future<void> _seekBy(Duration delta) async {
     final upper = _duration > Duration.zero ? _duration : _position;
     final ms =
@@ -320,74 +428,6 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     _seekFlashTimer = Timer(const Duration(milliseconds: 700), () {
       if (mounted) setState(() => _seekFlash = null);
     });
-  }
-
-  /// Double-tap: centre = play/pause; left/right = ∓/+10s **only when the
-  /// user enabled it** (Settings → Playback), otherwise centre behaviour.
-  void _onDoubleTapDown(TapDownDetails d) {
-    if (_locked || _failed) return;
-    final width = MediaQuery.sizeOf(context).width;
-    final x = d.localPosition.dx;
-    final sideSeek = widget._sideSeekOn;
-    if (sideSeek && width > 0 && x < width * 0.25) {
-      _seekBy(const Duration(seconds: -10));
-      _flashSeek(-10);
-    } else if (sideSeek && width > 0 && x > width * 0.75) {
-      _seekBy(const Duration(seconds: 10));
-      _flashSeek(10);
-    } else {
-      _playPause();
-    }
-  }
-
-  /// Long-press: temporary speed boost (multiplier from Settings), restored
-  /// on release.
-  void _onLongPressStart(LongPressStartDetails d) {
-    if (_locked || _failed) return;
-    _longPressSpeedActive = true;
-    _player?.setRate(widget._longPressSpeed).catchError((_) {});
-    if (mounted) setState(() {});
-  }
-
-  void _onLongPressEnd(LongPressEndDetails d) {
-    if (!_longPressSpeedActive) return;
-    _longPressSpeedActive = false;
-    _player?.setRate(_rate).catchError((_) {});
-    if (mounted) setState(() {});
-  }
-
-  /// Vertical drag: left half = screen brightness, right half = volume, each
-  /// with a centre OSD (PiliPlus-style).
-  void _onVerticalDragStart(DragStartDetails d) {
-    if (_locked || _failed) return;
-    final width = MediaQuery.sizeOf(context).width;
-    _vertBrightness = d.localPosition.dx < width / 2;
-    _uiTimer?.cancel();
-  }
-
-  void _onVerticalDragUpdate(DragUpdateDetails d) {
-    if (_locked || _failed) return;
-    final height = MediaQuery.sizeOf(context).height;
-    final span = height > 0 ? height : 1;
-    // dragging UP (negative dy) increases the level; applied incrementally
-    // from the current value so a continued drag stays monotonic
-    if (_vertBrightness) {
-      final cur = _brightness ?? 0.5;
-      final next = (cur - d.delta.dy / span).clamp(0.02, 1.0);
-      _brightness = next;
-      _setBrightness(next);
-      _showOsd(Icons.brightness_high, next);
-    } else {
-      final next = (_volume - d.delta.dy / span * 100).clamp(0.0, 100.0);
-      _volume = next;
-      _player?.setVolume(next).catchError((_) {});
-      _showOsd(Icons.volume_up, next / 100);
-    }
-  }
-
-  void _onVerticalDragEnd(DragEndDetails d) {
-    if (_locked || _failed) return;
-    _hideOsdSoon();
   }
 
   void _showOsd(IconData icon, double level) {
@@ -410,7 +450,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     try {
       final v = await _mediaCh.invokeMethod<double>('getBrightness');
       if (v != null && mounted) _brightness = v.clamp(0.02, 1.0);
-    } catch (_) {/* no native channel (desktop/tests): skip */}
+    } catch (_) {/* no native channel (desktop/tests) */}
   }
 
   Future<void> _setBrightness(double v) async {
@@ -419,7 +459,8 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     } catch (_) {}
   }
 
-  /// Cycle contain → cover → fill, naming the new mode briefly.
+  static const MethodChannel _mediaCh = MethodChannel('bittechat/media');
+
   void _cycleFit() {
     setState(() {
       _fit = _fit == BoxFit.contain
@@ -453,7 +494,6 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     });
   }
 
-  /// Subtitle picker: embedded tracks + "off" + load an external file.
   Future<void> _openSubtitleMenu() async {
     _uiTimer?.cancel();
     final picked = await showModalBottomSheet<String>(
@@ -522,22 +562,8 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     _showUi();
   }
 
-  Future<void> _setRate(double v) async {
-    setState(() => _rate = v);
-    try {
-      await _player?.setRate(v);
-    } catch (e) {
-      appLog('video setRate($v) failed: $e');
-    }
-  }
+  // ------------------------------------------------------------------ open
 
-  // ---------------------------------------------------------------- open
-
-  /// (Re)build the whole player stack on decode rung [tierIndex], resuming at
-  /// [seekTo] when given. A full rebuild (instead of flipping `--hwdec` on the
-  /// live player) is deliberate: the hwdec interop is chosen while the
-  /// decoder/vo are wired up, and a stalled interop leaves both in a state we
-  /// would rather not reuse.
   Future<void> _openAt(int tierIndex, {Duration? seekTo}) async {
     final gen = ++_generation;
     final tier = VideoDecodeChain.tier(tierIndex);
@@ -557,9 +583,6 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
         '(hwdec=${tier.hwdec}, gen=$gen, resume=${seekTo?.inMilliseconds ?? 0}ms)');
     AppLog.breadcrumb('video open tier=${tier.label} gen=$gen');
 
-    // The last rung is software decode — the hardware decoder could not handle
-    // this codec. Tell the user once (a SnackBar over the fullscreen picture)
-    // rather than keeping a persistent decode readout on screen.
     if (!tier.hardware && !_notifiedSoftware) {
       _notifiedSoftware = true;
       if (mounted) {
@@ -570,9 +593,6 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
       }
     }
 
-    // tear the previous stack down first: one SurfaceTexture per player, and
-    // two live mpv instances competing for MediaCodec is exactly the kind of
-    // resource contention we are trying to diagnose.
     final oldPlayer = _player;
     final oldSubs = List<StreamSubscription<dynamic>>.from(_subs);
     _subs.clear();
@@ -598,18 +618,9 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
         configuration: PlayerConfiguration(
           logLevel: MPVLogLevel.warn,
           options: {
-            // Only the software rung may fall back to ffmpeg on its own: on
-            // the hardware rungs a silent fallback would hide the very
-            // failure we are trying to detect and report.
             'vd-lavc-software-fallback': tier.hardware ? 'no' : 'yes',
-            // display-referenced A/V sync (PiliPlus default): a flaky audio
-            // device (underruns) must NOT stall the video clock — with mpv's
-            // default video-sync=audio, audio underruns froze the renderer
-            // (vo/gpu frame pile-up, black picture)
             'video-sync': 'display-resample',
-            // audio backend fallback chain across Android AOs
             'ao': 'opensles,aaudio,audiotrack',
-            // gentler audio-resync ramp (PiliPlus Android default)
             'autosync': '30',
             'volume': '100',
           },
@@ -650,8 +661,6 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
       ]);
 
       if (tierIndex == 0) {
-        // one forensic line about the file on disk (cheap, and it settles
-        // "player broken" vs "half a mp4" without a log export round-trip)
         await _logFileIntegrity();
         appLog('video open: ${widget.path} (media_kit/mpv tier=${tier.label})');
       }
@@ -670,8 +679,6 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
       }
       setState(() => _videoController = vc);
 
-      // the SurfaceTexture's first onFrameAvailable → the renderer really
-      // produced a picture (not just "the decoder is configured")
       unawaited(vc.waitUntilFirstFrameRendered.then((_) {
         if (gen != _generation) return;
         _firstFrameSeen = true;
@@ -689,8 +696,6 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
       if (seekTo != null && seekTo > Duration.zero) {
         await player.seek(seekTo);
       }
-      // fallback arming in case no video-params event ever reaches us (the
-      // watchdog body is a no-op once a first frame has been seen)
       _armWatchdog(gen, tier);
     } catch (e) {
       appLog('video init FAILED (tier=${tier.label}): ${widget.path} err=$e');
@@ -707,26 +712,15 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     if (!mounted || gen != _generation) return;
     setState(() => _playing = v);
     if (v) {
-      // re-arm focus, then take it over: this is what pauses the system's
-      // other "now playing" media (and our own voice row) instead of mixing
       unawaited(MediaFocus.instance.setAcceptGain(true));
       unawaited(_acquireFocus());
       _scheduleHideUi();
     } else {
-      // user/system paused: do NOT yank focus back on the next playing=true
       unawaited(MediaFocus.instance.setAcceptGain(false));
       _showUi();
     }
   }
 
-  /// Arm the "decoder is running but nothing ever reaches the screen"
-  /// watchdog. Called once per generation, when the first video-params with a
-  /// real geometry arrive — i.e. when decoding has demonstrably started.
-  ///
-  /// This is the safety net for stalls that do NOT leave an aimagereader
-  /// fingerprint (a different broken interop, a codec that decodes but never
-  /// maps). On the last rung there is nothing left to downgrade to, so it just
-  /// logs.
   void _armWatchdog(int gen, VideoDecodeTier tier) {
     if (_watchdogArmed) return;
     _watchdogArmed = true;
@@ -742,8 +736,6 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     });
   }
 
-  /// Playback stayed healthy on this rung for a while → remember it, so the
-  /// next video on this device starts here instead of re-probing.
   void _schedulePromotion() {
     _promoteTimer?.cancel();
     final gen = _generation;
@@ -770,12 +762,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     appLog('video downgrade ${_tier.label} -> '
         '${VideoDecodeChain.tier(next).label}: $reason '
         '(position=${resume.inMilliseconds}ms)');
-    // the logcat snapshot is a *diagnostic* capture: only pay for it when
-    // something actually went wrong
     captureOwnLogcat('video-stall');
-    // NB: no "switched decoder" toast here — the decode rung is an internal
-    // detail. The user is only told when we land on SOFTWARE decode (see
-    // _openAt), which is the one rung worth surfacing.
     await _openAt(next, seekTo: resume);
     _switching = false;
   }
@@ -794,10 +781,6 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     });
   }
 
-  /// mpv chatter: kept in memory in full (the CI test and the downgrade
-  /// detector read it), but only ERROR lines and the first two stall
-  /// signatures of a generation reach the on-disk log — a healthy playback
-  /// writes four short lines instead of dozens.
   void _onMpvLog(int gen, PlayerLog l) {
     final line = 'mpv[${l.prefix}/${l.level}] ${l.text}';
     VideoPlayerPage.debugMpvLogs.add(line);
@@ -806,23 +789,16 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
           .removeRange(0, VideoPlayerPage.debugMpvLogs.length - 500);
     }
     final stall = VideoDecodeChain.isStallLine(line);
-    // PlayerLog.level is a STRING (mpv's level name), not MPVLogLevel
     if (l.level == 'error' || (stall && _stallLogged < 2)) {
       if (stall) _stallLogged++;
       appLog(line);
     }
     if (gen != _generation || _firstFrameSeen) return;
-    // the on-device black-screen fingerprint: mpv's zero-copy MediaCodec
-    // interop cannot pull a single frame out of its AImageReader
     if (stall) {
       _stallHits++;
       VideoPlayerPage.debugActiveTierStalls.add(line);
       if (_stallHits >= VideoDecodeChain.stallHitsToDowngrade) {
         final hits = _stallHits;
-        // Deferred on purpose: we are INSIDE this player's log callback, and
-        // media_kit delivers events on its native event loop — disposing the
-        // player from there can deadlock. One event-loop turn is enough for
-        // the callback to unwind.
         unawaited(Future<void>.delayed(Duration.zero, () async {
           if (!mounted || gen != _generation) return;
           await _downgrade('renderer stall ($hits x aimagereader)');
@@ -838,13 +814,10 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     if (VideoDecodeChain.paramsLookHardware(text)) {
       _hwDecodeObserved = true;
     }
-    // a real geometry (w/h present) means a video track is actually being
-    // decoded; the all-null params mpv emits while switching tracks do not
     if (v.w != null && v.h != null && v.w != 0) {
       _videoParamsSeen = true;
       _applyOrientation(v);
       _armWatchdog(gen, _tier);
-      // one compact line per generation instead of every params event
       if (_loggedParams != text) {
         _loggedParams = text;
         appLog('video params: ${v.w}x${v.h} fmt=${v.pixelformat} '
@@ -853,16 +826,11 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     }
   }
 
-  /// Lock the fullscreen orientation to the picture's aspect ratio: a wide
-  /// video plays landscape, a tall one portrait (PiliPlus-style). Applied once
-  /// per page; [dispose] restores the system/sensor default.
   void _applyOrientation(VideoParams v) {
     if (_orientationApplied) return;
     final w = v.w ?? 0;
     final h = v.h ?? 0;
     if (w == 0 || h == 0) return;
-    // mpv reports the stored frame plus a rotation to apply; 90/270 swap the
-    // displayed axes. `rotate` is a nullable int (degrees).
     final rot = (v.rotate ?? 0).toDouble().abs() % 360;
     final swap = (rot - 90).abs() < 0.5 || (rot - 270).abs() < 0.5;
     final dw = swap ? h : w;
@@ -882,10 +850,6 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
         '${landscape ? "landscape" : "portrait"}');
   }
 
-  /// Forensic snapshot of the file on disk — distinguishes "player broken"
-  /// from "file is not a complete mp4" in exported logs: size, ftyp magic
-  /// at offset 4, and whether a moov box appears in the head or tail of the
-  /// file (a partial BT download typically lacks the trailing moov).
   Future<void> _logFileIntegrity() async {
     try {
       final f = File(widget.path);
@@ -951,6 +915,17 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     return h > 0 ? '$h:$m:$s' : '$m:$s';
   }
 
+  static String _fmtRate(double r) =>
+      r == r.roundToDouble() ? '${r.toInt()}.0×' : '$r×';
+
+  static String _fmtDelta(Duration d) {
+    final a = d.abs();
+    final sign = d.isNegative ? '-' : '+';
+    final m = a.inMinutes.toString().padLeft(2, '0');
+    final s = a.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return '$sign$m:$s';
+  }
+
   @override
   void dispose() {
     _generation++;
@@ -959,12 +934,12 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     _uiTimer?.cancel();
     _osdTimer?.cancel();
     _seekFlashTimer?.cancel();
+    _longPressTimer?.cancel();
+    _tapTimer?.cancel();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     if (_orientationApplied) {
-      // restore the app's default (system/sensor) orientation on the way out
       SystemChrome.setPreferredOrientations(const []);
     }
-    // leaving the page ends this media session: re-arm focus for the next one
     unawaited(MediaFocus.instance.setAcceptGain(true));
     unawaited(_releaseFocus());
     WidgetsBinding.instance.removeObserver(this);
@@ -975,127 +950,23 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     final p = _player;
     _player = null;
     if (p != null) {
-      // pause first so the render pipeline quiesces before teardown —
-      // disposing mid-frame during activity recreation races the native
-      // surface cleanup
       p.pause().catchError((_) {}).whenComplete(() => p.dispose());
     }
     super.dispose();
   }
 
-  Widget _buildOsd() {
-    return Center(
-      child: IgnorePointer(
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          decoration: BoxDecoration(
-            color: Colors.black54,
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(_osdIcon, color: Colors.white, size: 28),
-              const SizedBox(height: 8),
-              SizedBox(
-                width: 120,
-                child: LinearProgressIndicator(
-                  value: _osdLevel,
-                  backgroundColor: Colors.white24,
-                  valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text('${((_osdLevel ?? 0) * 100).round()}%',
-                  style: const TextStyle(color: Colors.white, fontSize: 12)),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSeekFlash() {
-    final s = _seekFlash ?? 0;
-    return Center(
-      child: IgnorePointer(
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-          decoration: BoxDecoration(
-            color: Colors.black54,
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(s < 0 ? Icons.fast_rewind : Icons.fast_forward,
-                  color: Colors.white, size: 24),
-              const SizedBox(width: 6),
-              Text('${s.abs()}s',
-                  style: const TextStyle(color: Colors.white, fontSize: 16)),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSpeedChip() {
-    return Positioned(
-      top: 16,
-      left: 0,
-      right: 0,
-      child: Center(
-        child: IgnorePointer(
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: Colors.black54,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Text(
-              '${_fmtRate(widget._longPressSpeed)} ${L.t.speedActive}',
-              style: const TextStyle(color: Colors.white, fontSize: 13),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildLockButton() {
-    return Positioned(
-      left: 8,
-      top: 0,
-      bottom: 0,
-      child: Center(
-        child: IconButton(
-          tooltip: _locked ? L.t.unlockControls : L.t.lockControls,
-          style: IconButton.styleFrom(backgroundColor: Colors.black38),
-          icon: Icon(_locked ? Icons.lock_outline : Icons.lock_open,
-              color: Colors.white),
-          onPressed: _toggleLock,
-        ),
-      ),
-    );
-  }
+  // ------------------------------------------------------------------ build
 
   @override
   Widget build(BuildContext context) {
     final vc = _videoController;
+    final playable = !_failed && vc != null;
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // picture. media_kit's Video embeds an InteractiveViewer (a scale
-          // recognizer), and an ANCESTOR GestureDetector with the default
-          // deferToChild behaviour never reliably wins the arena against it —
-          // that is what made single-finger gestures dead. So the picture
-          // carries no gestures; the opaque layer added right below sits
-          // ABOVE it in the Stack, and RenderStack stops hit-testing at the
-          // first hit child: the layer receives every pointer in the play
-          // area and simultaneously shields the InteractiveViewer.
+          // 1) picture — carries NO gestures of its own
           _failed
               ? _failurePane()
               : vc == null
@@ -1107,27 +978,20 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
                       fill: Colors.black,
                       scaleEnabled: false,
                     ),
-          // single-finger gesture layer: tap = toggle chrome, double-tap =
-          // play/pause (or ±10s when enabled), horizontal drag = seek,
-          // vertical drag = brightness (left) / volume (right),
-          // long-press = temporary speed
-          if (!_failed && vc != null)
+          // 2) raw-pointer gesture layer ABOVE the picture, BELOW the chrome.
+          //    Opaque so RenderStack stops here; manual classification means
+          //    we never fight media_kit's recognizers in the arena.
+          if (playable)
             Positioned.fill(
-              child: GestureDetector(
+              child: Listener(
                 behavior: HitTestBehavior.opaque,
-                onTap: _locked ? null : _toggleUi,
-                onDoubleTapDown: _onDoubleTapDown,
-                onLongPressStart: _onLongPressStart,
-                onLongPressEnd: _onLongPressEnd,
-                onHorizontalDragStart: _locked ? null : _onSeekDragStart,
-                onHorizontalDragUpdate: _locked ? null : _onSeekDragUpdate,
-                onHorizontalDragEnd: _locked ? null : _onSeekDragEnd,
-                onVerticalDragStart: _locked ? null : _onVerticalDragStart,
-                onVerticalDragUpdate: _locked ? null : _onVerticalDragUpdate,
-                onVerticalDragEnd: _locked ? null : _onVerticalDragEnd,
+                onPointerDown: _onPointerDown,
+                onPointerMove: _onPointerMove,
+                onPointerUp: _onPointerUp,
+                onPointerCancel: _onPointerCancel,
               ),
             ),
-          // drag-to-seek preview: target position + delta from where we began
+          // 3) transient overlays (never hit-testable)
           if (_dragging)
             Center(
               child: IgnorePointer(
@@ -1153,19 +1017,106 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
                 ),
               ),
             ),
-          // vertical-drag OSD (volume / brightness)
-          if (_osdLevel != null && _osdIcon != null) _buildOsd(),
-          // double-tap side-seek flash
-          if (_seekFlash != null) _buildSeekFlash(),
-          // long-press temporary-speed indicator
-          if (_longPressSpeedActive) _buildSpeedChip(),
-          // lock / unlock on the left edge — the only control while locked
-          if (!_failed && (_uiVisible || _locked)) _buildLockButton(),
-          // top chrome. NOTE: must be wrapped in Align — a bare Stack child is
-          // expanded to the FULL screen by StackFit.expand, and its gradient
-          // Container then swallows every tap while the UI is visible (the
-          // lock button and single-finger seek became unreachable). Align keeps
-          // the hit-testable strip limited to the AppBar height.
+          if (_osdLevel != null && _osdIcon != null)
+            Center(
+              child: IgnorePointer(
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.black54,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(_osdIcon, color: Colors.white, size: 28),
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        width: 120,
+                        child: LinearProgressIndicator(
+                          value: _osdLevel,
+                          backgroundColor: Colors.white24,
+                          valueColor:
+                              const AlwaysStoppedAnimation<Color>(Colors.white),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text('${((_osdLevel ?? 0) * 100).round()}%',
+                          style: const TextStyle(
+                              color: Colors.white, fontSize: 12)),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          if (_seekFlash != null)
+            Center(
+              child: IgnorePointer(
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: Colors.black54,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                          (_seekFlash ?? 0) < 0
+                              ? Icons.fast_rewind
+                              : Icons.fast_forward,
+                          color: Colors.white,
+                          size: 24),
+                      const SizedBox(width: 6),
+                      Text('${(_seekFlash ?? 0).abs()}s',
+                          style: const TextStyle(
+                              color: Colors.white, fontSize: 16)),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          if (_longPressActive)
+            Positioned(
+              top: 16,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: IgnorePointer(
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.black54,
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Text(
+                      '${_fmtRate(_longPressSpeed)} ${L.t.speedActive}',
+                      style: const TextStyle(color: Colors.white, fontSize: 13),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          // 4) lock toggle on the left edge (above the gesture layer)
+          if (playable && (_uiVisible || _locked))
+            Positioned(
+              left: 8,
+              top: 0,
+              bottom: 0,
+              child: Center(
+                child: IconButton(
+                  tooltip: _locked ? L.t.unlockControls : L.t.lockControls,
+                  style: IconButton.styleFrom(backgroundColor: Colors.black38),
+                  icon: Icon(_locked ? Icons.lock_outline : Icons.lock_open,
+                      color: Colors.white),
+                  onPressed: _toggleLock,
+                ),
+              ),
+            ),
+          // 5) top chrome — finite strip (Align), never full-screen
           Align(
             alignment: Alignment.topCenter,
             child: AnimatedOpacity(
@@ -1219,7 +1170,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
               ),
             ),
           ),
-          // bottom chrome
+          // 6) bottom chrome — finite strip (Align)
           Align(
             alignment: Alignment.bottomCenter,
             child: AnimatedOpacity(
@@ -1236,71 +1187,66 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
                     ),
                   ),
                   child: SafeArea(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
-                          child: Row(
-                            children: [
-                              IconButton(
-                                color: Colors.white,
-                                icon: Icon(
-                                    _playing ? Icons.pause : Icons.play_arrow),
-                                onPressed: _playPause,
-                              ),
-                              Text(_fmt(_position),
-                                  style: const TextStyle(
-                                      color: Colors.white70, fontSize: 12)),
-                              Expanded(
-                                child: Slider(
-                                  value: _duration > Duration.zero
-                                      ? _position.inMilliseconds
-                                          .clamp(0, _duration.inMilliseconds)
-                                          .toDouble()
-                                      : 0,
-                                  max: _duration > Duration.zero
-                                      ? _duration.inMilliseconds.toDouble()
-                                      : 1,
-                                  onChanged: (v) => _player
-                                      ?.seek(Duration(milliseconds: v.toInt())),
-                                ),
-                              ),
-                              Text(_fmt(_duration),
-                                  style: const TextStyle(
-                                      color: Colors.white70, fontSize: 12)),
-                              PopupMenuButton<double>(
-                                tooltip: L.t.videoSpeed,
-                                color: Colors.black87,
-                                onOpened: () {
-                                  _uiTimer?.cancel();
-                                },
-                                onSelected: _setRate,
-                                itemBuilder: (_) => [
-                                  for (final r in kPlaybackRates)
-                                    PopupMenuItem(
-                                      value: r,
-                                      child: Text(
-                                        '${_fmtRate(r)}${r == _rate ? '  ✓' : ''}',
-                                        style: TextStyle(
-                                            color: r == _rate
-                                                ? Colors.white
-                                                : Colors.white70),
-                                      ),
-                                    ),
-                                ],
-                                child: Padding(
-                                  padding:
-                                      const EdgeInsets.symmetric(horizontal: 8),
-                                  child: Text(_fmtRate(_rate),
-                                      style: const TextStyle(
-                                          color: Colors.white, fontSize: 13)),
-                                ),
-                              ),
-                            ],
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      child: Row(
+                        children: [
+                          IconButton(
+                            color: Colors.white,
+                            icon:
+                                Icon(_playing ? Icons.pause : Icons.play_arrow),
+                            onPressed: _playPause,
                           ),
-                        ),
-                      ],
+                          Text(_fmt(_position),
+                              style: const TextStyle(
+                                  color: Colors.white70, fontSize: 12)),
+                          Expanded(
+                            child: Slider(
+                              value: _duration > Duration.zero
+                                  ? _position.inMilliseconds
+                                      .clamp(0, _duration.inMilliseconds)
+                                      .toDouble()
+                                  : 0,
+                              max: _duration > Duration.zero
+                                  ? _duration.inMilliseconds.toDouble()
+                                  : 1,
+                              onChanged: (v) => _player
+                                  ?.seek(Duration(milliseconds: v.toInt())),
+                            ),
+                          ),
+                          Text(_fmt(_duration),
+                              style: const TextStyle(
+                                  color: Colors.white70, fontSize: 12)),
+                          PopupMenuButton<double>(
+                            tooltip: L.t.videoSpeed,
+                            color: Colors.black87,
+                            onOpened: () {
+                              _uiTimer?.cancel();
+                            },
+                            onSelected: _setRate,
+                            itemBuilder: (_) => [
+                              for (final r in kPlaybackRates)
+                                PopupMenuItem(
+                                  value: r,
+                                  child: Text(
+                                    '${_fmtRate(r)}${r == _rate ? '  ✓' : ''}',
+                                    style: TextStyle(
+                                        color: r == _rate
+                                            ? Colors.white
+                                            : Colors.white70),
+                                  ),
+                                ),
+                            ],
+                            child: Padding(
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 8),
+                              child: Text(_fmtRate(_rate),
+                                  style: const TextStyle(
+                                      color: Colors.white, fontSize: 13)),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -1311,10 +1257,6 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
       ),
     );
   }
-
-  /// `0.5× / 1.0× / 1.25× / 3.0×` — one decimal keeps the menu column tidy.
-  static String _fmtRate(double r) =>
-      r == r.roundToDouble() ? '${r.toInt()}.0×' : '$r×';
 
   Widget _failurePane() {
     return Center(

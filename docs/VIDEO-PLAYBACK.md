@@ -245,3 +245,25 @@ video decode tier 0 settled (remembered for this device)
   每次 drag update 读到的仍是旧值（100），于是「调到 ~90 立刻弹回 100」。
   改为 Dart 侧自持 `_volume`（0–100）做增量并 `setVolume`；亮度同理自持
   `_brightness`（进入页面时从原生 window 亮度读一次基线）。
+
+## 11. v0.5.12：播放器手势层彻底重写（照猫画虎 PiliPlus，但去掉竞技场）
+
+v0.5.11 的「不透明手势层 + 祖先 GestureDetector」实机仍无效，说明问题不在
+层级而在**手势竞技场**：只要我们的识别器（tap/doubletap/longpress/两个 drag）
+和 media_kit `InteractiveViewer` 的 ScaleGestureRecognizer 同场竞争，单指输入
+就可能被饿死。PiliPlus 的做法（`pl_player/view/view.dart`）是**不走竞技场**：
+用原始指针回调（`onPointerDown/Move/Up`）把指针手动喂给自己持有的识别器，并在
+`_onPanUpdate` 里手工分类 horizontal / left / center / right。
+
+本版照其精神重写 `_VideoPlayerPageState` 的输入层，且更简单可靠：
+
+- 画面（`Video`）不挂任何手势，`scaleEnabled: false`。
+- 画面之上、控制条之下放一层
+  `Positioned.fill + Listener(behavior: HitTestBehavior.opaque)`，在
+  `onPointerDown/Move/Up/Cancel` 里**手工状态机**分类：
+  静止短按=单击（300ms 内第二次=双击：中间播放/暂停、两侧±10s 可开关）、
+  静止长按 350ms=临时倍速、水平位移>12px=进度微调、垂直位移=左亮度/右音量。
+  全程不参与竞技场，因此单指必然生效，与控制条显隐无关。
+- 多指（>1 pointer）直接放弃单手手势，避免与捏合冲突。
+- 控制条仍为 `Align` 有限高度条；锁定态把 Listener 回调置空。
+- 音量/亮度均为 Dart 自持增量（见 §10），OSD 单调跟手。
