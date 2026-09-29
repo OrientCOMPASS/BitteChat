@@ -505,7 +505,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
           type: FileType.custom,
           allowedExtensions: ['srt', 'ass', 'ssa', 'vtt', 'sub'],
         );
-        final path = files?.files.single.path;
+        final path = files.isEmpty ? null : files.first.path;
         if (path != null && mounted) {
           await p.setSubtitleTrack(SubtitleTrack.uri(path));
           setState(() => _activeSubtitleId = path);
