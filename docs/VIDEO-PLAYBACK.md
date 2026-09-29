@@ -267,3 +267,22 @@ v0.5.11 的「不透明手势层 + 祖先 GestureDetector」实机仍无效，�
 - 多指（>1 pointer）直接放弃单手手势，避免与捏合冲突。
 - 控制条仍为 `Align` 有限高度条；锁定态把 Listener 回调置空。
 - 音量/亮度均为 Dart 自持增量（见 §10），OSD 单调跟手。
+
+## 12. v0.5.13：真正的「遮罩」是带装饰/材质背景的控制条（v0.5.12 撤回）
+
+v0.5.12 的 Listener 重写实机把进度条渲染到了屏幕正中，**已撤回**（代码回退到
+v0.5.11 的播放器），其 release 与 tag 一并删除。
+
+v0.5.11 实机确认：单指横滑进度、左/右竖滑亮度/音量**已正常**；唯一残留问题是
+「UI 显示时整屏像被遮罩盖住、手势失效」，且屏幕上半部有一层黑色渐变阴影。
+根因即那层阴影本身：顶/底控制条曾用 `Container(decoration: 渐变)` / `AppBar`
+（内部是带背景的 `Material`）。**带 decoration/材质的控件在其整个矩形内都参与
+命中测试**，于是 UI 显示时控制条所在的整条横带（顶部那条视觉上因渐变看起来像
+"上半屏阴影"）吸收了指针，播放区手势与锁定按钮全部失效；UI 隐藏时
+`IgnorePointer` 生效才恢复。
+
+v0.5.13 的做法：控制条改为**纯控件**——`Align + AnimatedOpacity +
+IgnorePointer + SafeArea + Padding + Row`，**去掉渐变 Container 与 AppBar**
+（返回键改为显式 IconButton）。`Align/Padding/Row/SafeArea` 自身
+`hitTestSelf == false`，只有按钮/滑杆这些叶子控件命中；条带内的空白区域指针
+直接落到下方的手势层。阴影随之消失（用户本就不想要）。
