@@ -9,10 +9,13 @@
 //     空白（v0.5.5 只在图片比例 ≠ 屏幕比例时才有留白，比例一致时无处可调）。
 //   * 手势取代按钮：**单指拖动、双指缩放 + 旋转、双击复位**。旋转角度是连续
 //     的，不再是四个固定方向。
-//   * 留白填充方式可选（透明 / 纯黑 / 纯白 / 按图片外圈像素延展），取代原来
-//     的透明度与模糊滑杆——这两项在「设置 → 壁纸」里已经能调，取景页不必重复。
-//   * 保存 = 对画布做 RepaintBoundary 截图，再按留白方式做像素级后处理
-//     （见 core/imgfx.dart），最后写 PNG。
+//   * 留白填充方式可选（透明 / 纯黑 / 纯白，**默认纯白**；v0.5.7 按实机反馈
+//     去掉了「边缘扩展」），取代原来的透明度与模糊滑杆——这两项在「设置 →
+//     壁纸」里已经能调，取景页不必重复。
+//   * 保存 = 对画布做 RepaintBoundary 截图（**straight alpha**），再按留白方式
+//     做像素级后处理（fringe heal + straight 空间混合，消灭拼接处的灰线，
+//     见 core/imgfx.dart），最后写 PNG；同时把**未处理的原图**存一份到
+//     `<dest>.src`，下次打开编辑器仍是原图而不是上一轮的成品。
 
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -71,8 +74,9 @@ class WallpaperEditPageState extends State<WallpaperEditPage> {
   double _startScale = kInitialScale;
   double _startRotation = 0;
   Offset _startOffset = Offset.zero;
+  Offset _startFocal = Offset.zero;
 
-  WallpaperPadding _padding = WallpaperPadding.extend;
+  WallpaperPadding _padding = WallpaperPadding.white;
 
   @override
   void initState() {
@@ -146,13 +150,17 @@ class WallpaperEditPageState extends State<WallpaperEditPage> {
     _startScale = _scale;
     _startRotation = _rotation;
     _startOffset = _offset;
+    _startFocal = d.focalPoint;
   }
 
+  /// NOTE: `focalPointDelta` is the delta since the PREVIOUS event, not since
+  /// the gesture start — using it directly made a one-finger drag jitter in
+  /// place. Track the start focal point and derive the total pan from it.
   void _onScaleUpdate(ScaleUpdateDetails d) {
     setState(() {
       _scale = (_startScale * d.scale).clamp(0.35, 6.0);
       _rotation = _startRotation + d.rotation;
-      _offset = _startOffset + d.focalPointDelta;
+      _offset = _startOffset + (d.focalPoint - _startFocal);
     });
   }
 
@@ -166,21 +174,26 @@ class WallpaperEditPageState extends State<WallpaperEditPage> {
       if (boundary == null) throw Exception('viewport not ready');
       // 2x keeps the wallpaper crisp on 1080p+ panels
       final shot = await boundary.toImage(pixelRatio: 2.0);
-      final data = await shot.toByteData(format: ui.ImageByteFormat.rawRgba);
+      // STRAIGHT alpha on purpose: rawRgba is premultiplied, and mixing the
+      // two is what produced the grey seam line between picture and fill
+      final data =
+          await shot.toByteData(format: ui.ImageByteFormat.rawStraightRgba);
       final w = shot.width, h = shot.height;
       shot.dispose();
       if (data == null) throw Exception('capture failed');
 
       // honour the ByteData window: the backing buffer can be larger than the
       // returned view, and a wrong offset would shift every pixel
-      final px = PixelBuffer(w, h,
-          data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes));
+      final px = PixelBuffer.straight(w, h, data);
       applyPadding(px, _padding);
       final png = await encodePng(px);
 
       final f = File(widget.destPath);
       await f.parent.create(recursive: true);
       await f.writeAsBytes(png, flush: true);
+      // keep the PRISTINE source next to the result so re-opening the editor
+      // frames the original picture again, not last round's framed output
+      await _keepSource();
       widget.prefs.wallpaperPath = widget.destPath;
       widget.prefs.wallpaperRev++;
       await widget.prefs.save();
@@ -197,6 +210,21 @@ class WallpaperEditPageState extends State<WallpaperEditPage> {
           _error = '$e';
         });
       }
+    }
+  }
+
+  /// Copy the untouched source next to [WallpaperEditPage.destPath]
+  /// (`<dest>.src`) so a later edit round starts from the original.
+  Future<void> _keepSource() async {
+    try {
+      final src = File(widget.sourcePath);
+      final keep = File('${widget.destPath}.src');
+      if (src.path == keep.path) return;
+      if (!await src.exists()) return;
+      await keep.parent.create(recursive: true);
+      await src.copy(keep.path);
+    } catch (e) {
+      appLog('wallpaper editor: keeping pristine source failed: $e');
     }
   }
 
@@ -248,7 +276,7 @@ class WallpaperEditPageState extends State<WallpaperEditPage> {
                         return Stack(
                           fit: StackFit.expand,
                           children: [
-                            _PaddingPreview(mode: _padding, source: img),
+                            _PaddingPreview(mode: _padding),
                             if (img != null && imgSize != null)
                               GestureDetector(
                                 onScaleStart: _onScaleStart,
@@ -259,15 +287,22 @@ class WallpaperEditPageState extends State<WallpaperEditPage> {
                                   child: SizedBox(
                                     width: canvas.width,
                                     height: canvas.height,
-                                    child: Stack(
-                                      alignment: Alignment.center,
-                                      children: [
-                                        Transform(
-                                          transform: _matrixFor(
-                                            canvas,
-                                            baseSizeFor(imgSize, canvas),
-                                          ),
-                                          filterQuality: FilterQuality.high,
+                                    child: Transform(
+                                      // the Transform's own box must be the
+                                      // whole canvas: a Transform applies its
+                                      // matrix relative to the CHILD's origin,
+                                      // so wrapping only the contain-sized
+                                      // picture shifted it by (canvas-base)/2
+                                      // (the off-centre default users saw)
+                                      transform: _matrixFor(
+                                        canvas,
+                                        baseSizeFor(imgSize, canvas),
+                                      ),
+                                      filterQuality: FilterQuality.high,
+                                      child: SizedBox(
+                                        width: canvas.width,
+                                        height: canvas.height,
+                                        child: Center(
                                           child: RawImage(
                                             image: img,
                                             width: baseSizeFor(imgSize, canvas)
@@ -277,7 +312,7 @@ class WallpaperEditPageState extends State<WallpaperEditPage> {
                                             fit: BoxFit.fill,
                                           ),
                                         ),
-                                      ],
+                                      ),
                                     ),
                                   ),
                                 ),
@@ -344,10 +379,6 @@ class WallpaperEditPageState extends State<WallpaperEditPage> {
                           value: WallpaperPadding.white,
                           label: Text(L.t.wallpaperPaddingWhite,
                               style: const TextStyle(fontSize: 12))),
-                      ButtonSegment(
-                          value: WallpaperPadding.extend,
-                          label: Text(L.t.wallpaperPaddingExtend,
-                              style: const TextStyle(fontSize: 12))),
                     ],
                     selected: {_padding},
                     onSelectionChanged: (s) =>
@@ -360,9 +391,7 @@ class WallpaperEditPageState extends State<WallpaperEditPage> {
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
             child: Text(
-              _padding == WallpaperPadding.extend
-                  ? L.t.wallpaperPaddingExtendHint
-                  : L.t.wallpaperEditHint,
+              L.t.wallpaperEditHint,
               textAlign: TextAlign.center,
               style: theme.textTheme.bodySmall
                   ?.copyWith(color: theme.colorScheme.outline),
@@ -393,16 +422,12 @@ class WallpaperEditPageState extends State<WallpaperEditPage> {
   }
 }
 
-/// What the margin around the picture will look like once saved.
-///
-/// `extend` is previewed as a blurred cover of the source (the real save does
-/// a pixel-exact border extension — see [extendBorders]); the other three are
-/// exact.
+/// What the margin around the picture will look like once saved (exact: the
+/// save composites the same colour under the captured picture).
 class _PaddingPreview extends StatelessWidget {
-  const _PaddingPreview({required this.mode, required this.source});
+  const _PaddingPreview({required this.mode});
 
   final WallpaperPadding mode;
-  final ui.Image? source;
 
   @override
   Widget build(BuildContext context) {
@@ -413,13 +438,6 @@ class _PaddingPreview extends StatelessWidget {
         return const ColoredBox(color: Colors.black);
       case WallpaperPadding.white:
         return const ColoredBox(color: Colors.white);
-      case WallpaperPadding.extend:
-        final img = source;
-        if (img == null) return const ColoredBox(color: Colors.black);
-        return ImageFiltered(
-          imageFilter: ui.ImageFilter.blur(sigmaX: 28, sigmaY: 28),
-          child: RawImage(image: img, fit: BoxFit.cover),
-        );
     }
   }
 }

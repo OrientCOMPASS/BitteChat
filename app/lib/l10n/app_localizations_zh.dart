@@ -1150,4 +1150,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String videoDecoderSwitch(Object tier) {
     return '已切换到「$tier」解码';
   }
+
+  @override
+  String get videoSpeed => '倍速';
 }

@@ -1,13 +1,27 @@
 // 壁纸取景的像素级后处理（纯 Dart，无插件依赖，可单测）。
 //
-// 取景画布比屏幕比例宽一圈（见 pages/wallpaper_edit.dart），保存出来的 PNG
-// 里图片四周会留空。留空区域怎么填由用户选择：
-//   transparent → 保持 alpha=0，全局壁纸层透出主题底色
-//   black/white → 填纯色
-//   extend      → 「按图片外部圈层扩展填充」：把图片最外一圈像素向外复制，
-//                 边缘自然延展（类似 PS 的内容识别填充的朴素版本）
+// 取景画布比屏幕比例宽一圈（见 pages/wallpaper_edit.dart），保存出来的 PNG 里
+// 图片四周会留空。留空区域怎么填由用户选择（v0.5.7 起：透明 / 纯黑 / 纯白，
+// 默认纯白）。
 //
-// 所有函数都直接操作 RGBA 字节，输入输出都是 [PixelBuffer]，方便测试。
+// ## 为什么所有计算都在 straight alpha 空间做
+//
+// 实机反馈：白底图 + 白色填充时，图片与留白的**拼接处**出现一圈黑/灰细线。
+// 根源是 alpha 空间混用：
+//   * `Image.toByteData(rawRgba)` 返回的是 **premultiplied** RGBA；
+//   * `ImageDescriptor.raw(pixelFormat: rgba8888)` 期望的也是 **premultiplied**；
+//   * 而截图边缘的反锯齿像素是「边缘色 × 部分 alpha」，一旦中间任何一步把
+//     premultiplied 当成 straight（或反过来）去填充/混合，这圈半透明像素就会
+//     变成偏暗的颜色，落在浅色留白上就是一条灰线。
+// 所以这里统一：
+//   1. 截图用 `rawStraightRgba` 读（引擎负责 un-premultiply，拿到真实颜色）；
+//   2. 填充/混合全部在 straight 空间按 `out = src·a + fill·(1-a)` 计算；
+//   3. 对 0<a<255 的像素再做一次 **fringe heal**：RGB 直接取最近的全不透明
+//      邻居（alpha 不变）。这样无论截图边缘带了多少插值/反锯齿残留，拼接处
+//      都只会是「图片边缘色 → 填充色」的平滑过渡，不可能出现暗线；
+//   4. 编码前再乘回 premultiplied（rgba8888 的要求），PNG 往返一致。
+//
+// 所有函数直接操作 RGBA 字节，输入输出都是 [PixelBuffer]，方便测试。
 
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -16,22 +30,28 @@ import 'dart:ui' as ui;
 enum WallpaperPadding {
   transparent,
   black,
-  white,
-  extend;
+  white;
 
   static WallpaperPadding fromName(String? n) => WallpaperPadding.values
-      .firstWhere((e) => e.name == n, orElse: () => WallpaperPadding.extend);
+      .firstWhere((e) => e.name == n, orElse: () => WallpaperPadding.white);
 }
 
-/// A tightly packed RGBA8 bitmap plus its geometry.
+/// A tightly packed **straight-alpha** RGBA8 bitmap plus its geometry.
 class PixelBuffer {
   PixelBuffer(this.width, this.height, this.bytes);
 
-  factory PixelBuffer.fromImage(ui.Image img, ByteData data) => PixelBuffer(
-        img.width,
-        img.height,
+  /// Wrap straight-alpha RGBA bytes with explicit geometry.
+  factory PixelBuffer.straight(int width, int height, ByteData data) =>
+      PixelBuffer(
+        width,
+        height,
         data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
       );
+
+  /// Wrap the straight-alpha bytes returned by
+  /// `Image.toByteData(format: ImageByteFormat.rawStraightRgba)`.
+  factory PixelBuffer.fromStraightImage(ui.Image img, ByteData data) =>
+      PixelBuffer.straight(img.width, img.height, data);
 
   final int width;
   final int height;
@@ -41,7 +61,8 @@ class PixelBuffer {
 
   int alphaAt(int x, int y) => bytes[((y * width) + x) * 4 + 3];
 
-  /// Copy the RGBA of one pixel into [dst] at the same index.
+  int redAt(int x, int y) => bytes[((y * width) + x) * 4];
+
   void copyPixel(int srcIndex, int dstIndex) {
     final s = srcIndex * 4, d = dstIndex * 4;
     bytes[d] = bytes[s];
@@ -59,83 +80,110 @@ class PixelBuffer {
   }
 }
 
-/// Fill every fully transparent pixel with [color] (alpha is forced to 255).
-void fillTransparent(PixelBuffer p, int r, int g, int b) {
+int _blend(int src, int alpha, int dst) =>
+    (src * alpha + dst * (255 - alpha) + 127) ~/ 255;
+
+/// Composite every non-opaque pixel over the solid [r,g,b] fill, in straight
+/// alpha space: fully transparent pixels become the fill, semi-transparent
+/// (anti-aliased edge) pixels become a proper blend of edge colour and fill.
+void blendOverFill(PixelBuffer p, int r, int g, int b) {
   final n = p.length;
   for (var i = 0; i < n; i++) {
-    if (p.bytes[i * 4 + 3] == 0) p.setPixel(i, r, g, b, 255);
+    final o = i * 4;
+    final a = p.bytes[o + 3];
+    if (a == 255) continue;
+    if (a == 0) {
+      p.bytes[o] = r;
+      p.bytes[o + 1] = g;
+      p.bytes[o + 2] = b;
+      p.bytes[o + 3] = 255;
+      continue;
+    }
+    p.bytes[o] = _blend(p.bytes[o], a, r);
+    p.bytes[o + 1] = _blend(p.bytes[o + 1], a, g);
+    p.bytes[o + 2] = _blend(p.bytes[o + 2], a, b);
+    p.bytes[o + 3] = 255;
   }
 }
 
-/// Extend the outermost ring of the opaque image outwards into the
-/// transparent margin (two separable passes: horizontal, then vertical).
+/// Replace the RGB of every semi-transparent pixel with the RGB of the nearest
+/// fully opaque pixel (search radius [radius], alpha untouched).
 ///
-/// Result for a picture floating in a transparent canvas: every margin pixel
-/// takes the colour of the nearest image pixel along its row (and, for the
-/// corners/rows outside the picture, along its column) — i.e. the image's own
-/// border is "stretched" around it.
-void extendBorders(PixelBuffer p) {
+/// Kills dark halos: after this, an anti-aliased edge pixel carries the colour
+/// of the picture it belongs to, so blending it over ANY fill colour can never
+/// produce a grey/black seam line.
+void healFringe(PixelBuffer p, {int radius = 2}) {
   final w = p.width, h = p.height;
-  if (w == 0 || h == 0) return;
-
-  // --- horizontal: within each row, spread the first/last opaque pixel ---
-  for (var y = 0; y < h; y++) {
-    final row = y * w;
-    var first = -1, last = -1;
-    for (var x = 0; x < w; x++) {
-      if (p.bytes[(row + x) * 4 + 3] != 0) {
-        if (first < 0) first = x;
-        last = x;
-      }
-    }
-    if (first < 0) continue; // nothing opaque on this row → vertical pass
-    for (var x = 0; x < first; x++) {
-      p.copyPixel(row + first, row + x);
-    }
-    for (var x = last + 1; x < w; x++) {
-      p.copyPixel(row + last, row + x);
-    }
+  // collect the work list first: healing must read the ORIGINAL colours
+  final pending = <int>[];
+  for (var i = 0; i < p.length; i++) {
+    final a = p.bytes[i * 4 + 3];
+    if (a != 0 && a != 255) pending.add(i);
   }
-
-  // --- vertical: fill rows that had nothing opaque from the nearest row ---
-  for (var x = 0; x < w; x++) {
-    var first = -1, last = -1;
-    for (var y = 0; y < h; y++) {
-      if (p.bytes[(y * w + x) * 4 + 3] != 0) {
-        if (first < 0) first = y;
-        last = y;
+  for (final i in pending) {
+    final x = i % w, y = i ~/ w;
+    var found = -1;
+    for (var d = 1; d <= radius && found < 0; d++) {
+      for (var dy = -d; dy <= d && found < 0; dy++) {
+        for (var dx = -d; dx <= d; dx++) {
+          if ((dx.abs() != d) && (dy.abs() != d)) continue; // ring only
+          final nx = x + dx, ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+          final j = ny * w + nx;
+          if (p.bytes[j * 4 + 3] == 255) {
+            found = j;
+            break;
+          }
+        }
       }
     }
-    if (first < 0) continue;
-    for (var y = 0; y < first; y++) {
-      p.copyPixel(first * w + x, y * w + x);
-    }
-    for (var y = last + 1; y < h; y++) {
-      p.copyPixel(last * w + x, y * w + x);
-    }
+    if (found < 0) continue;
+    p.bytes[i * 4] = p.bytes[found * 4];
+    p.bytes[i * 4 + 1] = p.bytes[found * 4 + 1];
+    p.bytes[i * 4 + 2] = p.bytes[found * 4 + 2];
   }
 }
 
-/// Apply the chosen [mode] to a captured canvas (transparent margin around
-/// the framed picture).
+/// Apply the chosen [mode] to a captured canvas (straight alpha, transparent
+/// margin around the framed picture).
 void applyPadding(PixelBuffer p, WallpaperPadding mode) {
   switch (mode) {
     case WallpaperPadding.transparent:
       break;
     case WallpaperPadding.black:
-      fillTransparent(p, 0, 0, 0);
+      healFringe(p);
+      blendOverFill(p, 0, 0, 0);
     case WallpaperPadding.white:
-      fillTransparent(p, 255, 255, 255);
-    case WallpaperPadding.extend:
-      extendBorders(p);
+      healFringe(p);
+      blendOverFill(p, 255, 255, 255);
   }
 }
 
-/// Re-encode an RGBA [PixelBuffer] as PNG bytes.
+/// straight → premultiplied, as `ImageDescriptor.raw(rgba8888)` requires.
+Uint8List toPremultiplied(PixelBuffer p) {
+  final out = Uint8List.fromList(p.bytes);
+  for (var i = 0; i < p.length; i++) {
+    final o = i * 4;
+    final a = out[o + 3];
+    if (a == 255) continue;
+    if (a == 0) {
+      out[o] = 0;
+      out[o + 1] = 0;
+      out[o + 2] = 0;
+      continue;
+    }
+    out[o] = (out[o] * a + 127) ~/ 255;
+    out[o + 1] = (out[o + 1] * a + 127) ~/ 255;
+    out[o + 2] = (out[o + 2] * a + 127) ~/ 255;
+  }
+  return out;
+}
+
+/// Re-encode a straight-alpha [PixelBuffer] as PNG bytes.
 Future<Uint8List> encodePng(PixelBuffer p) async {
   // ImageDescriptor.raw is a synchronous factory (no decoding work)
   final desc = ui.ImageDescriptor.raw(
-    await ui.ImmutableBuffer.fromUint8List(p.bytes),
+    await ui.ImmutableBuffer.fromUint8List(toPremultiplied(p)),
     width: p.width,
     height: p.height,
     pixelFormat: ui.PixelFormat.rgba8888,
@@ -150,26 +198,9 @@ Future<Uint8List> encodePng(PixelBuffer p) async {
   return data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
 }
 
-/// Read a [ui.Image] into an RGBA [PixelBuffer].
+/// Read a [ui.Image] into a straight-alpha RGBA [PixelBuffer].
 Future<PixelBuffer> pixelBufferOf(ui.Image img) async {
-  final data = await img.toByteData(format: ui.ImageByteFormat.rawRgba);
+  final data = await img.toByteData(format: ui.ImageByteFormat.rawStraightRgba);
   if (data == null) throw Exception('cannot read image pixels');
-  return PixelBuffer.fromImage(img, data);
-}
-
-/// Bounding box of the opaque region, or null when the buffer is empty.
-/// Used by the tests and by the editor's diagnostics.
-({int left, int top, int right, int bottom})? opaqueBounds(PixelBuffer p) {
-  var left = p.width, top = p.height, right = -1, bottom = -1;
-  for (var y = 0; y < p.height; y++) {
-    for (var x = 0; x < p.width; x++) {
-      if (p.bytes[(y * p.width + x) * 4 + 3] == 0) continue;
-      if (x < left) left = x;
-      if (x > right) right = x;
-      if (y < top) top = y;
-      if (y > bottom) bottom = y;
-    }
-  }
-  if (right < 0) return null;
-  return (left: left, top: top, right: right, bottom: bottom);
+  return PixelBuffer.fromStraightImage(img, data);
 }

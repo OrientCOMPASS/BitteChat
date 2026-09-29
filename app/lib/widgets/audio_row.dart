@@ -53,6 +53,16 @@ class _SharedAudio {
   }
 }
 
+/// Public handle on the process-wide voice player, for other media surfaces.
+///
+/// A video that starts making noise must not mix with a voice message that is
+/// already playing, so the video page calls [stopAll] when it takes over.
+abstract class SharedVoicePlayer {
+  SharedVoicePlayer._();
+
+  static Future<void> stopAll() => _SharedAudio.instance.stop();
+}
+
 class AudioRow extends StatefulWidget {
   const AudioRow({super.key, required this.path, required this.title});
 

@@ -102,51 +102,56 @@ void main() {
       expect(white.bytes.sublist(0, 4), [255, 255, 255, 255]);
     });
 
-    test('extend stretches the outermost picture pixels into the margin', () {
-      final p = canvasWithHole(w: 12, h: 10, inset: 3);
-      applyPadding(p, WallpaperPadding.extend);
-      // nothing transparent is left
-      for (var i = 0; i < p.length; i++) {
-        expect(p.alphaAt(i % p.width, i ~/ p.width), 255,
-            reason: 'pixel $i must be opaque after extend');
-      }
-      // the margin takes the colour of the nearest picture pixel
-      expect(p.bytes.sublist(0, 3), [200, 100, 50],
-          reason: 'top-left corner extends the picture border');
-      expect(p.bytes.sublist((9 * 12 + 11) * 4, (9 * 12 + 11) * 4 + 3),
-          [200, 100, 50]);
-    });
-
-    test('extend on an empty canvas is a no-op (no crash)', () {
-      final p = PixelBuffer(4, 4, Uint8List(4 * 4 * 4));
-      applyPadding(p, WallpaperPadding.extend);
-      expect(p.alphaAt(0, 0), 0);
-    });
-
-    test('extend on a fully opaque canvas changes nothing', () {
-      final p = PixelBuffer(3, 3, Uint8List(3 * 3 * 4));
-      for (var i = 0; i < p.length; i++) {
-        p.setPixel(i, 1, 2, 3, 255);
-      }
-      applyPadding(p, WallpaperPadding.extend);
-      expect(p.bytes.sublist(0, 4), [1, 2, 3, 255]);
-    });
-
-    test('opaqueBounds reports the picture box', () {
-      final b = opaqueBounds(canvasWithHole(w: 12, h: 10, inset: 3))!;
-      expect((b.left, b.top, b.right, b.bottom), (3, 3, 8, 6));
-      expect(opaqueBounds(PixelBuffer(2, 2, Uint8List(16))), isNull);
-    });
-
-    test('WallpaperPadding.fromName falls back to extend', () {
+    test('extend option was removed by product decision (v0.5.7)', () {
+      expect(WallpaperPadding.values, [
+        WallpaperPadding.transparent,
+        WallpaperPadding.black,
+        WallpaperPadding.white
+      ]);
+      expect(WallpaperPadding.fromName('extend'), WallpaperPadding.white);
+      expect(WallpaperPadding.fromName('nope'), WallpaperPadding.white);
+      expect(WallpaperPadding.fromName(null), WallpaperPadding.white);
       expect(WallpaperPadding.fromName('black'), WallpaperPadding.black);
-      expect(WallpaperPadding.fromName('nope'), WallpaperPadding.extend);
-      expect(WallpaperPadding.fromName(null), WallpaperPadding.extend);
+    });
+
+    // Regression for the on-device report: white picture + white fill showed a
+    // grey/black hairline at the seam. The cause was semi-transparent
+    // anti-aliased edge pixels carrying a DARKENED colour; healFringe must
+    // re-colour them from the nearest opaque pixel BEFORE blending.
+    test('a dark anti-aliased fringe never survives a white fill', () {
+      final p = PixelBuffer(6, 3, Uint8List(6 * 3 * 4));
+      // opaque white core
+      for (var x = 2; x < 4; x++) {
+        p.setPixel(1 * 6 + x, 255, 255, 255, 255);
+      }
+      // a poisoned fringe pixel: semi-transparent DARK grey (the old bug)
+      p.setPixel(1 * 6 + 1, 40, 40, 40, 128);
+      p.setPixel(1 * 6 + 4, 40, 40, 40, 128);
+      applyPadding(p, WallpaperPadding.white);
+      // the seam must be white-ish (fringe healed to the core colour, then
+      // blended over white), never the poisoned dark grey
+      for (var x = 0; x < 6; x++) {
+        final o = (1 * 6 + x) * 4;
+        expect(p.bytes[o], greaterThan(180),
+            reason:
+                'pixel x=$x kept a dark seam: ${p.bytes.sublist(o, o + 4)}');
+        expect(p.bytes[o + 3], 255);
+      }
+    });
+
+    test('toPremultiplied matches the manual definition', () {
+      final p = PixelBuffer(2, 1, Uint8List(8));
+      p.setPixel(0, 200, 100, 50, 128); // straight
+      p.setPixel(1, 9, 9, 9, 255); // opaque == premultiplied
+      final pm = toPremultiplied(p);
+      expect(pm[0], (200 * 128 + 127) ~/ 255);
+      expect(pm[3], 128);
+      expect(pm.sublist(4, 8), [9, 9, 9, 255]);
     });
 
     test('round-trips through a real PNG encode', () async {
       final p = canvasWithHole(w: 8, h: 6, inset: 2);
-      applyPadding(p, WallpaperPadding.extend);
+      applyPadding(p, WallpaperPadding.white);
       final png = await encodePng(p);
       expect(png.length, greaterThan(8));
       expect(png.sublist(1, 4), [0x50, 0x4e, 0x47], reason: 'PNG magic');

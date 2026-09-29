@@ -702,5 +702,6 @@
     "type": "Object"
    }
   }
- }
+ },
+ "videoSpeed": "Playback speed"
 }

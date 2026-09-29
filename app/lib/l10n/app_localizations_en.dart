@@ -1191,4 +1191,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String videoDecoderSwitch(Object tier) {
     return 'Switched to the “$tier” decoder';
   }
+
+  @override
+  String get videoSpeed => 'Playback speed';
 }

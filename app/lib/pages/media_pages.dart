@@ -4,18 +4,23 @@
 //   * 渲染：mpv 经 EGL 渲染进 SurfaceTexture（`--vo=gpu`），与 PiliPlus 一致的
 //     成熟路径（fvp/mdk 在部分机型上"有声无画"，见 flutter#159503 / fvp#235
 //     一类外部纹理合成问题；本项目实机测试确认后整体切换到该方案）。
-//   * 解码：**分级降级链**（见 core/video_decode.dart）。v0.5.5 之前是
-//     「hwdec=mediacodec,auto-safe + 禁用软解回退」的纯硬解策略，实机证明它
-//     会在 mpv 的 aimagereader interop 上整体黑屏（解码器在跑、一帧都取不出
-//     来，mpv 自己还不回退），所以从 v0.5.6 起改为「零拷贝硬解 → 硬解回读 →
-//     软解」三档，按日志指纹/看门狗自动降级，并把该机型最终可用的档位记下来。
-//   * 诊断：mpv 日志（warn 级）+ 视频参数 + 解码档位 + 错误全量写入 app.log，
-//     可随「设置 → 导出日志」反馈。
+//   * 解码：**分级降级链**（见 core/video_decode.dart）。mpv 的零拷贝 interop
+//     在部分机型上会「解码器在跑、一帧都渲染不出来」且自身不回退（实机指纹
+//     `vo/gpu/aimagereader … Waiting for frame timed out! / acquireLatestImage
+//     failed: -30001`），所以从 v0.5.6 起按「零拷贝硬解 → 硬解回读 → 软解」
+//     三档自动降级续播，并把该机型最终可用的档位记下来。
+//   * 播放体验（v0.5.7）：播放中控制条 **3 秒无操作自动隐藏**（点按唤回，隐藏
+//     时进入沉浸模式）；**倍速 0.5×–3×**；开始出声时申请 **Android 音频焦点**
+//     并停掉应用内共享语音条，避免和别的媒体叠播。
+//   * 诊断（v0.5.7 起瘦身）：mpv 的逐行日志只进内存（供降级判定与 CI 断言），
+//     落盘的只有 error 级 + 每代前两条停摆指纹 + 档位/首帧/降级事件；logcat
+//     快照只在**降级或报错时**采集，正常播放不再写那两大段。
 
 import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
@@ -23,6 +28,10 @@ import '../core/applog.dart';
 import '../core/files.dart';
 import '../core/l10n.dart';
 import '../core/video_decode.dart';
+import '../widgets/audio_row.dart';
+
+/// Playback rates offered in the speed menu (capped at 3× per product call).
+const List<double> kPlaybackRates = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0];
 
 class VideoPlayerPage extends StatefulWidget {
   const VideoPlayerPage({super.key, required this.path, required this.title});
@@ -69,17 +78,26 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
   bool _completed = false;
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
+  double _rate = 1.0;
   final List<StreamSubscription<dynamic>> _subs = [];
+
+  // --- control chrome auto-hide -------------------------------------------
+  bool _uiVisible = true;
+  Timer? _uiTimer;
+  static const Duration _uiHideAfter = Duration(seconds: 3);
 
   // --- decode chain state -------------------------------------------------
   int _generation = 0;
   int _tierIndex = 0;
   int _stallHits = 0;
+  int _stallLogged = 0;
+  String? _loggedParams;
   bool _firstFrameSeen = false;
   bool _hwDecodeObserved = false;
   bool _videoParamsSeen = false;
   bool _watchdogArmed = false;
   bool _switching = false;
+  bool _focusHeld = false;
   Timer? _watchdog;
   Timer? _promoteTimer;
 
@@ -97,9 +115,6 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     VideoPlayerPage.debugActiveTierStalls.clear();
     _tierIndex = VideoDecodeChain.instance.startTier;
     WidgetsBinding.instance.addObserver(this);
-    // snapshot native chatter (renderer banner, codec/driver lines) around
-    // playback start — the Dart-side log cannot see any of these
-    captureOwnLogcat('video-pre');
     _openAt(_tierIndex, seekTo: null);
   }
 
@@ -111,6 +126,77 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
         state == AppLifecycleState.inactive) {
       _player?.pause().catchError((_) {});
       appLog('video lifecycle: $state (paused player)');
+    }
+  }
+
+  // ------------------------------------------------------------ audio focus
+
+  /// Take over the audio path: pause our own shared voice player and ask
+  /// Android to interrupt whatever else is playing (music app, browser...).
+  Future<void> _takeAudioFocus() async {
+    if (_focusHeld) return;
+    _focusHeld = true;
+    await SharedVoicePlayer.stopAll();
+    if (!Platform.isAndroid) return;
+    try {
+      const ch = MethodChannel('bittechat/media');
+      final ok = await ch.invokeMethod<bool>('requestAudioFocus');
+      appLog('video audio focus: granted=$ok');
+    } catch (e) {
+      appLog('video audio focus request failed: $e');
+    }
+  }
+
+  Future<void> _releaseAudioFocus() async {
+    if (!_focusHeld) return;
+    _focusHeld = false;
+    if (!Platform.isAndroid) return;
+    try {
+      await const MethodChannel('bittechat/media')
+          .invokeMethod<bool>('abandonAudioFocus');
+    } catch (_) {}
+  }
+
+  // ---------------------------------------------------------------- chrome
+
+  void _setUiVisible(bool v) {
+    if (_uiVisible == v) return;
+    setState(() => _uiVisible = v);
+    // immersive while the chrome is hidden so "fullscreen" really is full
+    SystemChrome.setEnabledSystemUIMode(
+      v ? SystemUiMode.edgeToEdge : SystemUiMode.immersiveSticky,
+    );
+  }
+
+  void _showUi() {
+    _uiTimer?.cancel();
+    _setUiVisible(true);
+    _scheduleHideUi();
+  }
+
+  void _scheduleHideUi() {
+    _uiTimer?.cancel();
+    if (!_playing) return; // paused / failed: keep the controls reachable
+    _uiTimer = Timer(_uiHideAfter, () {
+      if (mounted && _uiVisible && _playing) _setUiVisible(false);
+    });
+  }
+
+  void _toggleUi() {
+    if (_uiVisible) {
+      _uiTimer?.cancel();
+      _setUiVisible(false);
+    } else {
+      _showUi();
+    }
+  }
+
+  Future<void> _setRate(double v) async {
+    setState(() => _rate = v);
+    try {
+      await _player?.setRate(v);
+    } catch (e) {
+      appLog('video setRate($v) failed: $e');
     }
   }
 
@@ -126,6 +212,8 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     final tier = VideoDecodeChain.tier(tierIndex);
     _tierIndex = tierIndex;
     _stallHits = 0;
+    _stallLogged = 0;
+    _loggedParams = null;
     _firstFrameSeen = false;
     _hwDecodeObserved = false;
     _videoParamsSeen = false;
@@ -191,11 +279,12 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
         player.stream.error.listen((e) => _onError(gen, e)),
         player.stream.log.listen((l) => _onMpvLog(gen, l)),
         player.stream.videoParams.listen((v) => _onVideoParams(gen, v)),
-        player.stream.playing.listen((v) {
-          if (mounted && gen == _generation) setState(() => _playing = v);
-        }),
+        player.stream.playing.listen((v) => _onPlaying(gen, v)),
         player.stream.completed.listen((v) {
-          if (mounted && gen == _generation) setState(() => _completed = v);
+          if (mounted && gen == _generation) {
+            setState(() => _completed = v);
+            if (v) _showUi();
+          }
         }),
         player.stream.position.listen((v) {
           VideoPlayerPage.debugLastPosition = v;
@@ -207,7 +296,8 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
       ]);
 
       if (tierIndex == 0) {
-        // first attempt of this page instance: forensic snapshot of the file
+        // one forensic line about the file on disk (cheap, and it settles
+        // "player broken" vs "half a mp4" without a log export round-trip)
         await _logFileIntegrity();
         appLog('video open: ${widget.path} (media_kit/mpv tier=${tier.label})');
       }
@@ -241,18 +331,13 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
         play: true,
       );
       if (gen != _generation) return;
+      if (_rate != 1.0) await player.setRate(_rate);
       if (seekTo != null && seekTo > Duration.zero) {
         await player.seek(seekTo);
       }
       // fallback arming in case no video-params event ever reaches us (the
       // watchdog body is a no-op once a first frame has been seen)
       _armWatchdog(gen, tier);
-      if (tierIndex == 0) {
-        // let the render pipeline spin up, then snapshot native chatter
-        Future.delayed(const Duration(seconds: 3), () {
-          captureOwnLogcat('video-post');
-        });
-      }
     } catch (e) {
       appLog('video init FAILED (tier=${tier.label}): ${widget.path} err=$e');
       if (mounted && gen == _generation) {
@@ -261,6 +346,17 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
           _error = '$e';
         });
       }
+    }
+  }
+
+  void _onPlaying(int gen, bool v) {
+    if (!mounted || gen != _generation) return;
+    setState(() => _playing = v);
+    if (v) {
+      unawaited(_takeAudioFocus());
+      _scheduleHideUi();
+    } else {
+      _showUi();
     }
   }
 
@@ -315,6 +411,9 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     appLog('video downgrade ${_tier.label} -> '
         '${VideoDecodeChain.tier(next).label}: $reason '
         '(position=${resume.inMilliseconds}ms)');
+    // the logcat snapshot is a *diagnostic* capture: only pay for it when
+    // something actually went wrong
+    captureOwnLogcat('video-stall');
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content:
@@ -332,6 +431,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     if (e.isEmpty) return;
     VideoPlayerPage.debugLastError = e;
     appLog('mpv error: ${widget.path} -> $e');
+    captureOwnLogcat('video-error');
     if (!mounted || gen != _generation) return;
     setState(() {
       _failed = true;
@@ -339,6 +439,10 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     });
   }
 
+  /// mpv chatter: kept in memory in full (the CI test and the downgrade
+  /// detector read it), but only ERROR lines and the first two stall
+  /// signatures of a generation reach the on-disk log — a healthy playback
+  /// writes four short lines instead of dozens.
   void _onMpvLog(int gen, PlayerLog l) {
     final line = 'mpv[${l.prefix}/${l.level}] ${l.text}';
     VideoPlayerPage.debugMpvLogs.add(line);
@@ -346,11 +450,15 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
       VideoPlayerPage.debugMpvLogs
           .removeRange(0, VideoPlayerPage.debugMpvLogs.length - 500);
     }
-    appLog(line);
+    final stall = VideoDecodeChain.isStallLine(line);
+    if (l.level == MPVLogLevel.error || (stall && _stallLogged < 2)) {
+      if (stall) _stallLogged++;
+      appLog(line);
+    }
     if (gen != _generation || _firstFrameSeen) return;
     // the on-device black-screen fingerprint: mpv's zero-copy MediaCodec
     // interop cannot pull a single frame out of its AImageReader
-    if (VideoDecodeChain.isStallLine(line)) {
+    if (stall) {
       _stallHits++;
       VideoPlayerPage.debugActiveTierStalls.add(line);
       if (_stallHits >= VideoDecodeChain.stallHitsToDowngrade) {
@@ -370,7 +478,6 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
   void _onVideoParams(int gen, VideoParams v) {
     final text = v.toString();
     VideoPlayerPage.debugLastVideoParams = text;
-    appLog('mpv video params: ${widget.path} -> $text');
     if (gen != _generation) return;
     if (VideoDecodeChain.paramsLookHardware(text)) {
       _hwDecodeObserved = true;
@@ -380,6 +487,12 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     if (v.w != null && v.h != null && v.w != 0) {
       _videoParamsSeen = true;
       _armWatchdog(gen, _tier);
+      // one compact line per generation instead of every params event
+      if (_loggedParams != text) {
+        _loggedParams = text;
+        appLog('video params: ${v.w}x${v.h} fmt=${v.pixelformat} '
+            'hw=${v.hwPixelformat} rotate=${v.rotate}');
+      }
     }
   }
 
@@ -442,14 +555,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
       return;
     }
     await p.playOrPause();
-  }
-
-  /// Renders as `视频解码: <档位名>`, plus a `软解渲染` marker while no hardware
-  /// pixel format has been reported. Makes a field report readable without
-  /// exporting logs.
-  String _decoderNote() {
-    final sw = _hwDecodeObserved ? '' : ' · ${L.t.videoDecoderSwActive}';
-    return '${L.t.videoDecoder}: ${_tier.label}$sw';
+    _showUi();
   }
 
   String _fmt(Duration d) {
@@ -464,6 +570,9 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     _generation++;
     _watchdog?.cancel();
     _promoteTimer?.cancel();
+    _uiTimer?.cancel();
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    unawaited(_releaseAudioFocus());
     WidgetsBinding.instance.removeObserver(this);
     for (final s in _subs) {
       s.cancel();
@@ -485,120 +594,203 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     final vc = _videoController;
     return Scaffold(
       backgroundColor: Colors.black,
-      appBar: AppBar(
-        title: Text(widget.title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(color: Colors.white)),
-        backgroundColor: Colors.black,
-        foregroundColor: Colors.white,
-      ),
-      body: _failed
-          ? Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(L.t.videoFail,
-                        style: const TextStyle(color: Colors.white70)),
-                    if (_error != null) ...[
-                      const SizedBox(height: 8),
-                      Text(_error!,
-                          textAlign: TextAlign.center,
-                          maxLines: 6,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                              color: Colors.white38, fontSize: 12)),
-                    ],
-                    const SizedBox(height: 16),
-                    OutlinedButton.icon(
-                      style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.white70),
-                      icon: const Icon(Icons.open_in_new, size: 18),
-                      label: Text(L.t.openWith),
-                      onPressed: () =>
-                          openWithExternalApp(widget.path, 'video/*'),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(L.t.videoDecoderTip,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                            color: Colors.white38, fontSize: 12)),
-                    const SizedBox(height: 4),
-                    Text(L.t.videoDecoderChainNote,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                            color: Colors.white38, fontSize: 11)),
-                  ],
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          // picture + tap surface
+          GestureDetector(
+            onTap: _toggleUi,
+            child: _failed
+                ? _failurePane()
+                : vc == null
+                    ? const Center(child: CircularProgressIndicator())
+                    : Video(
+                        controller: vc,
+                        controls: NoVideoControls,
+                        fit: BoxFit.contain,
+                        fill: Colors.black,
+                      ),
+          ),
+          // top chrome
+          AnimatedOpacity(
+            opacity: _uiVisible ? 1 : 0,
+            duration: const Duration(milliseconds: 180),
+            child: IgnorePointer(
+              ignoring: !_uiVisible,
+              child: Container(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Colors.black87, Colors.transparent],
+                  ),
+                ),
+                child: AppBar(
+                  backgroundColor: Colors.transparent,
+                  foregroundColor: Colors.white,
+                  title: Text(widget.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style:
+                          const TextStyle(color: Colors.white, fontSize: 15)),
                 ),
               ),
-            )
-          : vc == null
-              ? const Center(child: CircularProgressIndicator())
-              : Video(
-                  controller: vc,
-                  controls: NoVideoControls,
-                  fit: BoxFit.contain,
-                  fill: Colors.black,
-                ),
-      bottomNavigationBar: vc == null || _failed
-          ? null
-          : SafeArea(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    child: Row(
+            ),
+          ),
+          // bottom chrome
+          Align(
+            alignment: Alignment.bottomCenter,
+            child: AnimatedOpacity(
+              opacity: _uiVisible ? 1 : 0,
+              duration: const Duration(milliseconds: 180),
+              child: IgnorePointer(
+                ignoring: !_uiVisible,
+                child: Container(
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.bottomCenter,
+                      end: Alignment.topCenter,
+                      colors: [Colors.black87, Colors.transparent],
+                    ),
+                  ),
+                  child: SafeArea(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        IconButton(
-                          color: Colors.white,
-                          icon: Icon(_playing ? Icons.pause : Icons.play_arrow),
-                          onPressed: _playPause,
-                        ),
-                        Text(_fmt(_position),
-                            style: const TextStyle(
-                                color: Colors.white70, fontSize: 12)),
-                        Expanded(
-                          child: Slider(
-                            value: _duration > Duration.zero
-                                ? _position.inMilliseconds
-                                    .clamp(0, _duration.inMilliseconds)
-                                    .toDouble()
-                                : 0,
-                            max: _duration > Duration.zero
-                                ? _duration.inMilliseconds.toDouble()
-                                : 1,
-                            onChanged: (v) => _player
-                                ?.seek(Duration(milliseconds: v.toInt())),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          child: Row(
+                            children: [
+                              IconButton(
+                                color: Colors.white,
+                                icon: Icon(
+                                    _playing ? Icons.pause : Icons.play_arrow),
+                                onPressed: _playPause,
+                              ),
+                              Text(_fmt(_position),
+                                  style: const TextStyle(
+                                      color: Colors.white70, fontSize: 12)),
+                              Expanded(
+                                child: Slider(
+                                  value: _duration > Duration.zero
+                                      ? _position.inMilliseconds
+                                          .clamp(0, _duration.inMilliseconds)
+                                          .toDouble()
+                                      : 0,
+                                  max: _duration > Duration.zero
+                                      ? _duration.inMilliseconds.toDouble()
+                                      : 1,
+                                  onChanged: (v) => _player
+                                      ?.seek(Duration(milliseconds: v.toInt())),
+                                ),
+                              ),
+                              Text(_fmt(_duration),
+                                  style: const TextStyle(
+                                      color: Colors.white70, fontSize: 12)),
+                              PopupMenuButton<double>(
+                                tooltip: L.t.videoSpeed,
+                                color: Colors.black87,
+                                onOpened: () {
+                                  _uiTimer?.cancel();
+                                },
+                                onSelected: _setRate,
+                                itemBuilder: (_) => [
+                                  for (final r in kPlaybackRates)
+                                    PopupMenuItem(
+                                      value: r,
+                                      child: Text(
+                                        '${_fmtRate(r)}${r == _rate ? '  ✓' : ''}',
+                                        style: TextStyle(
+                                            color: r == _rate
+                                                ? Colors.white
+                                                : Colors.white70),
+                                      ),
+                                    ),
+                                ],
+                                child: Padding(
+                                  padding:
+                                      const EdgeInsets.symmetric(horizontal: 8),
+                                  child: Text(_fmtRate(_rate),
+                                      style: const TextStyle(
+                                          color: Colors.white, fontSize: 13)),
+                                ),
+                              ),
+                              IconButton(
+                                color: Colors.white,
+                                tooltip: L.t.openWith,
+                                icon: const Icon(Icons.open_in_new, size: 20),
+                                onPressed: () =>
+                                    openWithExternalApp(widget.path, 'video/*'),
+                              ),
+                            ],
                           ),
                         ),
-                        Text(_fmt(_duration),
-                            style: const TextStyle(
-                                color: Colors.white70, fontSize: 12)),
-                        IconButton(
-                          color: Colors.white,
-                          tooltip: L.t.openWith,
-                          icon: const Icon(Icons.open_in_new, size: 20),
-                          onPressed: () =>
-                              openWithExternalApp(widget.path, 'video/*'),
+                        // which decode rung is feeding the picture — makes a
+                        // field report readable without exporting logs
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 4),
+                          child: Text(_decoderNote(),
+                              style: const TextStyle(
+                                  color: Colors.white38, fontSize: 10.5)),
                         ),
                       ],
                     ),
                   ),
-                  // which decode rung is currently feeding the picture —
-                  // makes a field report ("it fell back to copy/software")
-                  // readable without exporting logs
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 4),
-                    child: Text(_decoderNote(),
-                        style: const TextStyle(
-                            color: Colors.white38, fontSize: 10.5)),
-                  ),
-                ],
+                ),
               ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// `0.5× / 1.0× / 1.25× / 3.0×` — one decimal keeps the menu column tidy.
+  static String _fmtRate(double r) =>
+      r == r.roundToDouble() ? '${r.toInt()}.0×' : '${r}×';
+
+  /// Renders as `视频解码: <档位名>`, plus a `软解渲染` marker while no hardware
+  /// pixel format has been reported. Makes a field report readable without
+  /// exporting logs.
+  String _decoderNote() {
+    final sw = _hwDecodeObserved ? '' : ' · ${L.t.videoDecoderSwActive}';
+    return '${L.t.videoDecoder}: ${_tier.label}$sw';
+  }
+
+  Widget _failurePane() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(L.t.videoFail, style: const TextStyle(color: Colors.white70)),
+            if (_error != null) ...[
+              const SizedBox(height: 8),
+              Text(_error!,
+                  textAlign: TextAlign.center,
+                  maxLines: 6,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: Colors.white38, fontSize: 12)),
+            ],
+            const SizedBox(height: 16),
+            OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(foregroundColor: Colors.white70),
+              icon: const Icon(Icons.open_in_new, size: 18),
+              label: Text(L.t.openWith),
+              onPressed: () => openWithExternalApp(widget.path, 'video/*'),
+            ),
+            const SizedBox(height: 8),
+            Text(L.t.videoDecoderTip,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.white38, fontSize: 12)),
+            const SizedBox(height: 4),
+            Text(L.t.videoDecoderChainNote,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.white38, fontSize: 11)),
+          ],
+        ),
+      ),
     );
   }
 }

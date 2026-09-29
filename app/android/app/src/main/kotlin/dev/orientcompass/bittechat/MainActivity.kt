@@ -14,6 +14,7 @@ class MainActivity : FlutterActivity() {
     private var channel: MethodChannel? = null
     private var pendingMagnet: String? = null
     private var launchConsumed = false
+    private var focusRequest: android.media.AudioFocusRequest? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -42,6 +43,43 @@ class MainActivity : FlutterActivity() {
                 android.util.Log.w("bittechat", "magnet forward failed: $e")
             }
         }
+
+        // Audio focus: a playing video/voice message must INTERRUPT whatever
+        // other app is making noise (music player, browser, ...) instead of
+        // mixing on top of it. minSdk is 28, so AudioFocusRequest is safe.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "bittechat/media")
+            .setMethodCallHandler { call, result ->
+                val am = getSystemService(android.content.Context.AUDIO_SERVICE)
+                        as? android.media.AudioManager
+                if (am == null) {
+                    result.success(false)
+                    return@setMethodCallHandler
+                }
+                when (call.method) {
+                    "requestAudioFocus" -> {
+                        val req = focusRequest ?: android.media.AudioFocusRequest
+                            .Builder(android.media.AudioManager.AUDIOFOCUS_GAIN)
+                            .setAudioAttributes(
+                                android.media.AudioAttributes.Builder()
+                                    .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
+                                    .setContentType(
+                                        android.media.AudioAttributes.CONTENT_TYPE_MUSIC)
+                                    .build())
+                            .setOnAudioFocusChangeListener { /* we never lose
+                                permanently; loss is handled by pausing in Dart */ }
+                            .build()
+                            .also { focusRequest = it }
+                        val r = am.requestAudioFocus(req)
+                        result.success(r == android.media.AudioManager.AUDIOFOCUS_REQUEST_GRANTED)
+                    }
+                    "abandonAudioFocus" -> {
+                        focusRequest?.let { am.abandonAudioFocusRequest(it) }
+                        focusRequest = null
+                        result.success(true)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "bittechat/files")
             .setMethodCallHandler { call, result ->
@@ -111,6 +149,15 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+    }
+
+    override fun onDestroy() {
+        focusRequest?.let { req ->
+            (getSystemService(android.content.Context.AUDIO_SERVICE)
+                    as? android.media.AudioManager)?.abandonAudioFocusRequest(req)
+        }
+        focusRequest = null
+        super.onDestroy()
     }
 
     override fun onNewIntent(intent: Intent) {

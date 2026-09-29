@@ -2185,6 +2185,12 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'已切换到「{tier}」解码'**
   String videoDecoderSwitch(Object tier);
+
+  /// No description provided for @videoSpeed.
+  ///
+  /// In zh, this message translates to:
+  /// **'倍速'**
+  String get videoSpeed;
 }
 
 class _AppLocalizationsDelegate

@@ -306,6 +306,16 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
+  /// The editor must always re-frame the PRISTINE picture: the saved
+  /// wallpaper already has padding/rotation baked in, so re-editing it would
+  /// stack artifacts (users saw "this round starts from last round's result").
+  /// The editor keeps a copy of the original at `<dest>.src`.
+  String _wallpaperEditSource() {
+    final pristine = File('${_api.dataDir}/wallpaper.img.src');
+    if (pristine.existsSync()) return pristine.path;
+    return widget.prefs.wallpaperPath!;
+  }
+
   /// Open the crop/preview editor for [srcPath]; on save the cropped bitmap
   /// becomes the global wallpaper.
   Future<void> _editWallpaper(String srcPath) async {
@@ -704,8 +714,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       IconButton(
                         tooltip: L.t.wallpaperEdit,
                         icon: Icon(Icons.crop_original_outlined),
-                        onPressed: () =>
-                            _editWallpaper(widget.prefs.wallpaperPath!),
+                        onPressed: () => _editWallpaper(_wallpaperEditSource()),
                       ),
                       IconButton(
                         tooltip: L.t.clear,

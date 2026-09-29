@@ -31,16 +31,56 @@ class PhotoViewerPage extends StatefulWidget {
   State<PhotoViewerPage> createState() => _PhotoViewerPageState();
 }
 
-class _PhotoViewerPageState extends State<PhotoViewerPage> {
+class _PhotoViewerPageState extends State<PhotoViewerPage>
+    with SingleTickerProviderStateMixin {
   final TransformationController _controller = TransformationController();
+  late final AnimationController _snap = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 180),
+  )..addListener(_onSnapTick);
+  Matrix4? _snapFrom;
   String? _error;
 
   static const double _zoomedScale = 2.5;
 
+  /// Users asked to be able to pinch the WHOLE picture smaller than the screen
+  /// (to see it in context), springing back to fit-size on release — like the
+  /// iOS/WeChat photo viewers.
+  static const double _minScale = 0.3;
+
   @override
   void dispose() {
+    _snap
+      ..removeListener(_onSnapTick)
+      ..dispose();
     _controller.dispose();
     super.dispose();
+  }
+
+  /// If the user released the pinch while zoomed out, animate back to 1x.
+  void _onInteractionEnd(InteractionEndDetails d) {
+    final scale = _controller.value.getMaxScaleOnAxis();
+    if (scale >= 0.999) return;
+    _snapFrom = Matrix4.copy(_controller.value);
+    _snap.forward(from: 0);
+  }
+
+  void _onSnapTick() {
+    final from = _snapFrom;
+    if (from == null) return;
+    _controller.value = _lerpMatrix(from, Matrix4.identity(), _snap.value);
+    if (_snap.isCompleted) _snapFrom = null;
+  }
+
+  /// Component-wise lerp is fine here: both matrices are translate+uniform
+  /// scale (what InteractiveViewer produces for pinch/pan), so the path is a
+  /// smooth zoom+slide back to the fit pose.
+  static Matrix4 _lerpMatrix(Matrix4 a, Matrix4 b, double t) {
+    final out = Matrix4.zero();
+    for (var i = 0; i < 16; i++) {
+      out.storage[i] = a.storage[i] + (b.storage[i] - a.storage[i]) * t;
+    }
+    return out;
   }
 
   void _onDoubleTap() {
@@ -97,9 +137,10 @@ class _PhotoViewerPageState extends State<PhotoViewerPage> {
               // constrained: true hands the viewport's TIGHT constraints to
               // the child, so `BoxFit.contain` fits the picture to the screen
               // instead of laying it out at its intrinsic pixel size
-              minScale: 1,
+              minScale: _minScale,
               maxScale: 6,
               boundaryMargin: const EdgeInsets.all(96),
+              onInteractionEnd: _onInteractionEnd,
               child: GestureDetector(
                 onDoubleTap: _onDoubleTap,
                 child: SizedBox.expand(

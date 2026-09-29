@@ -156,3 +156,32 @@ video first frame rendered (tier=mediacodec-copy)
 - `--hwdec` 的候选名是否仍是 `mediacodec` / `mediacodec-copy`
   （见 mpv `video/decode/vd_lavc.c` 的 `hwdec_autoprobe_info`：
   `mediacodec` 无 WHITELIST 标记，`mediacodec-copy` 有）。
+
+## 8. v0.5.7：硬解确认恢复后的日志瘦身与播放 UX
+
+同一台机型（`OMX.qcom.video.decoder.hevc`）在 v0.5.6 构建上的导出日志显示降级链
+**停在第 0 档**且全程无停摆指纹：
+
+```
+video decode tier -> mediacodec (hwdec=mediacodec, gen=1, resume=0ms)
+video params: 1280x720 fmt=mediacodec hw=null rotate=0
+video first frame rendered (tier=mediacodec)
+I/MediaCodec: [OMX.qcom.video.decoder.hevc] setting surface generation to ...
+video decode tier 0 settled (remembered for this device)
+```
+
+即零拷贝硬解在该机型上恢复正常（v0.5.5 的停摆更像一次与 Activity 重建/表面竞态
+相关的偶发状态；降级链保证它再发生时也能自愈）。既然诊断结论已闭环，v0.5.7 起
+播放期日志瘦身：
+
+| 之前（每次播放） | 现在（每次播放） |
+|------------------|------------------|
+| mpv 逐行 warn 日志全部落盘 | 只进内存（降级判定 + CI 断言用），落盘仅 `error` 级与每代前 2 条停摆指纹 |
+| `video-params` 每个事件一行（含 null 占位） | 每代一行紧凑 `video params: WxH fmt=… hw=… rotate=…` |
+| 播放前后各一段 30–50 行 logcat 快照 | 仅**降级或报错时**采集（`video-stall` / `video-error`） |
+| — | 保留：档位切换、首帧、settled、文件取证一行、音频焦点结果 |
+
+同版播放 UX：控制条 3 秒无操作自动隐藏并进入沉浸模式（点按唤回、暂停/结束时常显）；
+倍速 0.5×–3×（`player.setRate`，跨降级保留）；开始出声时经 `bittechat/media`
+通道 `requestAudioFocus`（`AUDIOFOCUS_GAIN` + USAGE_MEDIA）并停掉应用内共享语音条，
+页面销毁/Activity onDestroy 时释放——满足「有声音的播放要阻断其他正在播放的媒体」。
