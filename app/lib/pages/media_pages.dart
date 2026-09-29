@@ -359,9 +359,9 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
         // media_kit delivers events on its native event loop — disposing the
         // player from there can deadlock. One event-loop turn is enough for
         // the callback to unwind.
-        unawaited(Future<void>.delayed(Duration.zero, () {
+        unawaited(Future<void>.delayed(Duration.zero, () async {
           if (!mounted || gen != _generation) return;
-          return _downgrade('renderer stall ($hits x aimagereader)');
+          await _downgrade('renderer stall ($hits x aimagereader)');
         }));
       }
     }
@@ -444,7 +444,8 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     await p.playOrPause();
   }
 
-  /// "视频解码: <rung>[ · 软解渲染]" — makes a field report readable without
+  /// Renders as `视频解码: <档位名>`, plus a `软解渲染` marker while no hardware
+  /// pixel format has been reported. Makes a field report readable without
   /// exporting logs.
   String _decoderNote() {
     final sw = _hwDecodeObserved ? '' : ' · ${L.t.videoDecoderSwActive}';

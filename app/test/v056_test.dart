@@ -34,7 +34,7 @@ PixelBuffer canvasWithHole(
 void main() {
   group('trimFrontHalf (app.log 64KiB policy)', () {
     test('keeps the newer half by line count and marks the trim', () {
-      final text = List.generate(10, (i) => 'line $i').join('\n') + '\n';
+      final text = '${List.generate(10, (i) => 'line $i').join('\n')}\n';
       final out = trimFrontHalf(text, marker: 'app.log');
       final lines = out.split('\n')..removeLast();
       expect(lines.first, '[app.log trimmed: 5 older lines dropped]');
@@ -45,7 +45,7 @@ void main() {
     });
 
     test('odd line counts drop the smaller half', () {
-      final text = List.generate(7, (i) => 'l$i').join('\n') + '\n';
+      final text = '${List.generate(7, (i) => 'l$i').join('\n')}\n';
       final out = trimFrontHalf(text, marker: 'app.log');
       expect(out, contains('[app.log trimmed: 3 older lines dropped]'));
       expect(out, contains('l3'));
@@ -54,7 +54,7 @@ void main() {
     });
 
     test('a repeated trim folds the previous marker instead of stacking', () {
-      var text = List.generate(8, (i) => 'x$i').join('\n') + '\n';
+      var text = '${List.generate(8, (i) => 'x$i').join('\n')}\n';
       text = trimFrontHalf(text, marker: 'app.log');
       // grow again, then trim once more
       text = '$text${List.generate(8, (i) => 'y$i').join('\n')}\n';

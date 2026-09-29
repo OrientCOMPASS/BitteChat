@@ -118,13 +118,17 @@ impl FileLog {
     }
 
     /// Append one preformatted line, trimming the older half when over the cap.
+    ///
+    /// Lock order is always `written` -> `file` (and `trim_to_back_half` takes
+    /// neither), so concurrent callers can't deadlock.
     pub fn line(&self, text: &str) {
-        let mut guard = self.file.lock().unwrap_or_else(|e| e.into_inner());
         let mut written = self.written.lock().unwrap_or_else(|e| e.into_inner());
         if *written > MAX_BYTES {
             // release the handle so the rewrite can replace the file wholesale
-            *guard = None;
-            drop(guard);
+            {
+                let mut guard = self.file.lock().unwrap_or_else(|e| e.into_inner());
+                *guard = None;
+            }
             self.trim_to_back_half();
             let mut guard = self.file.lock().unwrap_or_else(|e| e.into_inner());
             *guard = OpenOptions::new()
@@ -132,11 +136,12 @@ impl FileLog {
                 .append(true)
                 .open(self.dir.join("core.log"))
                 .ok();
-            *written = (*guard)
+            *written = guard
                 .as_ref()
                 .and_then(|f| f.metadata().ok().map(|m| m.len()))
                 .unwrap_or(0);
         }
+        let mut guard = self.file.lock().unwrap_or_else(|e| e.into_inner());
         let Some(file) = guard.as_mut() else {
             return;
         };

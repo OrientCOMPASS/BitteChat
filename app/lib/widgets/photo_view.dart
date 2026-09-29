@@ -47,7 +47,8 @@ class _PhotoViewerPageState extends State<PhotoViewerPage> {
     final scale = _controller.value.getMaxScaleOnAxis();
     _controller.value = scale > 1.4
         ? Matrix4.identity()
-        : (Matrix4.identity()..scale(_zoomedScale));
+        : (Matrix4.identity()
+          ..scaleByDouble(_zoomedScale, _zoomedScale, 1.0, 1.0));
   }
 
   @override

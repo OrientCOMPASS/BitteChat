@@ -128,10 +128,10 @@ class WallpaperEditPageState extends State<WallpaperEditPage> {
   Matrix4 _matrixFor(Size canvas, Size base) {
     final c = canvas.center(Offset.zero) + _offset;
     return Matrix4.identity()
-      ..translate(c.dx, c.dy)
+      ..translateByDouble(c.dx, c.dy, 0, 1)
       ..rotateZ(_rotation)
-      ..scale(_scale, _scale, 1.0)
-      ..translate(-base.width / 2, -base.height / 2);
+      ..scaleByDouble(_scale, _scale, 1.0, 1.0)
+      ..translateByDouble(-base.width / 2, -base.height / 2, 0, 1);
   }
 
   void _resetView() {
