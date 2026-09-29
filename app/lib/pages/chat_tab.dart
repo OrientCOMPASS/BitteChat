@@ -293,6 +293,8 @@ class _ChatTabState extends State<ChatTab> {
                         : _GroupTile(
                             group: _groups[i],
                             onTap: () => _openGroup(_groups[i]),
+                            onLongPress: () =>
+                                _showConversationMenu(_groups[i]),
                           ),
                   ),
                 ),
@@ -338,16 +340,227 @@ class _ChatTabState extends State<ChatTab> {
       ),
     );
   }
+
+  // ------------------------------------------------------- long-press menu
+
+  /// Long-press a conversation row for quick actions (mark read / rename note /
+  /// copy invite / resync / block / leave) without opening the room. Mirrors
+  /// the actions in the room's own info sheet, using the same strings.
+  void _showConversationMenu(GroupSummary g) {
+    HapticFeedback.mediumImpact();
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) {
+        final theme = Theme.of(ctx);
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: Row(
+                  children: [
+                    GroupAvatar(name: g.name, keyHex: g.id, size: 36),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(g.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontWeight: FontWeight.w600)),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+              if (g.unread > 0)
+                ListTile(
+                  leading: const Icon(Icons.mark_chat_read_outlined),
+                  title: Text(L.t.markAsRead),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _markRead(g);
+                  },
+                ),
+              ListTile(
+                leading: const Icon(Icons.edit_outlined),
+                title: Text(L.t.renameGroup),
+                subtitle: Text(L.t.renameLocalNote),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _renameGroup(g);
+                },
+              ),
+              if (!g.dm)
+                ListTile(
+                  leading: const Icon(Icons.link),
+                  title: Text(L.t.copyInviteLink),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _copyInvite(g);
+                  },
+                ),
+              if (!g.dm)
+                ListTile(
+                  leading: const Icon(Icons.sync),
+                  title: Text(L.t.resync),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _resync(g);
+                  },
+                ),
+              if (g.dm)
+                ListTile(
+                  leading: const Icon(Icons.block),
+                  title: Text(L.t.block),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _blockPeer(g);
+                  },
+                ),
+              ListTile(
+                leading: Icon(Icons.logout, color: theme.colorScheme.error),
+                title: Text(L.t.leaveGroup,
+                    style: TextStyle(color: theme.colorScheme.error)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _leaveGroup(g);
+                },
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _markRead(GroupSummary g) {
+    try {
+      _api.markRead(g.id);
+    } catch (_) {}
+    _reload();
+  }
+
+  Future<void> _renameGroup(GroupSummary g) async {
+    final name = await _promptText(
+      context,
+      title: L.t.renameGroup,
+      label: L.t.renameGroup,
+      hint: L.t.renameLocalNote,
+      confirm: L.t.save,
+      initial: g.name,
+    );
+    if (name == null || name.trim().isEmpty) return;
+    try {
+      _api.renameGroup(g.id, name.trim());
+      _reload();
+    } catch (e) {
+      if (mounted) showError(context, e);
+    }
+  }
+
+  Future<void> _copyInvite(GroupSummary g) async {
+    final magnet = g.inviteMagnet.isNotEmpty
+        ? g.inviteMagnet
+        : 'magnet:?xt=urn:btih:${g.id}';
+    await Clipboard.setData(ClipboardData(text: magnet));
+    if (mounted) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(L.t.copiedInvite)));
+    }
+  }
+
+  void _resync(GroupSummary g) {
+    try {
+      _api.syncGroup(g.id);
+    } catch (_) {}
+    if (mounted) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(L.t.resyncStarted)));
+    }
+    _reload();
+  }
+
+  void _blockPeer(GroupSummary g) {
+    try {
+      _api.dmBlock(g.peerPk);
+    } catch (_) {}
+    if (mounted) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(L.t.dmBlocked)));
+    }
+    _reload();
+  }
+
+  Future<void> _leaveGroup(GroupSummary g) async {
+    final del = await _confirmLeave(context, isDm: g.dm);
+    if (del == null || !mounted) return;
+    try {
+      _api.leaveGroup(g.id, deleteHistory: del);
+      _reload();
+    } catch (e) {
+      if (mounted) showError(context, e);
+    }
+  }
+
+  /// Leave confirmation with the "also delete local history" checkbox.
+  /// Returns null on cancel, otherwise the deleteHistory choice.
+  Future<bool?> _confirmLeave(BuildContext context, {required bool isDm}) {
+    var deleteHistory = true;
+    return showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSt) {
+          final theme = Theme.of(ctx);
+          return AlertDialog(
+            title: Text(L.t.leaveGroupQ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(isDm ? L.t.leaveGroupHint : L.t.leaveRoomHint),
+                const SizedBox(height: 4),
+                CheckboxListTile(
+                  value: deleteHistory,
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  controlAffinity: ListTileControlAffinity.leading,
+                  title: Text(L.t.deleteLocalHistory),
+                  onChanged: (v) => setSt(() => deleteHistory = v ?? true),
+                ),
+                Text(L.t.deleteLocalHistoryHint,
+                    style: theme.textTheme.bodySmall
+                        ?.copyWith(color: theme.colorScheme.outline)),
+              ],
+            ),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx), child: Text(L.t.cancel)),
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx, deleteHistory),
+                  child: Text(L.t.leave)),
+            ],
+          );
+        },
+      ),
+    );
+  }
 }
 
 String shortPkLabel(String pk) =>
     pk.length > 12 ? '${pk.substring(0, 12)}…' : pk;
 
 class _GroupTile extends StatelessWidget {
-  const _GroupTile({required this.group, required this.onTap});
+  const _GroupTile({
+    required this.group,
+    required this.onTap,
+    this.onLongPress,
+  });
 
   final GroupSummary group;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
 
   @override
   Widget build(BuildContext context) {
@@ -357,6 +570,7 @@ class _GroupTile extends StatelessWidget {
         : '${group.previewOwn ? '我' : group.previewAuthor}: ${group.previewText}';
     return ListTile(
       onTap: onTap,
+      onLongPress: onLongPress,
       leading: Stack(
         children: [
           GroupAvatar(name: group.name, keyHex: group.id, size: 48),

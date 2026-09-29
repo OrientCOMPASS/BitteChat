@@ -686,6 +686,7 @@
  "wallpaperCropHint": "The canvas is wider than the screen: the saved image is cropped to the screen ratio, so only the dashed area is finally visible",
  "deleteLocalHistory": "Also delete local history",
  "deleteLocalHistoryHint": "Wipes this device's messages and DAG heads (the reset path after joining the wrong hash chain). Re-entering the same torrent re-syncs from the DHT and online members.",
+ "markAsRead": "Mark as read",
  "videoSoftwareDecodeNotice": "Using software decoding (hardware decoder lacks this codec)",
  "videoSpeed": "Playback speed"
 }

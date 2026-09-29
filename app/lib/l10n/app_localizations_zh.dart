@@ -1119,6 +1119,9 @@ class AppLocalizationsZh extends AppLocalizations {
       '清空本机的消息与哈希链头指针（进错哈希链后可用它重置）。重新进入同一种子会从 DHT/在线成员重新同步。';
 
   @override
+  String get markAsRead => '标记为已读';
+
+  @override
   String get videoSoftwareDecodeNotice => '正在使用软件解码（硬件解码器不支持此编码）';
 
   @override

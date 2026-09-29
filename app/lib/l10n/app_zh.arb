@@ -686,6 +686,7 @@
  "wallpaperCropHint": "取景框比屏幕宽一圈，保存后按屏幕比例裁掉两侧；虚线框内为最终显示范围",
  "deleteLocalHistory": "同时删除本地聊天记录",
  "deleteLocalHistoryHint": "清空本机的消息与哈希链头指针（进错哈希链后可用它重置）。重新进入同一种子会从 DHT/在线成员重新同步。",
+ "markAsRead": "标记为已读",
  "videoSoftwareDecodeNotice": "正在使用软件解码（硬件解码器不支持此编码）",
  "videoSpeed": "倍速"
 }

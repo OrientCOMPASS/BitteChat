@@ -2126,6 +2126,12 @@ abstract class AppLocalizations {
   /// **'清空本机的消息与哈希链头指针（进错哈希链后可用它重置）。重新进入同一种子会从 DHT/在线成员重新同步。'**
   String get deleteLocalHistoryHint;
 
+  /// No description provided for @markAsRead.
+  ///
+  /// In zh, this message translates to:
+  /// **'标记为已读'**
+  String get markAsRead;
+
   /// No description provided for @videoSoftwareDecodeNotice.
   ///
   /// In zh, this message translates to:

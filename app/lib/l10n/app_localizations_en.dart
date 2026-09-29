@@ -1157,6 +1157,9 @@ class AppLocalizationsEn extends AppLocalizations {
       'Wipes this device\'s messages and DAG heads (the reset path after joining the wrong hash chain). Re-entering the same torrent re-syncs from the DHT and online members.';
 
   @override
+  String get markAsRead => 'Mark as read';
+
+  @override
   String get videoSoftwareDecodeNotice =>
       'Using software decoding (hardware decoder lacks this codec)';
 
