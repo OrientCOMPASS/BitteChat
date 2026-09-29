@@ -304,7 +304,9 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
   /// Relative/absolute seek used by double-tap side-seek.
   Future<void> _seekBy(Duration delta) async {
     final upper = _duration > Duration.zero ? _duration : _position;
-    final target = (_position + delta).clamp(Duration.zero, upper);
+    final ms =
+        (_position + delta).inMilliseconds.clamp(0, upper.inMilliseconds);
+    final target = Duration(milliseconds: ms);
     try {
       await _player?.seek(target);
     } catch (_) {}
@@ -499,7 +501,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
         await p.setSubtitleTrack(SubtitleTrack.no());
         setState(() => _activeSubtitleId = '');
       } else if (picked == 'external') {
-        final files = await FilePicker.platform.pickFiles(
+        final files = await FilePicker.pickFiles(
           type: FileType.custom,
           allowedExtensions: ['srt', 'ass', 'ssa', 'vtt', 'sub'],
         );

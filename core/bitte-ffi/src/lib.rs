@@ -126,13 +126,20 @@ fn write_crash_dump(msg: &str) {
     };
     let _ = std::fs::create_dir_all(&dir);
     let path = dir.join("crash_rust.log");
-    let thread = std::thread::current().name().unwrap_or("<unnamed>").to_string();
+    let thread = std::thread::current()
+        .name()
+        .unwrap_or("<unnamed>")
+        .to_string();
     let ts = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis())
         .unwrap_or(0);
     let bt = std::backtrace::Backtrace::force_capture();
-    let mut f = match std::fs::OpenOptions::new().create(true).append(true).open(&path) {
+    let mut f = match std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+    {
         Ok(f) => f,
         Err(_) => return,
     };
@@ -142,17 +149,19 @@ fn write_crash_dump(msg: &str) {
     );
     drop(f);
     // keep it bounded: beyond ~256 KiB keep the newer half of the lines
-    if let Ok(meta) = std::fs::metadata(&path) {
-        if meta.len() > 256 * 1024 {
-            if let Ok(content) = std::fs::read_to_string(&path) {
-                let lines: Vec<&str> = content.lines().collect();
-                let keep = &lines[lines.len() / 2..];
-                let _ = std::fs::write(
-                    &path,
-                    format!("[crash_rust.log trimmed]\n{}\n", keep.join("\n")),
-                );
-            }
-        }
+    let too_big = std::fs::metadata(&path)
+        .map(|m| m.len() > 256 * 1024)
+        .unwrap_or(false);
+    if !too_big {
+        return;
+    }
+    if let Ok(content) = std::fs::read_to_string(&path) {
+        let lines: Vec<&str> = content.lines().collect();
+        let keep = &lines[lines.len() / 2..];
+        let _ = std::fs::write(
+            &path,
+            format!("[crash_rust.log trimmed]\n{}\n", keep.join("\n")),
+        );
     }
 }
 

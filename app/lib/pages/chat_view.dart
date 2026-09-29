@@ -516,6 +516,7 @@ class _ChatViewPageState extends State<ChatViewPage> {
                                     message: m,
                                     showAuthor: showAuthor,
                                     onDownload: () => _downloadAttachment(m),
+                                    prefs: widget.prefs,
                                   ),
                                 ),
                               ],
@@ -642,12 +643,14 @@ class MessageBubble extends StatelessWidget {
     required this.showAuthor,
     this.onDownload,
     this.blockedMark = false,
+    this.prefs,
   });
 
   final ChatMessage message;
   final bool showAuthor;
   final VoidCallback? onDownload;
   final bool blockedMark;
+  final UiPrefs? prefs;
 
   @override
   Widget build(BuildContext context) {
@@ -721,9 +724,7 @@ class MessageBubble extends StatelessWidget {
                       ),
                       child: m.payloadKind == MsgPayloadKind.attachment
                           ? _AttachmentBody(
-                              message: m,
-                              onDownload: onDownload,
-                              prefs: widget.prefs)
+                              message: m, onDownload: onDownload, prefs: prefs)
                           : _TextBody(message: m),
                     ),
                   ),

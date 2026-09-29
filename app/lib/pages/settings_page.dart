@@ -511,12 +511,13 @@ class _SettingsPageState extends State<SettingsPage> {
         title: Text(title),
         children: [
           for (final o in options)
-            RadioListTile<double>(
-              value: o,
-              groupValue: current,
+            ListTile(
               dense: true,
+              leading: Icon(o == current
+                  ? Icons.radio_button_checked
+                  : Icons.radio_button_off),
               title: Text(_fmtX(o)),
-              onChanged: (v) => Navigator.pop(ctx, v),
+              onTap: () => Navigator.pop(ctx, o),
             ),
         ],
       ),
