@@ -10,6 +10,7 @@
 
 import 'dart:io';
 
+import 'package:flutter/gestures.dart' show InteractionEndDetails;
 import 'package:flutter/material.dart';
 
 import '../core/files.dart';

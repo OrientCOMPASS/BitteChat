@@ -451,7 +451,8 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
           .removeRange(0, VideoPlayerPage.debugMpvLogs.length - 500);
     }
     final stall = VideoDecodeChain.isStallLine(line);
-    if (l.level == MPVLogLevel.error || (stall && _stallLogged < 2)) {
+    // PlayerLog.level is a STRING (mpv's level name), not MPVLogLevel
+    if (l.level == 'error' || (stall && _stallLogged < 2)) {
       if (stall) _stallLogged++;
       appLog(line);
     }
@@ -747,7 +748,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
 
   /// `0.5× / 1.0× / 1.25× / 3.0×` — one decimal keeps the menu column tidy.
   static String _fmtRate(double r) =>
-      r == r.roundToDouble() ? '${r.toInt()}.0×' : '${r}×';
+      r == r.roundToDouble() ? '${r.toInt()}.0×' : '$r×';
 
   /// Renders as `视频解码: <档位名>`, plus a `软解渲染` marker while no hardware
   /// pixel format has been reported. Makes a field report readable without
