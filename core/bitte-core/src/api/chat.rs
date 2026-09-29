@@ -1624,10 +1624,6 @@ impl Api {
         let ih_hex = hex::encode(created.infohash);
         let gid = hex20(gid_hex)?;
         let src = std::path::Path::new(path);
-        let orig_name = src
-            .file_name()
-            .map(|s| s.to_string_lossy().to_string())
-            .unwrap_or_else(|| display_name.to_string());
         // SEED IN PLACE, unconditionally: the torrent's save dir is the file's
         // own parent directory. Self-published seeds keep their original —
         // possibly scattered — locations and are NEVER duplicated into the
