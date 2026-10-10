@@ -251,6 +251,13 @@ class _ChatTabState extends State<ChatTab> {
       appBar: AppBar(
         title: Text(L.t.chatTab),
         actions: [
+          // v0.5.22: the floating "+ 种子群聊" chip is gone — the add-room
+          // entry lives in the AppBar so the list stays clean
+          IconButton(
+            tooltip: L.t.fabGroup,
+            icon: Icon(Icons.add_comment),
+            onPressed: () => _showAddMenu(context),
+          ),
           IconButton(
             tooltip: L.t.identitySettings,
             icon: Icon(Icons.person_outline),
@@ -299,13 +306,6 @@ class _ChatTabState extends State<ChatTab> {
                           ),
                   ),
                 ),
-      floatingActionButton: !_api.available || _groups.isEmpty
-          ? null
-          : FloatingActionButton.extended(
-              onPressed: () => _showAddMenu(context),
-              icon: Icon(Icons.add_comment),
-              label: Text(L.t.fabGroup),
-            ),
     );
   }
 

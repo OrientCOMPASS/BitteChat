@@ -220,12 +220,13 @@ class _ChatViewPageState extends State<ChatViewPage> {
       return;
     }
     _swipeAccum += d.delta.dx;
-    if (!_swipeArmed && _swipeAccum < -70) {
+    // v0.5.22: trigger distance halved (was -70)
+    if (!_swipeArmed && _swipeAccum < -35) {
       _swipeArmed = true;
       HapticFeedback.mediumImpact();
     }
     // the card follows the finger leftwards (capped at the glyph width)
-    final dx = _swipeAccum.clamp(-88.0, 0.0).toDouble();
+    final dx = _swipeAccum.clamp(-44.0, 0.0).toDouble();
     if (dx != _swipeDx) setState(() => _swipeDx = dx);
   }
 
@@ -274,9 +275,9 @@ class _ChatViewPageState extends State<ChatViewPage> {
               child: Align(
                 alignment: Alignment.centerRight,
                 child: Padding(
-                  padding: const EdgeInsets.only(right: 20),
+                  padding: const EdgeInsets.only(right: 12),
                   child: Icon(Icons.reply,
-                      size: 22, color: Theme.of(ctx).colorScheme.primary),
+                      size: 20, color: Theme.of(ctx).colorScheme.primary),
                 ),
               ),
             ),
@@ -810,6 +811,29 @@ class _ChatViewPageState extends State<ChatViewPage> {
                     ),
                   ),
                 ),
+              // v0.5.22: jump-to-bottom sits ABOVE the input bar (a FAB here
+              // covered the send button)
+              if (_showJump)
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: Padding(
+                    padding: const EdgeInsets.only(right: 12, bottom: 6),
+                    child: Material(
+                      color: theme.colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(18),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(18),
+                        onTap: _scrollToBottom,
+                        child: const SizedBox(
+                          width: 36,
+                          height: 36,
+                          child:
+                              Icon(Icons.keyboard_double_arrow_down, size: 20),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
               _InputBar(
                 controller: _input,
                 sending: _sending,
@@ -826,13 +850,6 @@ class _ChatViewPageState extends State<ChatViewPage> {
           ),
         ],
       ),
-      floatingActionButton: _showJump
-          ? FloatingActionButton.small(
-              heroTag: 'jump-bottom',
-              onPressed: _scrollToBottom,
-              child: Icon(Icons.keyboard_double_arrow_down),
-            )
-          : null,
     );
   }
 }
