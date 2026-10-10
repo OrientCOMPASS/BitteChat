@@ -381,7 +381,8 @@ class _ChatViewPageState extends State<ChatViewPage> {
       _scroll.jumpTo(0);
       return;
     }
-    if (!mounted) return; // context guard across the await above
+    // guard the USED context itself across the awaits above
+    if (!ctx.mounted) return;
     await Scrollable.ensureVisible(
       ctx,
       duration: const Duration(milliseconds: 250),
