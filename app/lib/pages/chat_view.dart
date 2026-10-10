@@ -1068,21 +1068,21 @@ class MessageBubble extends StatelessWidget {
       ),
     );
   }
+}
 
-  /// Localized one-liner for system messages (bubbles, banners, quotes).
-  String systemTextOf(ChatMessage m) {
-    switch (m.systemCode) {
-      case 'create':
-        return L.t.sysCreate(m.authorName, m.systemDetail);
-      case 'join':
-        return L.t.sysJoin(m.authorName);
-      case 'leave':
-        return L.t.sysLeave(m.authorName);
-      case 'rename':
-        return L.t.sysRename(m.authorName, m.systemDetail);
-      default:
-        return L.t.sysGeneric(m.systemCode, m.systemDetail);
-    }
+/// Localized one-liner for system messages (bubbles, banners, quotes).
+String systemTextOf(ChatMessage m) {
+  switch (m.systemCode) {
+    case 'create':
+      return L.t.sysCreate(m.authorName, m.systemDetail);
+    case 'join':
+      return L.t.sysJoin(m.authorName);
+    case 'leave':
+      return L.t.sysLeave(m.authorName);
+    case 'rename':
+      return L.t.sysRename(m.authorName, m.systemDetail);
+    default:
+      return L.t.sysGeneric(m.systemCode, m.systemDetail);
   }
 }
 
