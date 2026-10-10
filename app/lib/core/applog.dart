@@ -10,6 +10,7 @@
 // which writes it to the public Download directory (MediaStore on API 29+).
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -59,6 +60,60 @@ class AppLog {
 
   File get _file => File('$_dir/logs/app.log');
 
+  File get _marker => File('$_dir/logs/session.live');
+
+  /// v0.5.24 forensics for "crashed but NO dump": hard native crashes and OS
+  /// kills bypass the Dart zone hook AND the Rust panic hook. A session
+  /// marker left behind proves the previous process died without a clean
+  /// shutdown; the record carries the previous session's app.log tail so
+  /// there is still evidence of what happened right before the crash.
+  Future<void> _uncleanExitCheck() async {
+    try {
+      final m = _marker;
+      if (!await m.exists()) return;
+      final start = int.tryParse((await m.readAsString()).trim()) ?? 0;
+      await m.delete();
+      var tail = '';
+      final f = _file;
+      if (await f.exists()) {
+        final raf = await f.open(mode: FileMode.read);
+        try {
+          final end = await raf.length();
+          if (end > start) {
+            const maxTail = 32 * 1024;
+            final want = end - start;
+            await raf.setPosition(end - (want > maxTail ? maxTail : want));
+            tail = utf8.decode(await raf.read(maxTail), allowMalformed: true);
+          }
+        } finally {
+          await raf.close();
+        }
+      }
+      crashDump(
+        'unclean-exit',
+        'previous session ended without clean shutdown '
+            '(native crash / signal / OS kill?)',
+        null,
+        tail: tail,
+      );
+    } catch (_) {}
+  }
+
+  void _writeSessionMarker() {
+    try {
+      final len = _file.existsSync() ? _file.lengthSync() : 0;
+      _marker.writeAsStringSync('$len', flush: true);
+    } catch (_) {}
+  }
+
+  /// Remove the session marker on a clean teardown so the next start is not
+  /// flagged (lifecycle `detached`; OS kills never reach this).
+  static void markCleanExit() {
+    try {
+      _instance?._marker.deleteSync();
+    } catch (_) {}
+  }
+
   static Future<void> init(String dataDir) async {
     try {
       await Directory('$dataDir/logs').create(recursive: true);
@@ -69,6 +124,8 @@ class AppLog {
       final legacy = File('$dataDir/logs/app.1.log');
       if (await legacy.exists()) await legacy.delete();
       await log._trimIfNeeded();
+      await log._uncleanExitCheck();
+      log._writeSessionMarker();
       log.write('app log started (pid=$pid)');
     } catch (_) {
       // logging must never break startup
@@ -107,7 +164,8 @@ class AppLog {
 
   /// Append a structured crash record to `<dataDir>/logs/crash_dart.log`
   /// (bounded like app.log). Written SYNCHRONOUSLY so it survives the crash.
-  static void crashDump(String kind, Object error, StackTrace? st) {
+  static void crashDump(String kind, Object error, StackTrace? st,
+      {String? tail}) {
     final inst = _instance;
     if (inst == null) return;
     try {
@@ -119,6 +177,10 @@ class AppLog {
       buf.writeln('last context:');
       for (final c in _crumbs) {
         buf.writeln('  $c');
+      }
+      if (tail != null && tail.isNotEmpty) {
+        buf.writeln('previous session log tail:');
+        buf.writeln(tail);
       }
       buf.writeln();
       final f = File('${inst._dir}/logs/crash_dart.log');

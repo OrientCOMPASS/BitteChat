@@ -165,6 +165,62 @@ fn write_crash_dump(msg: &str) {
     }
 }
 
+/// v0.5.24: hard native crashes (SIGSEGV / SIGABRT / …, e.g. inside
+/// libtorrent or mpv) bypass BOTH the Dart zone hook and the Rust panic
+/// hook — that is why some crashes left no dump at all. Pre-open the crash
+/// log fd and install a signal handler that writes one line (async-signal
+/// safe: `write(2)` on a pre-opened fd, no allocation) and then re-raises
+/// with the default handler so Android still produces a tombstone.
+static CRASH_FD: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(-1);
+
+#[cfg(unix)]
+unsafe extern "C" fn native_crash_handler(sig: i32) {
+    let fd = CRASH_FD.load(std::sync::atomic::Ordering::Relaxed);
+    if fd >= 0 {
+        let ts = libc::time(std::ptr::null_mut());
+        let mut buf = [0u8; 128];
+        let mut pos = 0usize;
+        // closure-free helpers: everything stays on the stack (signal safe)
+        unsafe fn push(b: u8, buf: &mut [u8; 128], pos: &mut usize) {
+            if *pos < buf.len() {
+                buf[*pos] = b;
+                *pos += 1;
+            }
+        }
+        unsafe fn push_num(mut x: u64, buf: &mut [u8; 128], pos: &mut usize) {
+            let mut tmp = [0u8; 24];
+            let mut n = 0usize;
+            if x == 0 {
+                tmp[0] = b'0';
+                n = 1;
+            }
+            while x > 0 {
+                tmp[n] = (x % 10) as u8 + b'0';
+                x /= 10;
+                n += 1;
+            }
+            while n > 0 {
+                n -= 1;
+                push(tmp[n], buf, pos);
+            }
+        }
+        for &b in b"=== native signal crash sig=".iter() {
+            push(b, &mut buf, &mut pos);
+        }
+        push_num(sig as u64, &mut buf, &mut pos);
+        for &b in b" ts=".iter() {
+            push(b, &mut buf, &mut pos);
+        }
+        push_num(ts as u64, &mut buf, &mut pos);
+        for &b in b" (hard native crash; see tombstone for the native backtrace)\n".iter() {
+            push(b, &mut buf, &mut pos);
+        }
+        libc::write(fd, buf.as_ptr() as *const libc::c_void, pos);
+    }
+    libc::signal(sig, libc::SIG_DFL);
+    libc::raise(sig);
+}
+
 fn init_logging(data_dir: &str) {
     let logger = TeeLogger {
         file: bitte_core::filelog::FileLog::open(std::path::Path::new(data_dir)),
@@ -220,6 +276,30 @@ pub unsafe extern "C" fn bc_init(
         .unwrap_or("./bitte-data")
         .to_string();
     let _ = CRASH_DIR.set(std::path::PathBuf::from(&data_dir).join("logs"));
+    // pre-open the crash-log fd + install the native signal handlers
+    #[cfg(unix)]
+    {
+        let dir = std::path::Path::new(&data_dir).join("logs");
+        let _ = std::fs::create_dir_all(&dir);
+        let path = dir.join("crash_rust.log");
+        if let Ok(cs) = std::ffi::CString::new(path.to_string_lossy().as_ref()) {
+            let fd = libc::open(
+                cs.as_ptr(),
+                libc::O_APPEND | libc::O_CREAT | libc::O_WRONLY,
+                0o644,
+            );
+            CRASH_FD.store(fd, std::sync::atomic::Ordering::Relaxed);
+            for sig in [
+                libc::SIGSEGV,
+                libc::SIGABRT,
+                libc::SIGBUS,
+                libc::SIGILL,
+                libc::SIGFPE,
+            ] {
+                libc::signal(sig, native_crash_handler as *const () as libc::sighandler_t);
+            }
+        }
+    }
     init_logging(&data_dir);
     log::info!("bc_init: bitte {} data_dir={data_dir}", bitte_core::VERSION);
 

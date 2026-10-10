@@ -60,6 +60,9 @@ class _CrashBreadcrumb extends WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     AppLog.breadcrumb('lifecycle:$state');
+    // v0.5.24: a clean teardown drops the session marker so the next start
+    // is not reported as an unclean exit (background kills never get here)
+    if (state == AppLifecycleState.detached) AppLog.markCleanExit();
   }
 }
 

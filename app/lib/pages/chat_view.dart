@@ -54,6 +54,8 @@ class _ChatViewPageState extends State<ChatViewPage> {
   Map<String, dynamic> _detail = {};
   Timer? _detailTimer;
   bool _showJump = false;
+  Timer? _settleTimer;
+  bool _pinBottom = false;
 
   String get _gid => widget.group.id;
   bool get _isDm => widget.group.dm;
@@ -98,6 +100,7 @@ class _ChatViewPageState extends State<ChatViewPage> {
   @override
   void dispose() {
     _saveDraft();
+    _settleTimer?.cancel();
     _api.setActiveGroup(null);
     _sub?.cancel();
     _detailTimer?.cancel();
@@ -170,15 +173,49 @@ class _ChatViewPageState extends State<ChatViewPage> {
   }
 
   void _onScroll() {
+    // v0.5.24: while the settle loop pins us to the bottom, absorb async
+    // content growth (quote thumbs, extent recompute) at once; a USER scroll
+    // cancels the pin so manual browsing is never fought against
+    if (_pinBottom &&
+        _scroll.hasClients &&
+        _scroll.position.userScrollDirection == ScrollDirection.idle) {
+      final m = _scroll.position.maxScrollExtent;
+      if ((_scroll.position.pixels - m).abs() > 0.5) _scroll.jumpTo(m);
+    } else if (_pinBottom &&
+        _scroll.position.userScrollDirection != ScrollDirection.idle) {
+      _pinBottom = false;
+      _settleTimer?.cancel();
+    }
     final show =
-        _scroll.position.maxScrollExtent - _scroll.position.pixels > 240;
+        _scroll.position.maxScrollExtent - _scroll.position.pixels > 160;
     if (show != _showJump && mounted) setState(() => _showJump = show);
   }
 
+  /// Jump to the TRUE bottom and keep settling there for ~1 s: async layout
+  /// (image decode in quote cards / attachments, extent recompute after a
+  /// reload) can grow the content right after a single jumpTo and silently
+  /// leave the viewport ~one item above the bottom (v0.5.23 complaint).
   void _scrollToBottom() {
-    if (_scroll.hasClients) {
-      _scroll.jumpTo(_scroll.position.maxScrollExtent);
-    }
+    if (!_scroll.hasClients) return;
+    _pinBottom = true;
+    _settleTimer?.cancel();
+    _scroll.jumpTo(_scroll.position.maxScrollExtent);
+    var ticks = 0;
+    _settleTimer = Timer.periodic(const Duration(milliseconds: 120), (t) {
+      ticks++;
+      if (!mounted || !_scroll.hasClients || ticks > 10) {
+        t.cancel();
+        _pinBottom = false;
+        return;
+      }
+      final m = _scroll.position.maxScrollExtent;
+      if ((m - _scroll.position.pixels).abs() > 0.5) {
+        _scroll.jumpTo(m);
+      } else {
+        t.cancel();
+        _pinBottom = false;
+      }
+    });
   }
 
   bool _nearBottom() =>
@@ -295,18 +332,59 @@ class _ChatViewPageState extends State<ChatViewPage> {
   }
 
   /// Tap on a quote card: scroll the original message into view.
-  void _jumpToMessage(String id) {
-    final ctx = _msgKeys[id]?.currentContext;
-    if (ctx == null) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(L.t.quoteMissing)));
+  ///
+  /// The original can sit far outside the BUILT widget window (ListView
+  /// builds only visible rows + cache extent), so its GlobalKey context is
+  /// null even though the message IS loaded — v0.5.23 wrongly reported
+  /// "not synced" exactly in that case. Now: find the entry index, jump to
+  /// an index-proportional offset estimate, then walk outward ring by ring
+  /// until the keyed row is built, then ensureVisible onto it.
+  Future<void> _jumpToMessage(String id) async {
+    final target = _entries.indexWhere((e) => e.message?.id == id);
+    if (target < 0 || !_scroll.hasClients) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(L.t.quoteMissing)));
+      }
       return;
     }
-    Scrollable.ensureVisible(
+    final key = _msgKeys.putIfAbsent(id, () => GlobalKey());
+    var ctx = key.currentContext;
+    if (ctx == null) {
+      final pos = _scroll.position;
+      final count = (_entries.length + 1).clamp(1, 1 << 30); // + header row
+      final li = target + 1;
+      final avg =
+          (pos.maxScrollExtent + pos.viewportDimension) / count.toDouble();
+      final base = (avg * li - pos.viewportDimension * 0.3)
+          .clamp(0.0, pos.maxScrollExtent)
+          .toDouble();
+      final step = pos.viewportDimension * 0.8;
+      outer:
+      for (var ring = 0; ring < 16; ring++) {
+        final offs = ring == 0
+            ? [base]
+            : [
+                (base - step * ring).clamp(0.0, pos.maxScrollExtent).toDouble(),
+                (base + step * ring).clamp(0.0, pos.maxScrollExtent).toDouble(),
+              ];
+        for (final off in offs) {
+          _scroll.jumpTo(off);
+          await WidgetsBinding.instance.endOfFrame;
+          ctx = key.currentContext;
+          if (ctx != null) break outer;
+        }
+      }
+    }
+    if (ctx == null) {
+      _scroll.jumpTo(0);
+      return;
+    }
+    await Scrollable.ensureVisible(
       ctx,
       duration: const Duration(milliseconds: 250),
       curve: Curves.easeOut,
-      alignment: 0.2,
+      alignment: 0.15,
     );
   }
 
