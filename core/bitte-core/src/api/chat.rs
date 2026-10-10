@@ -1939,11 +1939,17 @@ impl Api {
         let gid_hex = jstr(&p, "group_id")?.to_string();
         let gid = hex20(&gid_hex)?;
         let now = crate::now_ms();
-        let mut st = self.inner.state.lock().unwrap();
-        st.store.group_set_last_read(&gid, now)?;
-        if let Some(rt) = st.groups.get_mut(&gid_hex) {
-            rt.row.last_read_ts = now;
+        {
+            let mut st = self.inner.state.lock().unwrap();
+            st.store.group_set_last_read(&gid, now)?;
+            if let Some(rt) = st.groups.get_mut(&gid_hex) {
+                rt.row.last_read_ts = now;
+            }
         }
+        // v0.5.23: notify list + home badge immediately — without this event
+        // they only noticed the new read marker on their slow poll timers
+        // (the tab badge lingered for up to ~12 s)
+        self.emit_event("chat.group_updated", json!({"group": gid_hex}));
         Ok(json!({"ok": true}))
     }
 

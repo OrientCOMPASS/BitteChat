@@ -69,6 +69,12 @@ class _ChatViewPageState extends State<ChatViewPage> {
     _sub = _api.events.listen((e) {
       if (e.isChatMessage && e.data['group'] == _gid) {
         _reload();
+        // v0.5.23: an open conversation reads incoming messages at once, so
+        // the list row + tab badge clear immediately (core re-emits
+        // chat.group_updated from mark_read for the list/home listeners)
+        try {
+          _api.markRead(_gid);
+        } catch (_) {}
       } else if (e.isChatGroupUpdated) {
         _reload();
       } else if (e.type == 'chat.sync' && e.data['group'] == _gid) {
@@ -697,92 +703,121 @@ class _ChatViewPageState extends State<ChatViewPage> {
           Column(
             children: [
               Expanded(
-                child: _messages.isEmpty
-                    ? Center(
-                        child: Text(
-                          L.t.emptyGroupHint,
-                          textAlign: TextAlign.center,
-                          style: theme.textTheme.bodyLarge
-                              ?.copyWith(color: theme.colorScheme.outline),
-                        ),
-                      )
-                    : GestureDetector(
-                        onTap: () => FocusScope.of(context).unfocus(),
-                        child: ListView.builder(
-                          controller: _scroll,
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 8),
-                          itemCount: _entries.length + 1,
-                          itemBuilder: (context, i) {
-                            if (i == 0) {
-                              return _GenesisHeader(
-                                  groupName: widget.group.name);
-                            }
-                            final entry = _entries[i - 1];
-                            if (entry.isGap) {
-                              return _BlockedGap(
-                                messages: entry.blocked,
-                                expanded: _expandedGaps
-                                    .contains(entry.blocked.first.id),
-                                onToggle: () {
-                                  setState(() {
-                                    final key = entry.blocked.first.id;
-                                    if (!_expandedGaps.remove(key)) {
-                                      _expandedGaps.add(key);
-                                    }
-                                  });
-                                },
-                              );
-                            }
-                            final m = entry.message!;
-                            final prev =
-                                i == 1 ? null : _entries[i - 2].lastMessage;
-                            final showAuthor = prev == null ||
-                                prev.own != m.own ||
-                                m.ts - prev.ts > 5 * 60 * 1000 ||
-                                _isNewDay(prev.ts, m.ts);
-                            final showDay =
-                                prev == null || _isNewDay(prev.ts, m.ts);
-                            return Column(
-                              children: [
-                                if (showDay) DayDivider(ts: m.ts),
-                                // QQ-style: long-press gives BOTH text
-                                // selection cursors (SelectionArea) and an
-                                // anchored floating action popup (custom
-                                // context menu) — not a bottom sheet.
-                                _RectReporter(
-                                  id: m.id,
-                                  rects: _bubbleRects,
-                                  child: _swipeShifter(
-                                    m,
-                                    GestureDetector(
-                                      onHorizontalDragUpdate: (d) =>
-                                          _onSwipeUpdate(m, d),
-                                      onHorizontalDragEnd: (_) =>
-                                          _onSwipeEnd(m),
-                                      onHorizontalDragCancel: () =>
-                                          _onSwipeEnd(m),
-                                      onLongPress: () => _showPopupOverlay(m),
-                                      child: MessageBubble(
-                                        key: _msgKeys.putIfAbsent(
-                                            m.id, () => GlobalKey()),
-                                        message: m,
-                                        showAuthor: showAuthor,
-                                        onDownload: () =>
-                                            _downloadAttachment(m),
-                                        prefs: widget.prefs,
-                                        selectionMenuBuilder: (ctx, state) =>
-                                            _selectionMenu(ctx, state, m),
-                                        onMention: () => _insertMention(m),
-                                        onQuoteTap: _jumpToMessage,
+                child: Stack(
+                  children: [
+                    _messages.isEmpty
+                        ? Center(
+                            child: Text(
+                              L.t.emptyGroupHint,
+                              textAlign: TextAlign.center,
+                              style: theme.textTheme.bodyLarge
+                                  ?.copyWith(color: theme.colorScheme.outline),
+                            ),
+                          )
+                        : GestureDetector(
+                            onTap: () => FocusScope.of(context).unfocus(),
+                            child: ListView.builder(
+                              controller: _scroll,
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 8),
+                              itemCount: _entries.length + 1,
+                              itemBuilder: (context, i) {
+                                if (i == 0) {
+                                  return _GenesisHeader(
+                                      groupName: widget.group.name);
+                                }
+                                final entry = _entries[i - 1];
+                                if (entry.isGap) {
+                                  return _BlockedGap(
+                                    messages: entry.blocked,
+                                    expanded: _expandedGaps
+                                        .contains(entry.blocked.first.id),
+                                    onToggle: () {
+                                      setState(() {
+                                        final key = entry.blocked.first.id;
+                                        if (!_expandedGaps.remove(key)) {
+                                          _expandedGaps.add(key);
+                                        }
+                                      });
+                                    },
+                                  );
+                                }
+                                final m = entry.message!;
+                                final prev =
+                                    i == 1 ? null : _entries[i - 2].lastMessage;
+                                final showAuthor = prev == null ||
+                                    prev.own != m.own ||
+                                    m.ts - prev.ts > 5 * 60 * 1000 ||
+                                    _isNewDay(prev.ts, m.ts);
+                                final showDay =
+                                    prev == null || _isNewDay(prev.ts, m.ts);
+                                return Column(
+                                  children: [
+                                    if (showDay) DayDivider(ts: m.ts),
+                                    // QQ-style: long-press gives BOTH text
+                                    // selection cursors (SelectionArea) and an
+                                    // anchored floating action popup (custom
+                                    // context menu) — not a bottom sheet.
+                                    _RectReporter(
+                                      id: m.id,
+                                      rects: _bubbleRects,
+                                      child: _swipeShifter(
+                                        m,
+                                        GestureDetector(
+                                          onHorizontalDragUpdate: (d) =>
+                                              _onSwipeUpdate(m, d),
+                                          onHorizontalDragEnd: (_) =>
+                                              _onSwipeEnd(m),
+                                          onHorizontalDragCancel: () =>
+                                              _onSwipeEnd(m),
+                                          onLongPress: () =>
+                                              _showPopupOverlay(m),
+                                          child: MessageBubble(
+                                            key: _msgKeys.putIfAbsent(
+                                                m.id, () => GlobalKey()),
+                                            message: m,
+                                            showAuthor: showAuthor,
+                                            onDownload: () =>
+                                                _downloadAttachment(m),
+                                            prefs: widget.prefs,
+                                            selectionMenuBuilder: (ctx,
+                                                    state) =>
+                                                _selectionMenu(ctx, state, m),
+                                            onMention: () => _insertMention(m),
+                                            onQuoteTap: _jumpToMessage,
+                                          ),
+                                        ),
                                       ),
                                     ),
-                                  ),
-                                ),
-                              ],
-                            );
-                          },
-                        )),
+                                  ],
+                                );
+                              },
+                            )),
+                    // v0.5.23: native floating overlay ABOVE the input bar —
+                    // no layout row (no solid band), never covers the send
+                    // button, floats over the message list's bottom-right
+                    if (_showJump)
+                      Positioned(
+                        right: 12,
+                        bottom: 12,
+                        child: Material(
+                          elevation: 2,
+                          color: theme.colorScheme.surfaceContainerHighest,
+                          borderRadius: BorderRadius.circular(18),
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(18),
+                            onTap: _scrollToBottom,
+                            child: const SizedBox(
+                              width: 36,
+                              height: 36,
+                              child: Icon(Icons.keyboard_double_arrow_down,
+                                  size: 20),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
               ),
               if (_attJob != null)
                 Material(
@@ -808,29 +843,6 @@ class _ChatViewPageState extends State<ChatViewPage> {
                           ),
                         ),
                       ],
-                    ),
-                  ),
-                ),
-              // v0.5.22: jump-to-bottom sits ABOVE the input bar (a FAB here
-              // covered the send button)
-              if (_showJump)
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: Padding(
-                    padding: const EdgeInsets.only(right: 12, bottom: 6),
-                    child: Material(
-                      color: theme.colorScheme.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(18),
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(18),
-                        onTap: _scrollToBottom,
-                        child: const SizedBox(
-                          width: 36,
-                          height: 36,
-                          child:
-                              Icon(Icons.keyboard_double_arrow_down, size: 20),
-                        ),
-                      ),
                     ),
                   ),
                 ),
