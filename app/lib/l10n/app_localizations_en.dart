@@ -1234,7 +1234,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get mentionUnread => 'Someone mentioned you';
 
   @override
-  String get replyUnread => 'Someone replied to you';
+  String get replyUnread => 'New reply';
 
   @override
   String get actDm => 'DM';

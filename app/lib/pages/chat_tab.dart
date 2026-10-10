@@ -650,16 +650,40 @@ class _GroupTile extends StatelessWidget {
           draft.text.trim().isEmpty ? '[${L.t.actReply}]' : draft.text;
       return _markLine(theme, Icons.edit, label);
     }
+    final normal = group.kind3Preview(preview);
     if (group.mentionUnread) {
-      return _markLine(theme, Icons.alternate_email, L.t.mentionUnread);
+      return _tagLine(theme, '[${L.t.mentionUnread}]', normal);
     }
     if (group.replyUnread) {
-      return _markLine(theme, Icons.reply, L.t.replyUnread);
+      return _tagLine(theme, '[${L.t.replyUnread}]', normal);
     }
     return Text(
       group.kind3Preview(preview),
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
+    );
+  }
+
+  /// Highlight-colored bracket tag + the normal preview (v0.5.21: text tag
+  /// instead of a highlight icon, per QQ-style list marks).
+  Widget _tagLine(ThemeData theme, String tag, String preview) {
+    return Row(
+      children: [
+        Text(
+          tag,
+          style: theme.textTheme.bodySmall
+              ?.copyWith(color: Colors.orange, fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(width: 4),
+        Expanded(
+          child: Text(
+            preview,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodySmall,
+          ),
+        ),
+      ],
     );
   }
 

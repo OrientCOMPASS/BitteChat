@@ -704,7 +704,7 @@
  "quoteMissing": "Quoted message not synced yet",
  "kindAttachment": "File",
  "mentionUnread": "Someone mentioned you",
- "replyUnread": "Someone replied to you",
+ "replyUnread": "New reply",
  "actDm": "DM",
  "actBlock": "Block",
  "actId": "ID",

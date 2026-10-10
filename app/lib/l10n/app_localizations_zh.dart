@@ -1194,7 +1194,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get mentionUnread => '有人@我';
 
   @override
-  String get replyUnread => '有人回复了我';
+  String get replyUnread => '有新回复';
 
   @override
   String get actDm => '私聊';

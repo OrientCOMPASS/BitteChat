@@ -704,7 +704,7 @@
  "quoteMissing": "被引用的消息未同步或不在本地",
  "kindAttachment": "附件",
  "mentionUnread": "有人@我",
- "replyUnread": "有人回复了我",
+ "replyUnread": "有新回复",
  "actDm": "私聊",
  "actBlock": "屏蔽",
  "actId": "ID",

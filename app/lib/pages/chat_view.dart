@@ -988,42 +988,44 @@ class MessageBubble extends StatelessWidget {
                     SizedBox(width: 6),
                   ],
                   Flexible(
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: bubbleColor,
-                        borderRadius: BorderRadius.only(
-                          topLeft: const Radius.circular(14),
-                          topRight: const Radius.circular(14),
-                          bottomLeft: Radius.circular(own ? 14 : 4),
-                          bottomRight: Radius.circular(own ? 4 : 14),
+                    child: IntrinsicWidth(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: bubbleColor,
+                          borderRadius: BorderRadius.only(
+                            topLeft: const Radius.circular(14),
+                            topRight: const Radius.circular(14),
+                            bottomLeft: Radius.circular(own ? 14 : 4),
+                            bottomRight: Radius.circular(own ? 4 : 14),
+                          ),
                         ),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (m.replyTo != null)
-                            _QuoteCard(
-                              message: m,
-                              onTap: onQuoteTap == null
-                                  ? null
-                                  : () => onQuoteTap!(m.replyTo!),
-                            ),
-                          if (m.payloadKind == MsgPayloadKind.attachment)
-                            _AttachmentBody(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (m.replyTo != null)
+                              _QuoteCard(
                                 message: m,
-                                onDownload: onDownload,
-                                prefs: prefs)
-                          else if (selectionMenuBuilder == null)
-                            _TextBody(message: m)
-                          else
-                            SelectionArea(
-                              contextMenuBuilder: selectionMenuBuilder!,
-                              child: _TextBody(message: m),
-                            ),
-                        ],
+                                onTap: onQuoteTap == null
+                                    ? null
+                                    : () => onQuoteTap!(m.replyTo!),
+                              ),
+                            if (m.payloadKind == MsgPayloadKind.attachment)
+                              _AttachmentBody(
+                                  message: m,
+                                  onDownload: onDownload,
+                                  prefs: prefs)
+                            else if (selectionMenuBuilder == null)
+                              _TextBody(message: m)
+                            else
+                              SelectionArea(
+                                contextMenuBuilder: selectionMenuBuilder!,
+                                child: _TextBody(message: m),
+                              ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -1146,7 +1148,6 @@ class _QuoteCard extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: double.infinity,
         margin: const EdgeInsets.only(bottom: 6),
         padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
         decoration: BoxDecoration(

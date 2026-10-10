@@ -2279,7 +2279,7 @@ abstract class AppLocalizations {
   /// No description provided for @replyUnread.
   ///
   /// In zh, this message translates to:
-  /// **'有人回复了我'**
+  /// **'有新回复'**
   String get replyUnread;
 
   /// No description provided for @actDm.

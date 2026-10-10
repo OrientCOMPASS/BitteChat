@@ -84,6 +84,19 @@ impl Dag {
         self.missing.len()
     }
 
+    /// Head set capped to [`crate::chat::message::MAX_PARENTS`] (keeping the
+    /// NEWEST) for use as the parent links of a new message: sending must
+    /// never fail with "too many parents", even when a gappy sync left many
+    /// tips behind. v0.5.21 — no old-client compatibility required.
+    pub fn parent_set(&self) -> Vec<Sha1Hash> {
+        let mut h = self.heads();
+        if h.len() > crate::chat::message::MAX_PARENTS {
+            let drop = h.len() - crate::chat::message::MAX_PARENTS;
+            h.drain(0..drop);
+        }
+        h
+    }
+
     /// Current head set, deterministically ordered (by ts then id).
     pub fn heads(&self) -> Vec<Sha1Hash> {
         let mut v: Vec<Sha1Hash> = self.heads.iter().copied().collect();
@@ -172,7 +185,12 @@ impl Dag {
             }
         }
         // every new message starts as a head until something references it
-        self.heads.insert(id);
+        // a late-arriving parent is NOT a tip when a stored child already
+        // references it — gappy syncs otherwise inflate the head set until
+        // sends fail with "too many parents"
+        if self.children.get(&id).is_none_or(|kids| kids.is_empty()) {
+            self.heads.insert(id);
+        }
         self.missing.remove(&id);
         self.nodes.insert(id, msg);
         self.raw.insert(id, raw);
@@ -490,5 +508,50 @@ mod tests {
             state: 1,
             reply_to: None,
         }
+    }
+
+    /// v0.5.21: a parent that arrives AFTER its stored child must not become
+    /// a head, and parent_set() caps the link set to MAX_PARENTS (newest).
+    #[test]
+    fn late_parent_not_a_head_and_parent_set_capped() {
+        fn msg(idb: u8, parents: &[Sha1Hash], seq: i64, ts: i64) -> ChatMessage {
+            ChatMessage {
+                id: hex::encode([idb; 20]),
+                group: hex::encode([9u8; 20]),
+                parents: parents.iter().map(hex::encode).collect(),
+                author_seq: seq,
+                ts,
+                author_pk: "00".repeat(32),
+                author_name: "x".into(),
+                kind: 1,
+                payload: Payload::Text { text: "x".into() },
+                sender_x: None,
+                own: false,
+                state: 1,
+                reply_to: None,
+            }
+        }
+        let mut d = Dag::new();
+        // child first (parent still missing), then the parent arrives
+        let m2 = msg(2, &[[1u8; 20]], 2, 200);
+        d.insert([2u8; 20], m2, vec![]).unwrap();
+        assert_eq!(d.heads(), vec![[2u8; 20]]);
+        assert_eq!(d.missing_count(), 1);
+        d.insert([1u8; 20], msg(1, &[], 1, 100), vec![]).unwrap();
+        assert_eq!(d.missing_count(), 0);
+        // the late parent is referenced by a stored child => not a tip
+        assert_eq!(d.heads(), vec![[2u8; 20]]);
+
+        // ten independent tips: heads() keeps all, parent_set() the newest 8
+        let mut d = Dag::new();
+        for i in 1..=10u8 {
+            d.insert([i; 20], msg(i, &[], i as i64, 1000 + i as i64), vec![])
+                .unwrap();
+        }
+        assert_eq!(d.heads().len(), 10);
+        let ps = d.parent_set();
+        assert_eq!(ps.len(), crate::chat::message::MAX_PARENTS);
+        assert_eq!(ps[0], [3u8; 20]);
+        assert_eq!(ps[7], [10u8; 20]);
     }
 }

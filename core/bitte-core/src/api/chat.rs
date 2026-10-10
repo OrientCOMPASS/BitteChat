@@ -1562,7 +1562,7 @@ impl Api {
             is_dm = rt.sync.manifest.is_dm();
             dm_peer = self.dm_peer_pk_hex(&rt.sync.manifest);
             let channel_key = self.dm_channel_key(&rt.sync.manifest);
-            let mut parents = rt.sync.dag.heads();
+            let mut parents = rt.sync.dag.parent_set();
             for (i, (kind, payload)) in parts.into_iter().enumerate() {
                 rt.own_seq += 1;
                 let sm = create_message_opts(
@@ -1780,7 +1780,7 @@ impl Api {
                 .groups
                 .get_mut(gid_hex)
                 .ok_or_else(|| CoreError::NotFound("group".into()))?;
-            let parents = rt.sync.dag.heads();
+            let parents = rt.sync.dag.parent_set();
             let channel_key = self.dm_channel_key(&rt.sync.manifest);
             let is_dm = rt.sync.manifest.is_dm();
             let dm_peer = self.dm_peer_pk_hex(&rt.sync.manifest);

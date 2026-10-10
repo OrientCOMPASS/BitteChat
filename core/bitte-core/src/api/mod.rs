@@ -882,7 +882,7 @@ impl Api {
             };
             let is_dm = rt.sync.manifest.is_dm();
             let dm_peer = self.dm_peer_pk_hex(&rt.sync.manifest);
-            let parents = rt.sync.dag.heads();
+            let parents = rt.sync.dag.parent_set();
             let channel_key = self.dm_channel_key(&rt.sync.manifest);
             rt.own_seq += 1;
             let sm = match crate::chat::message::create_message_opts(
