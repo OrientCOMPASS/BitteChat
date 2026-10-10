@@ -172,14 +172,23 @@ class BitteApi extends ChangeNotifier {
       'chat.leave_group',
       {'group_id': groupId, 'delete_history': deleteHistory});
 
-  List<String> sendText(String groupId, String text) {
-    final r = call('chat.send', {'group_id': groupId, 'text': text});
+  List<String> sendText(String groupId, String text, {String? replyTo}) {
+    final r = call('chat.send', {
+      'group_id': groupId,
+      'text': text,
+      if (replyTo != null && replyTo.isNotEmpty) 'reply_to': replyTo,
+    });
     return ((r['ids'] as List?) ?? []).map((e) => '$e').toList();
   }
 
-  Map<String, dynamic> sendFile(String groupId, String path, {String? name}) =>
-      call('chat.send_file',
-          {'group_id': groupId, 'path': path, if (name != null) 'name': name});
+  Map<String, dynamic> sendFile(String groupId, String path,
+          {String? name, String? replyTo}) =>
+      call('chat.send_file', {
+        'group_id': groupId,
+        'path': path,
+        if (name != null) 'name': name,
+        if (replyTo != null && replyTo.isNotEmpty) 'reply_to': replyTo,
+      });
 
   void markRead(String groupId) =>
       call('chat.mark_read', {'group_id': groupId});

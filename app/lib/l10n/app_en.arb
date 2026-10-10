@@ -701,6 +701,8 @@
  "langEn": "English",
  "actCopy": "Copy",
  "actReply": "Reply",
+ "quoteMissing": "Quoted message not synced yet",
+ "kindAttachment": "File",
  "actDm": "DM",
  "actBlock": "Block",
  "actId": "ID",

@@ -1185,6 +1185,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get actReply => '回复';
 
   @override
+  String get quoteMissing => '被引用的消息未同步或不在本地';
+
+  @override
+  String get kindAttachment => '附件';
+
+  @override
   String get actDm => '私聊';
 
   @override

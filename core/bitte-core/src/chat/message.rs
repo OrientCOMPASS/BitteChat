@@ -13,9 +13,14 @@
 //!   "n":   <utf8 author display name, <= 64B>
 //!   "y":   <int kind>  1=text 2=attachment 3=system 5=chunk-part
 //!   "b":   <payload bytes>
+//!   "r":   <20B id of the quoted message>   (optional, quote-reply, v0.5.17+)
 //!   "sig": <64B ed25519 over canonical bencode of the dict WITHOUT "sig">
 //! }
 //! ```
+//! Optional keys ("x", "e", "r") are forward-compatible: verification
+//! re-encodes the decoded dict (unknown keys included), so old clients
+//! verify and store newer messages without understanding the new keys.
+//!
 //! The message id is `SHA-1` over the full canonical encoding (including sig).
 //! Whole encoded messages must stay <= 1000 bytes so they fit into BEP44
 //! immutable DHT items; longer texts are split into chained `y=5` parts.
@@ -111,6 +116,11 @@ pub struct ChatMessage {
     /// 0 = pending confirmation (outbox), 1 = confirmed (stored in DHT / seen by peers)
     #[serde(default)]
     pub state: i64,
+    /// hex id of the message this one quote-replies to (wire key "r", v0.5.17+).
+    /// Older peers keep unknown keys in the canonical bytes, so signatures
+    /// still verify for them — they simply ignore the quote.
+    #[serde(default)]
+    pub reply_to: Option<String>,
 }
 
 /// Raw message bytes + parsed view (kept together in the object store).
@@ -219,6 +229,7 @@ fn unsigned_dict(
     payload_bytes: &[u8],
     sender_x: &[u8; 32],
     encrypted: bool,
+    reply_to: Option<&Sha1Hash>,
 ) -> Value {
     let mut d = Value::dict();
     d.insert("v", Value::Int(PROTOCOL_VERSION));
@@ -230,6 +241,9 @@ fn unsigned_dict(
         "p",
         Value::List(parents.iter().map(|p| Value::Str(p.to_vec())).collect()),
     );
+    if let Some(r) = reply_to {
+        d.insert("r", Value::Str(r.to_vec()));
+    }
     d.insert("s", Value::Int(author_seq));
     d.insert("t", Value::Int(ts));
     d.insert("k", Value::Str(author.public_key().to_vec()));
@@ -240,11 +254,13 @@ fn unsigned_dict(
     d
 }
 
-/// Options for message creation (DM encryption).
+/// Options for message creation (DM encryption, quote-reply).
 #[derive(Debug, Clone, Copy, Default)]
 pub struct MsgOpts {
     /// when set, the payload is sealed with this channel key (ChaCha20-Poly1305)
     pub channel_key: Option<[u8; 32]>,
+    /// id of the message being quote-replied to (wire key "r")
+    pub reply_to: Option<Sha1Hash>,
 }
 
 /// Create and sign one message. Returns canonical bytes and parsed view.
@@ -305,7 +321,17 @@ pub fn create_message_opts(
         None => (kind, payload_to_bytes(kind, payload)?, false),
     };
     let unsigned = unsigned_dict(
-        group, parents, author_seq, ts, author, name, outer_kind, &pb, &xpub, encrypted,
+        group,
+        parents,
+        author_seq,
+        ts,
+        author,
+        name,
+        outer_kind,
+        &pb,
+        &xpub,
+        encrypted,
+        opts.reply_to.as_ref(),
     );
     let unsigned_bytes = bencode::encode(&unsigned);
     let sig = author.sign(&unsigned_bytes);
@@ -340,6 +366,7 @@ pub fn create_message_opts(
         sender_x: Some(hex::encode(xpub)),
         own: true,
         state: 0,
+        reply_to: opts.reply_to.map(hex::encode),
     };
     Ok(SignedMessage { bytes, id, msg })
 }
@@ -436,6 +463,11 @@ pub fn verify_message(raw: &[u8], now_ms: i64) -> Result<SignedMessage> {
     let kind_i = v.get_int("y").unwrap_or(0);
     let kind =
         MsgKind::from_i64(kind_i).ok_or_else(|| CoreError::Invalid("unknown kind".into()))?;
+    let reply_to = match v.get_bytes("r") {
+        Some(rb) if rb.len() == 20 => Some(hex::encode(rb)),
+        Some(_) => return Err(CoreError::Invalid("bad r length".into())),
+        None => None,
+    };
     let b = v
         .get_bytes("b")
         .ok_or_else(|| CoreError::Invalid("missing b".into()))?;
@@ -468,6 +500,7 @@ pub fn verify_message(raw: &[u8], now_ms: i64) -> Result<SignedMessage> {
             sender_x,
             own: false,
             state: 1,
+            reply_to,
         },
     })
 }
@@ -518,6 +551,7 @@ pub fn parse_message_unverified(raw: &[u8], own_pk_hex: &str) -> Result<SignedMe
     let encrypted = v.get_int("e").unwrap_or(0) == 1;
     let kind_i = v.get_int("y").unwrap_or(0);
     let kind = MsgKind::from_i64(kind_i).ok_or_else(|| CoreError::Invalid("kind".into()))?;
+    let reply_to = v.get_bytes("r").filter(|r| r.len() == 20).map(hex::encode);
     let b = v
         .get_bytes("b")
         .ok_or_else(|| CoreError::Invalid("missing b".into()))?;
@@ -546,13 +580,22 @@ pub fn parse_message_unverified(raw: &[u8], own_pk_hex: &str) -> Result<SignedMe
             sender_x,
             own: author_pk == own_pk_hex,
             state: 1,
+            reply_to,
         },
     })
 }
 
 pub fn plan_text(text: &str) -> Vec<(MsgKind, Payload)> {
+    plan_text_cap(text, MAX_TEXT_BYTES)
+}
+
+/// Like [`plan_text`] with a smaller per-part cap: a quote-reply adds the
+/// 24-byte "r" key to every part, and the whole encoded message must stay
+/// under [`MAX_ENCODED_SIZE`] (worst case: several DAG parents + long name).
+pub fn plan_text_cap(text: &str, cap: usize) -> Vec<(MsgKind, Payload)> {
+    let cap = cap.max(64);
     let bytes = text.as_bytes();
-    if bytes.len() <= MAX_TEXT_BYTES {
+    if bytes.len() <= cap {
         return vec![(
             MsgKind::Text,
             Payload::Text {
@@ -566,7 +609,7 @@ pub fn plan_text(text: &str) -> Vec<(MsgKind, Payload)> {
     for ch in text.chars() {
         let mut buf = [0u8; 4];
         let enc = ch.encode_utf8(&mut buf);
-        if cur.len() + enc.len() > MAX_TEXT_BYTES {
+        if cur.len() + enc.len() > cap {
             parts.push(std::mem::take(&mut cur));
         }
         cur.extend_from_slice(enc.as_bytes());
@@ -770,6 +813,81 @@ mod tests {
             },
         );
         assert!(r.is_err());
+    }
+
+    #[test]
+    fn reply_to_roundtrip() {
+        let id = Identity::generate();
+        let quoted = [7u8; 20];
+        let qhex = "07".repeat(20);
+        let sm = create_message_opts(
+            &gid(),
+            &[[1u8; 20]],
+            5,
+            1_700_000_000_000,
+            &id,
+            "alice",
+            MsgKind::Text,
+            &Payload::Text {
+                text: "replied!".into(),
+            },
+            &MsgOpts {
+                reply_to: Some(quoted),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(sm.msg.reply_to.as_deref(), Some(qhex.as_str()));
+        // the wire carries the raw 20B id under key "r"
+        assert!(sm.bytes.windows(3).any(|w| w == b"1:r"));
+        let v = verify_message(&sm.bytes, 1_700_000_000_001).unwrap();
+        assert_eq!(v.msg.reply_to.as_deref(), Some(qhex.as_str()));
+        let p = parse_message_unverified(&sm.bytes, &hex::encode(id.public_key())).unwrap();
+        assert_eq!(p.msg.reply_to.as_deref(), Some(qhex.as_str()));
+        // no reply => no "r" key at all (byte-identical layout to v0.5.16)
+        let plain = create_message(
+            &gid(),
+            &[[1u8; 20]],
+            6,
+            1_700_000_000_000,
+            &id,
+            "alice",
+            MsgKind::Text,
+            &Payload::Text {
+                text: "plain".into(),
+            },
+        )
+        .unwrap();
+        assert!(plain.msg.reply_to.is_none());
+        assert!(!plain.bytes.windows(3).any(|w| w == b"1:r"));
+    }
+
+    #[test]
+    fn replied_chunks_still_fit() {
+        // worst-ish case: 3 DAG parents + near-max name + capped chunk + "r"
+        let id = Identity::generate();
+        let long: String = "回".repeat(2000);
+        let parts = plan_text_cap(&long, MAX_TEXT_BYTES - 40);
+        assert!(parts.len() > 1);
+        let parents = vec![[1u8; 20], [2u8; 20], [3u8; 20]];
+        for (i, (k, p)) in parts.iter().enumerate() {
+            let sm = create_message_opts(
+                &gid(),
+                &parents,
+                i as i64,
+                1_700_000_000_000 + i as i64,
+                &id,
+                "一个很长的名字一个很长的名字一个很长的名字",
+                *k,
+                p,
+                &MsgOpts {
+                    reply_to: Some([9u8; 20]),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+            assert!(sm.bytes.len() <= MAX_ENCODED_SIZE);
+        }
     }
 
     #[test]

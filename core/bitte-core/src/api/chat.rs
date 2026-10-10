@@ -5,12 +5,67 @@ use serde_json::{json, Value as Json};
 
 use crate::api::{hex20, jbool, ji64, jstr, Api, CoreState, GroupRuntime};
 use crate::chat::group::{DmParty, GroupManifest};
-use crate::chat::message::{create_message_opts, plan_text, AttachmentInfo, MsgKind, Payload};
+use crate::chat::message::{
+    create_message_opts, plan_text, plan_text_cap, AttachmentInfo, MsgKind, Payload,
+};
 use crate::chat::sync::{ExtPayload, GroupSync};
 use crate::crypto::Identity;
 use crate::crypto::{PubKey, Sha1Hash};
 use crate::store::{GroupRow, TorrentRow};
 use crate::{CoreError, Result};
+
+/// Optional quote-reply target: `reply_to` = 40-hex message id (wire "r").
+fn jreply_to(p: &Json) -> Result<Option<Sha1Hash>> {
+    match p.get("reply_to").and_then(|v| v.as_str()) {
+        None | Some("") => Ok(None),
+        Some(s) => hex20(s).map(Some),
+    }
+}
+
+/// Snapshot of a QUOTED message for the UI's reply-quote card (v0.5.17):
+/// author + timestamp + the WHOLE payload — text verbatim, attachments with
+/// their local-file state so the card can render image thumbnails.
+fn quote_json(
+    m: &crate::chat::message::ChatMessage,
+    downloads: &std::path::Path,
+    states: &std::collections::HashMap<String, crate::engine::TorrentState>,
+) -> Json {
+    let (kind, text, att) = match &m.payload {
+        Payload::Text { text } => (1i64, text.clone(), None),
+        Payload::Attachment(a) => (2i64, String::new(), Some(a.clone())),
+        Payload::System { code, detail } => {
+            (3i64, format!("{code} {detail}").trim().to_string(), None)
+        }
+        _ => (0i64, String::new(), None),
+    };
+    let mut j = json!({
+        "id": m.id,
+        "author_name": m.author_name,
+        "author_pk": m.author_pk,
+        "ts": m.ts,
+        "kind": kind,
+        "text": text,
+    });
+    if let Some(a) = att {
+        let path = downloads.join(&a.infohash).join(&a.name);
+        let size_ok = std::fs::metadata(&path)
+            .map(|md| md.len() == a.size.max(0) as u64)
+            .unwrap_or(false);
+        let complete = match states.get(&a.infohash) {
+            Some(s) => s.finished || s.progress >= 0.9999,
+            None => size_ok,
+        };
+        j["attachment"] = json!({
+            "name": a.name,
+            "size": a.size,
+            "mime": a.mime,
+            "infohash": a.infohash,
+            "local_path": path.to_string_lossy(),
+            "have_file": size_ok && complete,
+        });
+    }
+    j
+}
 
 pub fn urlquery(s: &str) -> String {
     let mut out = String::new();
@@ -1373,6 +1428,13 @@ impl Api {
                 }
             }
         }
+        // index for quote-reply resolution: built from the FULL display list
+        // (before the limit window) so replies can quote older messages too
+        let quote_idx: std::collections::HashMap<String, usize> = display
+            .iter()
+            .enumerate()
+            .map(|(i, m)| (m.id.clone(), i))
+            .collect();
         let total = display.len();
         let from = (total as i64 - limit).max(0) as usize;
         display.drain(0..from);
@@ -1398,6 +1460,11 @@ impl Api {
             .map(|m| {
                 let mut j = serde_json::to_value(m).unwrap_or(json!({}));
                 j["blocked"] = json!(crate::filter::is_blocked(&rules, m));
+                if let Some(rid) = &m.reply_to {
+                    if let Some(&qi) = quote_idx.get(rid) {
+                        j["reply_quote"] = quote_json(&display[qi], &downloads, &states);
+                    }
+                }
                 if let Payload::Attachment(a) = &m.payload {
                     let path = downloads.join(&a.infohash).join(&a.name);
                     j["local_path"] = json!(path.to_string_lossy());
@@ -1442,7 +1509,16 @@ impl Api {
         let (identity, profile_name) = self.identity_snapshot();
         let gid = hex20(&gid_hex)?;
         let now = crate::now_ms();
-        let parts = plan_text(&text);
+        let reply_to = jreply_to(&p)?;
+        // a quote-reply adds the 24B "r" key to every part: shrink the chunk
+        // cap so replied messages keep the same worst-case size headroom
+        let parts = match reply_to {
+            Some(_) => plan_text_cap(
+                &text,
+                crate::chat::message::MAX_TEXT_BYTES.saturating_sub(40),
+            ),
+            None => plan_text(&text),
+        };
 
         let mut created = Vec::new();
         let swarm_ih;
@@ -1471,7 +1547,10 @@ impl Api {
                     &profile_name,
                     kind,
                     &payload,
-                    &crate::chat::message::MsgOpts { channel_key },
+                    &crate::chat::message::MsgOpts {
+                        channel_key,
+                        reply_to,
+                    },
                 )?;
                 rt.sync.pending_puts.insert(sm.id);
                 rt.sync.ingest(&st.store, sm.clone(), 0)?;
@@ -1553,6 +1632,7 @@ impl Api {
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string();
+        let reply_to = jreply_to(&p)?;
         let src = std::path::Path::new(&path);
         if !src.exists() {
             return Err(CoreError::NotFound(format!("file {path}")));
@@ -1586,7 +1666,7 @@ impl Api {
             .name("bitte-attach".into())
             .spawn(move || {
                 if let Err(e) =
-                    api.attachment_job(&job, &gid_hex, &path, &display_name, &mime, size)
+                    api.attachment_job(&job, &gid_hex, &path, &display_name, &mime, size, reply_to)
                 {
                     log::warn!("attachment job {job} failed: {e}");
                     api.emit_event(
@@ -1600,6 +1680,7 @@ impl Api {
     }
 
     /// Worker body of [`Api::chat_send_file`]. Runs off the FFI thread.
+    #[allow(clippy::too_many_arguments)]
     fn attachment_job(
         &self,
         job_id: &str,
@@ -1608,6 +1689,7 @@ impl Api {
         display_name: &str,
         mime: &str,
         size: i64,
+        reply_to: Option<Sha1Hash>,
     ) -> Result<()> {
         let progress = |phase: &str| {
             self.emit_event(
@@ -1686,7 +1768,10 @@ impl Api {
                 &profile_name,
                 MsgKind::Attachment,
                 &att,
-                &crate::chat::message::MsgOpts { channel_key },
+                &crate::chat::message::MsgOpts {
+                    channel_key,
+                    reply_to,
+                },
             )?;
             rt.sync.pending_puts.insert(sm.id);
             rt.sync.ingest(&st.store, sm.clone(), 0)?;

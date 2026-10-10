@@ -1244,3 +1244,105 @@ fn dispatch_errors_are_graceful() {
     let info = call(&a, "sys.info", json!({}));
     assert_eq!(info["engine"].as_str(), Some("mock"));
 }
+
+/// v0.5.17 quote-reply: `chat.send` takes `reply_to` (wire "r"); receivers see
+/// the link AND a resolved `reply_quote` snapshot of the whole original
+/// message (no "> ..." copy in the reply body anymore).
+#[test]
+fn e2e_quote_reply() {
+    let bus = MockBus::new();
+    let (a, _ta) = spawn_node(&bus);
+    let (b, _tb) = spawn_node(&bus);
+    let (gid, magnet) = seed_room(&a, "reply");
+    assert_eq!(join_room(&b, &magnet), gid);
+
+    // A posts the message that will be quoted
+    call(
+        &a,
+        "chat.send",
+        json!({"group_id": gid, "text": "original message"}),
+    );
+    wait_until(&[&a, &b], T, || {
+        if texts(&b, &gid).contains(&"original message".to_string()) {
+            Some(())
+        } else {
+            None
+        }
+    });
+    let quoted_id = {
+        let r = call(&b, "chat.messages", json!({"group_id": gid}));
+        r["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|m| m["payload"]["Text"]["text"].as_str() == Some("original message"))
+            .unwrap()["id"]
+            .as_str()
+            .unwrap()
+            .to_string()
+    };
+
+    // B replies with a first-class link; the body stays clean
+    call(
+        &b,
+        "chat.send",
+        json!({"group_id": gid, "text": "the answer", "reply_to": quoted_id}),
+    );
+    wait_until(&[&a, &b], T, || {
+        if texts(&a, &gid).contains(&"the answer".to_string()) {
+            Some(())
+        } else {
+            None
+        }
+    });
+
+    // A sees: untouched body + reply_to link + resolved quote snapshot
+    let r = call(&a, "chat.messages", json!({"group_id": gid}));
+    let reply = r["messages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| m["payload"]["Text"]["text"].as_str() == Some("the answer"))
+        .unwrap()
+        .clone();
+    assert_eq!(reply["reply_to"].as_str().unwrap(), quoted_id);
+    let q = &reply["reply_quote"];
+    assert_eq!(q["id"].as_str().unwrap(), quoted_id);
+    assert_eq!(q["kind"], json!(1));
+    assert_eq!(q["text"].as_str().unwrap(), "original message");
+    assert!(q["author_name"].is_string());
+    assert!(q["ts"].as_i64().unwrap() > 0);
+
+    // a reply to an unknown id still sends (quote card shows "not synced")
+    let missing = "ab".repeat(20);
+    call(
+        &b,
+        "chat.send",
+        json!({"group_id": gid, "text": "ghost reply", "reply_to": missing}),
+    );
+    wait_until(&[&a, &b], T, || {
+        if texts(&a, &gid).contains(&"ghost reply".to_string()) {
+            Some(())
+        } else {
+            None
+        }
+    });
+    let r = call(&a, "chat.messages", json!({"group_id": gid}));
+    let ghost = r["messages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| m["payload"]["Text"]["text"].as_str() == Some("ghost reply"))
+        .unwrap()
+        .clone();
+    assert_eq!(ghost["reply_to"].as_str().unwrap(), missing);
+    assert!(ghost.get("reply_quote").is_none_or(|v| v.is_null()));
+
+    // malformed reply_to is rejected
+    assert!(try_call(
+        &a,
+        "chat.send",
+        json!({"group_id": gid, "text": "x", "reply_to": "nothex"}),
+    )
+    .is_err());
+}

@@ -44,16 +44,26 @@ android {
 
     signingConfigs {
         create("release") {
-            // STABLE project signing key, committed on purpose: BitteChat is
-            // public-domain (Unlicense) and distributed via GitHub Releases,
-            // so a fixed, transparent key lets users UPGRADE IN PLACE. (The
-            // old debug-key signing produced a different signature on every
-            // CI runner => INSTALL_FAILED_UPDATE_INCOMPATIBLE => forced
-            // uninstall/reinstall each release.)
-            storeFile = file("../keystore/release.jks")
-            storePassword = "bittechat"
-            keyAlias = "bittechat"
-            keyPassword = "bittechat"
+            // v0.5.17: CI signs with the keystore kept in the repository
+            // secrets (KEYSTORE_BASE64 / KEYSTORE_PASSWORD / KEY_ALIAS /
+            // KEY_PASSWORD -> app/android/key.properties, written by the
+            // "Release signing from repo secrets" step in ci.yml). Local
+            // builds without key.properties fall back to the committed
+            // public key so `flutter build apk` keeps working out of the box.
+            val kpFile = rootProject.file("key.properties")
+            if (kpFile.exists()) {
+                val kp = java.util.Properties()
+                kpFile.inputStream().use(kp::load)
+                storeFile = rootProject.file(kp.getProperty("storeFile"))
+                storePassword = kp.getProperty("storePassword")
+                keyAlias = kp.getProperty("keyAlias")
+                keyPassword = kp.getProperty("keyPassword")
+            } else {
+                storeFile = file("../keystore/release.jks")
+                storePassword = "bittechat"
+                keyAlias = "bittechat"
+                keyPassword = "bittechat"
+            }
         }
     }
     buildTypes {

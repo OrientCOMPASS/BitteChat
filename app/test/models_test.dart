@@ -55,6 +55,49 @@ void main() {
       expect(m.systemDetail, '开发群');
     });
 
+    test('reply quote (v0.5.17)', () {
+      final m = ChatMessage.fromJson({
+        'id': 'aa',
+        'kind': 1,
+        'reply_to': 'bb' * 20,
+        'reply_quote': {
+          'id': 'bb' * 20,
+          'author_name': 'bob',
+          'author_pk': 'cc' * 32,
+          'ts': 1700000000000,
+          'kind': 2,
+          'text': '',
+          'attachment': {
+            'name': 'log.jpg',
+            'size': 42,
+            'mime': 'image/jpeg',
+            'infohash': 'dd' * 20,
+            'local_path': '/sdcard/x/log.jpg',
+            'have_file': true,
+          },
+        },
+        'payload': {
+          'Text': {'text': 'see above'}
+        },
+      });
+      expect(m.replyTo, 'bb' * 20);
+      expect(m.replyQuote?.authorName, 'bob');
+      expect(m.replyQuote?.kind, 2);
+      expect(m.replyQuote?.attachment?.name, 'log.jpg');
+      expect(m.replyQuote?.haveFile, isTrue);
+      expect(m.replyQuote?.localPath, '/sdcard/x/log.jpg');
+      // serde nulls must not fabricate a quote
+      final plain = ChatMessage.fromJson({
+        'kind': 1,
+        'reply_to': null,
+        'payload': {
+          'Text': {'text': 'x'}
+        },
+      });
+      expect(plain.replyTo, isNull);
+      expect(plain.replyQuote, isNull);
+    });
+
     test('missing fields do not crash', () {
       final m = ChatMessage.fromJson({});
       expect(m.payloadKind, MsgPayloadKind.unknown);

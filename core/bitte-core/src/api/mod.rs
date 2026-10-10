@@ -897,7 +897,10 @@ impl Api {
                     code: code.to_string(),
                     detail: detail.to_string(),
                 },
-                &crate::chat::message::MsgOpts { channel_key },
+                &crate::chat::message::MsgOpts {
+                    channel_key,
+                    ..Default::default()
+                },
             ) {
                 Ok(sm) => sm,
                 Err(e) => {

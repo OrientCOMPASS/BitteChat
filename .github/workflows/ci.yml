@@ -176,6 +176,41 @@ jobs:
           restore-keys: |
             gradle-${{ runner.os }}-
 
+      # Release signing: the keystore lives in the repository secrets
+      # (KEYSTORE_BASE64 + KEYSTORE_PASSWORD + KEY_ALIAS + KEY_PASSWORD,
+      # secrets or variables both work). Decoded into app/android/ and
+      # described by key.properties, which build.gradle.kts prefers over the
+      # committed public fallback key. Forks/PRs without the secrets fall
+      # back to the committed key so CI stays green.
+      - name: Release signing from repo secrets (KEYSTORE_*)
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 || vars.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD || vars.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS || vars.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD || vars.KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::warning::KEYSTORE_* not configured - signing with the committed public keystore"
+            exit 0
+          fi
+          : "${KEYSTORE_PASSWORD:?KEYSTORE_BASE64 set but KEYSTORE_PASSWORD missing}"
+          : "${KEY_ALIAS:?KEYSTORE_BASE64 set but KEY_ALIAS missing}"
+          : "${KEY_PASSWORD:?KEYSTORE_BASE64 set but KEY_PASSWORD missing}"
+          mkdir -p app/android/keystore
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > app/android/keystore/ci-release.jks
+          {
+            printf 'storeFile=keystore/ci-release.jks\n'
+            printf 'storePassword=%s\n' "$KEYSTORE_PASSWORD"
+            printf 'keyAlias=%s\n' "$KEY_ALIAS"
+            printf 'keyPassword=%s\n' "$KEY_PASSWORD"
+          } > app/android/key.properties
+          # fail fast on a corrupt/mismatching keystore instead of after a 30min build
+          keytool -list -keystore app/android/keystore/ci-release.jks \
+            -storepass "$KEYSTORE_PASSWORD" | sed -n '1,4p'
+          keytool -list -keystore app/android/keystore/ci-release.jks \
+            -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" >/dev/null \
+            && echo "alias $KEY_ALIAS present"
+
       - name: Flutter setup
         if: ${{ hashFiles('app/pubspec.yaml') != '' }}
         uses: subosito/flutter-action@v2

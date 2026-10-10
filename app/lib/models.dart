@@ -52,6 +52,52 @@ class Attachment {
       );
 }
 
+/// Snapshot of the message a reply quotes (core resolves it from the store,
+/// so the quote card shows the WHOLE original message — author, time and
+/// full payload — instead of a "> ..." copy in the reply text).
+class ReplyQuote {
+  ReplyQuote({
+    required this.id,
+    required this.authorName,
+    required this.authorPk,
+    required this.ts,
+    required this.kind,
+    required this.text,
+    this.attachment,
+    this.localPath,
+    this.haveFile = false,
+  });
+
+  final String id;
+  final String authorName;
+  final String authorPk;
+  final int ts;
+  final int kind; // 1 text, 2 attachment, 3 system
+  final String text;
+  final Attachment? attachment;
+  final String? localPath;
+  final bool haveFile;
+
+  factory ReplyQuote.fromJson(Map<String, dynamic> j) {
+    final am = j['attachment'] is Map<String, dynamic>
+        ? j['attachment'] as Map<String, dynamic>
+        : null;
+    return ReplyQuote(
+      id: _s(j, 'id'),
+      authorName: _s(j, 'author_name'),
+      authorPk: _s(j, 'author_pk'),
+      ts: _i(j, 'ts'),
+      kind: _i(j, 'kind'),
+      text: _s(j, 'text'),
+      attachment: am == null ? null : Attachment.fromJson(am),
+      localPath: am != null && am['local_path'] is String
+          ? am['local_path'] as String
+          : null,
+      haveFile: am != null && _b(am, 'have_file'),
+    );
+  }
+}
+
 class DownloadState {
   DownloadState({
     required this.progress,
@@ -97,6 +143,8 @@ class ChatMessage {
     this.haveFile = false,
     this.dl,
     this.blocked = false,
+    this.replyTo,
+    this.replyQuote,
   });
 
   final String id;
@@ -115,6 +163,12 @@ class ChatMessage {
   final bool haveFile;
   final DownloadState? dl;
   final bool blocked;
+
+  /// hex id of the quoted message (wire key "r"), null = plain message
+  final String? replyTo;
+
+  /// resolved snapshot of the quoted message (null when not synced yet)
+  final ReplyQuote? replyQuote;
 
   MsgPayloadKind get payloadKind {
     switch (kind) {
@@ -167,6 +221,12 @@ class ChatMessage {
           ? DownloadState.fromJson(j['dl'] as Map<String, dynamic>)
           : null,
       blocked: _b(j, 'blocked'),
+      replyTo: j['reply_to'] is String && (j['reply_to'] as String).isNotEmpty
+          ? j['reply_to'] as String
+          : null,
+      replyQuote: j['reply_quote'] is Map<String, dynamic>
+          ? ReplyQuote.fromJson(j['reply_quote'] as Map<String, dynamic>)
+          : null,
     );
   }
 }

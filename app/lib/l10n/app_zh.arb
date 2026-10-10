@@ -701,6 +701,8 @@
  "langEn": "English",
  "actCopy": "复制",
  "actReply": "回复",
+ "quoteMissing": "被引用的消息未同步或不在本地",
+ "kindAttachment": "附件",
  "actDm": "私聊",
  "actBlock": "屏蔽",
  "actId": "ID",

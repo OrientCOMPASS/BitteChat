@@ -38,6 +38,10 @@ class _ChatViewPageState extends State<ChatViewPage> {
   ChatMessage? _replyTo;
   double _swipeAccum = 0;
   bool _swipeArmed = false;
+  String? _swipeId; // row currently shifted by a left swipe
+  double _swipeDx = 0; // its leftward offset (<= 0)
+  bool _swipeSettling = false; // springing back to rest
+  final Map<String, GlobalKey> _msgKeys = {};
   final _scroll = ScrollController();
   List<ChatMessage> _messages = [];
   List<_ChatEntry> _entries = [];
@@ -187,12 +191,21 @@ class _ChatViewPageState extends State<ChatViewPage> {
 
   // -------------------------------------------- QQ-style message long-press
 
-  void _onSwipeUpdate(DragUpdateDetails d) {
+  void _onSwipeUpdate(ChatMessage m, DragUpdateDetails d) {
+    if (_swipeSettling) return;
+    if (_swipeId == null) {
+      _swipeId = m.id;
+    } else if (_swipeId != m.id) {
+      return;
+    }
     _swipeAccum += d.delta.dx;
     if (!_swipeArmed && _swipeAccum < -70) {
       _swipeArmed = true;
       HapticFeedback.mediumImpact();
     }
+    // the card follows the finger leftwards (capped at the glyph width)
+    final dx = _swipeAccum.clamp(-88.0, 0.0).toDouble();
+    if (dx != _swipeDx) setState(() => _swipeDx = dx);
   }
 
   /// Swipe-left past the threshold then release = quote-reply in the input.
@@ -200,7 +213,72 @@ class _ChatViewPageState extends State<ChatViewPage> {
     final armed = _swipeArmed;
     _swipeAccum = 0;
     _swipeArmed = false;
-    if (armed) setState(() => _replyTo = m);
+    final shifting = _swipeId == m.id && _swipeDx < 0;
+    setState(() {
+      if (armed) _replyTo = m;
+      if (shifting) {
+        _swipeDx = 0;
+        _swipeSettling = true;
+      } else {
+        _swipeId = null;
+        _swipeSettling = false;
+      }
+    });
+  }
+
+  /// Left-swipe reply affordance: while the finger drags left the message
+  /// card shifts left with it, revealing a reply glyph in the freed space;
+  /// on release the card springs back and (past the threshold) the reply
+  /// draft is armed.
+  Widget _swipeShifter(ChatMessage m, Widget child) {
+    final active = _swipeId == m.id;
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(begin: 0, end: active ? _swipeDx : 0),
+      duration: _swipeSettling && active
+          ? const Duration(milliseconds: 180)
+          : Duration.zero,
+      onEnd: () {
+        if (_swipeSettling && active) {
+          setState(() {
+            _swipeSettling = false;
+            _swipeId = null;
+          });
+        }
+      },
+      builder: (ctx, v, ch) => Stack(
+        children: [
+          if (v < -4)
+            Positioned.fill(
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 20),
+                  child: Icon(Icons.reply,
+                      size: 22, color: Theme.of(ctx).colorScheme.primary),
+                ),
+              ),
+            ),
+          Transform.translate(offset: Offset(v, 0), child: ch),
+        ],
+      ),
+      child: child,
+    );
+  }
+
+  /// Tap on a quote card: scroll the original message into view.
+  void _jumpToMessage(String id) {
+    final ctx = _msgKeys[id]?.currentContext;
+    if (ctx == null) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(L.t.quoteMissing)));
+      return;
+    }
+    Scrollable.ensureVisible(
+      ctx,
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeOut,
+      alignment: 0.2,
+    );
   }
 
   Widget _replyBanner(ChatMessage m) {
@@ -213,7 +291,7 @@ class _ChatViewPageState extends State<ChatViewPage> {
           Icon(Icons.reply, size: 16, color: theme.colorScheme.primary),
           const SizedBox(width: 6),
           Expanded(
-            child: Text('${m.authorName}: ${m.text}',
+            child: Text('${m.authorName}: ${_replyPreview(m)}',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: theme.textTheme.bodySmall),
@@ -226,6 +304,18 @@ class _ChatViewPageState extends State<ChatViewPage> {
         ],
       ),
     );
+  }
+
+  /// One-line preview of the message being replied to (input-bar banner).
+  String _replyPreview(ChatMessage m) {
+    switch (m.payloadKind) {
+      case MsgPayloadKind.attachment:
+        return '[${L.t.kindAttachment}] ${m.attachment?.name ?? ''}';
+      case MsgPayloadKind.system:
+        return systemTextOf(m);
+      default:
+        return m.text;
+    }
   }
 
   void _onInputChanged(String v) {
@@ -435,14 +525,13 @@ class _ChatViewPageState extends State<ChatViewPage> {
   void _send() {
     var text = _input.text.trim();
     if (text.isEmpty || _sending) return;
-    final r = _replyTo;
-    if (r != null) {
-      final q = r.text.length > 60 ? '${r.text.substring(0, 60)}…' : r.text;
-      text = '> @${r.authorName}: $q\n$text';
-    }
+    // v0.5.17: the reply travels as a first-class `reply_to` link (wire "r");
+    // the receiver renders the WHOLE quoted message as a card — no more
+    // "> @name: ..." copy pasted into the reply text.
+    final replyTo = _replyTo?.id;
     setState(() => _sending = true);
     try {
-      _api.sendText(_gid, text);
+      _api.sendText(_gid, text, replyTo: replyTo);
       _input.clear();
       _replyTo = null;
       _reload();
@@ -466,12 +555,14 @@ class _ChatViewPageState extends State<ChatViewPage> {
       if (!mounted) return;
       // v0.5.2: the core hashes+copies on a worker thread (big videos must
       // not block the UI); we track the job via attachment_progress events
-      final r = _api.sendFile(_gid, path, name: name);
+      final replyTo = _replyTo?.id;
+      final r = _api.sendFile(_gid, path, name: name, replyTo: replyTo);
       final job = '${r['job_id'] ?? ''}';
       if (job.isNotEmpty) {
         setState(() {
           _attJob = job;
           _attPhase = 'hash';
+          if (replyTo != null) _replyTo = null;
         });
       } else {
         _reload();
@@ -670,18 +761,29 @@ class _ChatViewPageState extends State<ChatViewPage> {
                                 _RectReporter(
                                   id: m.id,
                                   rects: _bubbleRects,
-                                  child: GestureDetector(
-                                    onHorizontalDragUpdate: _onSwipeUpdate,
-                                    onHorizontalDragEnd: (_) => _onSwipeEnd(m),
-                                    onLongPress: () => _showPopupOverlay(m),
-                                    child: MessageBubble(
-                                      message: m,
-                                      showAuthor: showAuthor,
-                                      onDownload: () => _downloadAttachment(m),
-                                      prefs: widget.prefs,
-                                      selectionMenuBuilder: (ctx, state) =>
-                                          _selectionMenu(ctx, state, m),
-                                      onMention: () => _insertMention(m),
+                                  child: _swipeShifter(
+                                    m,
+                                    GestureDetector(
+                                      onHorizontalDragUpdate: (d) =>
+                                          _onSwipeUpdate(m, d),
+                                      onHorizontalDragEnd: (_) =>
+                                          _onSwipeEnd(m),
+                                      onHorizontalDragCancel: () =>
+                                          _onSwipeEnd(m),
+                                      onLongPress: () => _showPopupOverlay(m),
+                                      child: MessageBubble(
+                                        key: _msgKeys.putIfAbsent(
+                                            m.id, () => GlobalKey()),
+                                        message: m,
+                                        showAuthor: showAuthor,
+                                        onDownload: () =>
+                                            _downloadAttachment(m),
+                                        prefs: widget.prefs,
+                                        selectionMenuBuilder: (ctx, state) =>
+                                            _selectionMenu(ctx, state, m),
+                                        onMention: () => _insertMention(m),
+                                        onQuoteTap: _jumpToMessage,
+                                      ),
                                     ),
                                   ),
                                 ),
@@ -814,6 +916,7 @@ class MessageBubble extends StatelessWidget {
     this.prefs,
     this.selectionMenuBuilder,
     this.onMention,
+    this.onQuoteTap,
   });
 
   final ChatMessage message;
@@ -825,6 +928,9 @@ class MessageBubble extends StatelessWidget {
       selectionMenuBuilder;
   final VoidCallback? onMention;
 
+  /// Tap on the quote card: receives the quoted message's id (jump-to).
+  final void Function(String id)? onQuoteTap;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -835,7 +941,7 @@ class MessageBubble extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 4),
         child: Center(
           child: Text(
-            (blockedMark ? '🛡 ' : '') + _systemText(m),
+            (blockedMark ? '🛡 ' : '') + systemTextOf(m),
             style: theme.textTheme.bodySmall
                 ?.copyWith(color: theme.colorScheme.outline),
           ),
@@ -899,15 +1005,31 @@ class MessageBubble extends StatelessWidget {
                           bottomRight: Radius.circular(own ? 4 : 14),
                         ),
                       ),
-                      child: m.payloadKind == MsgPayloadKind.attachment
-                          ? _AttachmentBody(
-                              message: m, onDownload: onDownload, prefs: prefs)
-                          : selectionMenuBuilder == null
-                              ? _TextBody(message: m)
-                              : SelectionArea(
-                                  contextMenuBuilder: selectionMenuBuilder!,
-                                  child: _TextBody(message: m),
-                                ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (m.replyTo != null)
+                            _QuoteCard(
+                              message: m,
+                              onTap: onQuoteTap == null
+                                  ? null
+                                  : () => onQuoteTap!(m.replyTo!),
+                            ),
+                          if (m.payloadKind == MsgPayloadKind.attachment)
+                            _AttachmentBody(
+                                message: m,
+                                onDownload: onDownload,
+                                prefs: prefs)
+                          else if (selectionMenuBuilder == null)
+                            _TextBody(message: m)
+                          else
+                            SelectionArea(
+                              contextMenuBuilder: selectionMenuBuilder!,
+                              child: _TextBody(message: m),
+                            ),
+                        ],
+                      ),
                     ),
                   ),
                   if (own) ...[
@@ -947,7 +1069,8 @@ class MessageBubble extends StatelessWidget {
     );
   }
 
-  String _systemText(ChatMessage m) {
+  /// Localized one-liner for system messages (bubbles, banners, quotes).
+  String systemTextOf(ChatMessage m) {
     switch (m.systemCode) {
       case 'create':
         return L.t.sysCreate(m.authorName, m.systemDetail);
@@ -960,6 +1083,132 @@ class MessageBubble extends StatelessWidget {
       default:
         return L.t.sysGeneric(m.systemCode, m.systemDetail);
     }
+  }
+}
+
+/// QQ-style quote card inside a reply bubble (v0.5.17): author + time of the
+/// quoted message plus its WHOLE payload — text verbatim, images as a
+/// thumbnail, other attachments as icon + name. Tap = jump to the original.
+class _QuoteCard extends StatelessWidget {
+  const _QuoteCard({required this.message, this.onTap});
+
+  final ChatMessage message;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final q = message.replyQuote;
+    final dark = theme.brightness == Brightness.dark;
+    final name =
+        q == null || q.authorName.isEmpty ? L.t.anonymous : q.authorName;
+    Widget content;
+    if (q == null) {
+      content = Text(
+        L.t.quoteMissing,
+        style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.outline, fontStyle: FontStyle.italic),
+      );
+    } else if (q.kind == 2) {
+      final a = q.attachment;
+      final thumb = q.haveFile &&
+          q.localPath != null &&
+          a != null &&
+          mediaKindOf(a.name, a.mime) == MediaKind.image;
+      content = thumb
+          ? ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: Image.file(
+                File(q.localPath!),
+                height: 84,
+                width: 128,
+                fit: BoxFit.cover,
+                gaplessPlayback: true,
+                errorBuilder: (_, __, ___) => _attLine(theme, q),
+              ),
+            )
+          : _attLine(theme, q);
+    } else {
+      content = Text(
+        q.text,
+        maxLines: 12,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(fontSize: 13, height: 1.3),
+      );
+    }
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        margin: const EdgeInsets.only(bottom: 6),
+        padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
+        decoration: BoxDecoration(
+          color: dark
+              ? Colors.white.withValues(alpha: 0.10)
+              : Colors.black.withValues(alpha: 0.06),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                Flexible(
+                  child: Text(
+                    name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: theme.colorScheme.primary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                if (q != null) ...[
+                  const SizedBox(width: 6),
+                  Text(
+                    formatClock(q.ts),
+                    style: theme.textTheme.labelSmall?.copyWith(
+                        color: theme.colorScheme.outline, fontSize: 10),
+                  ),
+                ],
+              ],
+            ),
+            const SizedBox(height: 2),
+            content,
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _attLine(ThemeData theme, ReplyQuote q) {
+    final a = q.attachment;
+    final icon = a == null
+        ? Icons.insert_drive_file_outlined
+        : switch (mediaKindOf(a.name, a.mime)) {
+            MediaKind.image => Icons.image_outlined,
+            MediaKind.audio => Icons.audiotrack_outlined,
+            MediaKind.video => Icons.movie_outlined,
+            MediaKind.text => Icons.description_outlined,
+            MediaKind.other => Icons.insert_drive_file_outlined,
+          };
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 16, color: theme.colorScheme.outline),
+        const SizedBox(width: 4),
+        Flexible(
+          child: Text(
+            a == null ? '' : '${a.name} · ${formatBytes(a.size)}',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodySmall,
+          ),
+        ),
+      ],
+    );
   }
 }
 

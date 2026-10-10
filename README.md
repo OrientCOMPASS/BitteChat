@@ -93,6 +93,7 @@ cd app && flutter build apk --release --split-per-abi
 - [x] v0.5.14 修复 0.5.12/0.5.13 的进度条居中回归（恢复控制条 `Column(mainAxisSize.min)` 包裹，位置回到 0.5.11 且仍无遮罩/阴影）；**CI 停止 emulator-smoke**（门禁：detect/core-test/app-analyze/native-smoke/android/release）
 - [x] ~~v0.5.15 双指缩放/平移~~（**已移除**：难触发易误操）+ 音量默认系统音量（可切播放器音量）+ 字幕移除 #auto/#no 伪轨
 - [x] v0.5.16 **移除双指缩放/平移**（难触发易误操）；**自发种子一律原地做种**（删除 cache 拷贝进下载目录的例外）且 **kind 4 独立 scope**（种子页单独成组「我发布的做种」，不再藏在聊天附件开关后）；详见 docs/VIDEO-PLAYBACK.md §15
+- [x] v0.5.17 **引用回复重做（QQ 式）**：左滑消息时卡片**跟手左移**（让位处显示回复图标、松手回弹），过阈值松手进入回复；回复不再把被引用消息以 `> @昵称: …` 截断复制进正文——协议新增 `r` 字段（被引用消息 ID，旧客户端前向兼容），接收端在气泡内渲染**引用卡片**（作者+时间+整条原消息：文本原文、图片缩略图、其他附件图标+文件名），点卡片跳转原消息；**CI 签名改用仓库 secrets**（`KEYSTORE_BASE64 / KEYSTORE_PASSWORD / KEY_ALIAS / KEY_PASSWORD` 四个 actions secrets/variables，CI 内 keytool 预校验口令与别名；缺失时回退仓内公开密钥）
 - [ ] 路线图：**LLM 内容过滤** —— 用 LLM 直接判断一条消息是否应被屏蔽（语义级判定，取代当前 包含/等于/正则 的文本匹配；不是"用 LLM 生成过滤脚本"）
 - [ ] 路线图：接入 **PBH（Peer Black Hole / IBD peer 黑名单）** 屏蔽恶意与吸血 peer
 - [ ] 路线图：**桌面端适配** —— Windows / Linux / macOS 三平台（核心是纯 Rust + libtorrent，已有 `build-linux-native.sh` 主机构建链；主要工作在桌面窗口工程、托盘与文件关联）
@@ -100,9 +101,12 @@ cd app && flutter build apk --release --split-per-abi
 
 ## 许可与第三方组件
 
-**签名**：Release APK 使用仓库内固定的公开签名密钥
-（`app/android/keystore/release.jks`，口令 `bittechat`）——公共领域项目经
-GitHub Releases 分发，固定透明密钥保证**可覆盖安装升级**。注意：v0.5.4 起
+**签名**：v0.5.17 起 CI 优先使用仓库 secrets 提供的签名密钥
+（`KEYSTORE_BASE64 / KEYSTORE_PASSWORD / KEY_ALIAS / KEY_PASSWORD` 四个
+actions secrets/variables，CI 解码为 `app/android/key.properties` 供 Gradle
+读取）；仓内固定公开密钥（`app/android/keystore/release.jks`，口令
+`bittechat`）仅作本地构建与 secrets 缺失（如 fork PR）时的回退——公共领域
+项目经 GitHub Releases 分发，透明密钥保证**可覆盖安装升级**。注意：v0.5.4 起
 更换签名，从旧版本升级需**最后一次**卸载重装，此后均可直接覆盖安装。
 
 本仓库代码为 **Unlicense**（公共领域）。分发的 APK 动态链接以下第三方运行时组件，

@@ -1225,6 +1225,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get actReply => 'Reply';
 
   @override
+  String get quoteMissing => 'Quoted message not synced yet';
+
+  @override
+  String get kindAttachment => 'File';
+
+  @override
   String get actDm => 'DM';
 
   @override

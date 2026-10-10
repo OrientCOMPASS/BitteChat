@@ -488,6 +488,7 @@ mod tests {
             sender_x: None,
             own: false,
             state: 1,
+            reply_to: None,
         }
     }
 }

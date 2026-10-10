@@ -2258,6 +2258,18 @@ abstract class AppLocalizations {
   /// **'回复'**
   String get actReply;
 
+  /// No description provided for @quoteMissing.
+  ///
+  /// In zh, this message translates to:
+  /// **'被引用的消息未同步或不在本地'**
+  String get quoteMissing;
+
+  /// No description provided for @kindAttachment.
+  ///
+  /// In zh, this message translates to:
+  /// **'附件'**
+  String get kindAttachment;
+
   /// No description provided for @actDm.
   ///
   /// In zh, this message translates to:
