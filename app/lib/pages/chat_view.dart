@@ -5,7 +5,6 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart' show ScrollDirection;
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:qr_flutter/qr_flutter.dart';
@@ -55,8 +54,6 @@ class _ChatViewPageState extends State<ChatViewPage> {
   Map<String, dynamic> _detail = {};
   Timer? _detailTimer;
   bool _showJump = false;
-  Timer? _settleTimer;
-  bool _pinBottom = false;
 
   String get _gid => widget.group.id;
   bool get _isDm => widget.group.dm;
@@ -101,7 +98,6 @@ class _ChatViewPageState extends State<ChatViewPage> {
   @override
   void dispose() {
     _saveDraft();
-    _settleTimer?.cancel();
     _api.setActiveGroup(null);
     _sub?.cancel();
     _detailTimer?.cancel();
@@ -114,15 +110,30 @@ class _ChatViewPageState extends State<ChatViewPage> {
     if (!mounted) return;
     try {
       final msgs = _api.chatMessages(_gid, limit: 500);
+      final had = _scroll.hasClients;
+      final oldMax = had ? _scroll.position.maxScrollExtent : 0.0;
+      final oldPix = had ? _scroll.position.pixels : 0.0;
       final stick = markRead || _nearBottom();
       setState(() {
         _messages = msgs;
         _entries = _buildEntries(msgs);
       });
       if (markRead) _api.markRead(_gid);
-      if (stick) {
-        WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
-      }
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_scroll.hasClients) return;
+        if (stick) {
+          // tape head = offset 0 in the reverse list: EXACT, no estimation
+          _scroll.jumpTo(0);
+        } else if (had) {
+          // keep the line under the needle: newest-side inserts shift a
+          // reverse list's offsets by exactly the extent growth
+          final delta = _scroll.position.maxScrollExtent - oldMax;
+          if (delta > 0) {
+            _scroll.jumpTo(
+                (oldPix + delta).clamp(0.0, _scroll.position.maxScrollExtent));
+          }
+        }
+      });
     } catch (_) {}
   }
 
@@ -174,54 +185,19 @@ class _ChatViewPageState extends State<ChatViewPage> {
   }
 
   void _onScroll() {
-    // v0.5.24: while the settle loop pins us to the bottom, absorb async
-    // content growth (quote thumbs, extent recompute) at once; a USER scroll
-    // cancels the pin so manual browsing is never fought against
-    if (_pinBottom &&
-        _scroll.hasClients &&
-        _scroll.position.userScrollDirection == ScrollDirection.idle) {
-      final m = _scroll.position.maxScrollExtent;
-      if ((_scroll.position.pixels - m).abs() > 0.5) _scroll.jumpTo(m);
-    } else if (_pinBottom &&
-        _scroll.position.userScrollDirection != ScrollDirection.idle) {
-      _pinBottom = false;
-      _settleTimer?.cancel();
-    }
-    final show =
-        _scroll.position.maxScrollExtent - _scroll.position.pixels > 160;
+    // reverse list: offset 0 IS the bottom, so "away from bottom" is simply
+    // pixels > threshold — exact, never estimated
+    final show = _scroll.position.pixels > 160;
     if (show != _showJump && mounted) setState(() => _showJump = show);
   }
 
-  /// Jump to the TRUE bottom and keep settling there for ~1 s: async layout
-  /// (image decode in quote cards / attachments, extent recompute after a
-  /// reload) can grow the content right after a single jumpTo and silently
-  /// leave the viewport ~one item above the bottom (v0.5.23 complaint).
+  /// The tape head: offset 0 of the reverse list. Exact by construction —
+  /// no extent estimation, no settle loop (v0.5.25 paper-tape model).
   void _scrollToBottom() {
-    if (!_scroll.hasClients) return;
-    _pinBottom = true;
-    _settleTimer?.cancel();
-    _scroll.jumpTo(_scroll.position.maxScrollExtent);
-    var ticks = 0;
-    _settleTimer = Timer.periodic(const Duration(milliseconds: 120), (t) {
-      ticks++;
-      if (!mounted || !_scroll.hasClients || ticks > 10) {
-        t.cancel();
-        _pinBottom = false;
-        return;
-      }
-      final m = _scroll.position.maxScrollExtent;
-      if ((m - _scroll.position.pixels).abs() > 0.5) {
-        _scroll.jumpTo(m);
-      } else {
-        t.cancel();
-        _pinBottom = false;
-      }
-    });
+    if (_scroll.hasClients) _scroll.jumpTo(0);
   }
 
-  bool _nearBottom() =>
-      !_scroll.hasClients ||
-      _scroll.position.maxScrollExtent - _scroll.position.pixels < 160;
+  bool _nearBottom() => !_scroll.hasClients || _scroll.position.pixels < 160;
 
   /// Open a DM with the author of [m] (used by the message action popup).
   Future<void> _startDmFromMessage(ChatMessage m) async {
@@ -354,10 +330,10 @@ class _ChatViewPageState extends State<ChatViewPage> {
     if (ctx == null) {
       final pos = _scroll.position;
       final count = (_entries.length + 1).clamp(1, 1 << 30); // + header row
-      final li = target + 1;
+      final bi = _entries.length - 1 - target; // builder index (0 = newest)
       final avg =
           (pos.maxScrollExtent + pos.viewportDimension) / count.toDouble();
-      final base = (avg * li - pos.viewportDimension * 0.3)
+      final base = (avg * (bi + 1) - pos.viewportDimension * 0.3)
           .clamp(0.0, pos.maxScrollExtent)
           .toDouble();
       final step = pos.viewportDimension * 0.8;
@@ -378,7 +354,8 @@ class _ChatViewPageState extends State<ChatViewPage> {
       }
     }
     if (ctx == null) {
-      _scroll.jumpTo(0);
+      // probe failed: show the oldest end of the tape (reverse: max offset)
+      _scroll.jumpTo(_scroll.position.maxScrollExtent);
       return;
     }
     // guard the USED context itself across the awaits above
@@ -798,16 +775,25 @@ class _ChatViewPageState extends State<ChatViewPage> {
                         : GestureDetector(
                             onTap: () => FocusScope.of(context).unfocus(),
                             child: ListView.builder(
+                              // v0.5.25 paper-tape model: the viewport is a
+                              // fixed needle, the history a tape fed under
+                              // it — reverse list anchored at the NEWEST
+                              // message (offset 0 = true bottom), so entry
+                              // and jump-to-bottom are exact by construction
+                              // and upward history no longer stretches a
+                              // top-anchored canvas with estimated extents
                               controller: _scroll,
+                              reverse: true,
                               padding: const EdgeInsets.symmetric(
                                   horizontal: 12, vertical: 8),
                               itemCount: _entries.length + 1,
                               itemBuilder: (context, i) {
-                                if (i == 0) {
+                                final c = _entries.length - 1 - i;
+                                if (c < 0) {
                                   return _GenesisHeader(
                                       groupName: widget.group.name);
                                 }
-                                final entry = _entries[i - 1];
+                                final entry = _entries[c];
                                 if (entry.isGap) {
                                   return _BlockedGap(
                                     messages: entry.blocked,
@@ -825,7 +811,7 @@ class _ChatViewPageState extends State<ChatViewPage> {
                                 }
                                 final m = entry.message!;
                                 final prev =
-                                    i == 1 ? null : _entries[i - 2].lastMessage;
+                                    c == 0 ? null : _entries[c - 1].lastMessage;
                                 final showAuthor = prev == null ||
                                     prev.own != m.own ||
                                     m.ts - prev.ts > 5 * 60 * 1000 ||
