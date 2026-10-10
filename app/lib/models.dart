@@ -252,6 +252,8 @@ class GroupSummary {
     this.previewTs = 0,
     this.previewOwn = false,
     this.previewKind = 0,
+    this.mentionUnread = false,
+    this.replyUnread = false,
   });
 
   final String id;
@@ -279,6 +281,12 @@ class GroupSummary {
   final bool previewOwn;
   final int previewKind;
 
+  /// unread messages contain an @-mention of us (list-row highlight)
+  final bool mentionUnread;
+
+  /// unread messages quote-reply to one of our messages (list-row highlight)
+  final bool replyUnread;
+
   factory GroupSummary.fromJson(Map<String, dynamic> j) {
     final pv = _asMap(j['preview']);
     return GroupSummary(
@@ -301,6 +309,8 @@ class GroupSummary {
       previewTs: _i(pv, 'ts'),
       previewOwn: _b(pv, 'own'),
       previewKind: _i(pv, 'kind'),
+      mentionUnread: _b(j, 'mention_unread'),
+      replyUnread: _b(j, 'reply_unread'),
     );
   }
 }

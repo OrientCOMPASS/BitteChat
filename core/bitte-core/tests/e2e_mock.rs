@@ -1346,3 +1346,99 @@ fn e2e_quote_reply() {
     )
     .is_err());
 }
+
+/// v0.5.19 conversation-list marks: unread @-mentions and unread replies to
+/// our own messages surface as `mention_unread` / `reply_unread` on
+/// `chat.groups`, and clear once the group is marked read.
+#[test]
+fn e2e_list_mention_reply_marks() {
+    let bus = MockBus::new();
+    let (a, _ta) = spawn_node(&bus);
+    let (b, _tb) = spawn_node(&bus);
+    let (gid, magnet) = seed_room(&a, "marks");
+    assert_eq!(join_room(&b, &magnet), gid);
+
+    let flags = |n: &Node| -> (bool, bool) {
+        let r = call(n, "chat.groups", json!({}));
+        let g = r["groups"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|g| g["group_id"].as_str() == Some(gid.as_str()))
+            .unwrap()
+            .clone();
+        (
+            g["mention_unread"].as_bool().unwrap_or(false),
+            g["reply_unread"].as_bool().unwrap_or(false),
+        )
+    };
+
+    // A speaks first so B has something of A's to reply to
+    call(
+        &a,
+        "chat.send",
+        json!({"group_id": gid, "text": "ping from a"}),
+    );
+    wait_until(&[&a, &b], T, || {
+        if texts(&b, &gid).contains(&"ping from a".to_string()) {
+            Some(())
+        } else {
+            None
+        }
+    });
+    call(&b, "chat.mark_read", json!({"group_id": gid}));
+
+    // A's display name (the mention target) + the message id to quote
+    let (a_name, quoted) = {
+        let r = call(&a, "chat.messages", json!({"group_id": gid}));
+        let m = r["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|m| m["payload"]["Text"]["text"].as_str() == Some("ping from a"))
+            .unwrap()
+            .clone();
+        (
+            m["author_name"].as_str().unwrap().to_string(),
+            m["id"].as_str().unwrap().to_string(),
+        )
+    };
+    assert!(!a_name.is_empty());
+    assert!(!flags(&a).0 && !flags(&a).1);
+
+    // B @-mentions A and quote-replies to A's message
+    let mention_text = format!("hey @{a_name} look");
+    call(
+        &b,
+        "chat.send",
+        json!({"group_id": gid, "text": &mention_text}),
+    );
+    call(
+        &b,
+        "chat.send",
+        json!({"group_id": gid, "text": "replying to ping", "reply_to": quoted}),
+    );
+    wait_until(&[&a, &b], T, || {
+        let t = texts(&a, &gid);
+        if t.contains(&mention_text) && t.contains(&"replying to ping".to_string()) {
+            Some(())
+        } else {
+            None
+        }
+    });
+
+    // A sees both marks while the messages are unread
+    wait_until(&[&a], T, || {
+        let (m, r) = flags(&a);
+        if m && r {
+            Some(())
+        } else {
+            None
+        }
+    });
+
+    // reading the group clears them
+    call(&a, "chat.mark_read", json!({"group_id": gid}));
+    let (m, r) = flags(&a);
+    assert!(!m && !r);
+}

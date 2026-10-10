@@ -10,6 +10,7 @@ import 'package:intl/intl.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../core/api.dart';
+import '../core/drafts.dart';
 import '../core/prefs.dart';
 import '../core/files.dart';
 import '../models.dart';
@@ -63,6 +64,7 @@ class _ChatViewPageState extends State<ChatViewPage> {
     super.initState();
     _api.setActiveGroup(_gid);
     _reload(markRead: true);
+    _restoreDraft();
     _api.syncGroup(_gid);
     _sub = _api.events.listen((e) {
       if (e.isChatMessage && e.data['group'] == _gid) {
@@ -89,6 +91,7 @@ class _ChatViewPageState extends State<ChatViewPage> {
 
   @override
   void dispose() {
+    _saveDraft();
     _api.setActiveGroup(null);
     _sub?.cancel();
     _detailTimer?.cancel();
@@ -111,6 +114,24 @@ class _ChatViewPageState extends State<ChatViewPage> {
         WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
       }
     } catch (_) {}
+  }
+
+  /// v0.5.19 drafts (memory-only): bring back the unsent text + quote target.
+  void _restoreDraft() {
+    final d = DraftBox.get(_gid);
+    if (d == null) return;
+    _input.text = d.text;
+    _input.selection = TextSelection.collapsed(offset: _input.text.length);
+    final rid = d.replyTo;
+    if (rid != null) {
+      _replyTo = _messages
+          .cast<ChatMessage?>()
+          .firstWhere((x) => x!.id == rid, orElse: () => null);
+    }
+  }
+
+  void _saveDraft() {
+    DraftBox.put(_gid, text: _input.text, replyTo: _replyTo?.id);
   }
 
   void _loadDetail({bool silent = false}) {
@@ -224,6 +245,7 @@ class _ChatViewPageState extends State<ChatViewPage> {
         _swipeSettling = false;
       }
     });
+    _saveDraft();
   }
 
   /// Left-swipe reply affordance: while the finger drags left the message
@@ -281,44 +303,8 @@ class _ChatViewPageState extends State<ChatViewPage> {
     );
   }
 
-  Widget _replyBanner(ChatMessage m) {
-    final theme = Theme.of(context);
-    return Container(
-      color: theme.colorScheme.surfaceContainerHighest,
-      padding: const EdgeInsets.fromLTRB(12, 6, 4, 6),
-      child: Row(
-        children: [
-          Icon(Icons.reply, size: 16, color: theme.colorScheme.primary),
-          const SizedBox(width: 6),
-          Expanded(
-            child: Text('${m.authorName}: ${_replyPreview(m)}',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodySmall),
-          ),
-          IconButton(
-            visualDensity: VisualDensity.compact,
-            icon: const Icon(Icons.close, size: 16),
-            onPressed: () => setState(() => _replyTo = null),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// One-line preview of the message being replied to (input-bar banner).
-  String _replyPreview(ChatMessage m) {
-    switch (m.payloadKind) {
-      case MsgPayloadKind.attachment:
-        return '[${L.t.kindAttachment}] ${m.attachment?.name ?? ''}';
-      case MsgPayloadKind.system:
-        return systemTextOf(m);
-      default:
-        return m.text;
-    }
-  }
-
   void _onInputChanged(String v) {
+    _saveDraft();
     // typing a bare "@" (nothing after it) offers the member list to mention
     if (v.endsWith('@')) _showMentionPicker();
   }
@@ -456,7 +442,10 @@ class _ChatViewPageState extends State<ChatViewPage> {
       [
         if (m.payloadKind == MsgPayloadKind.text)
           item(Icons.copy, L.t.actCopy, () => _copyText(m)),
-        item(Icons.reply, L.t.actReply, () => setState(() => _replyTo = m)),
+        item(Icons.reply, L.t.actReply, () {
+          setState(() => _replyTo = m);
+          _saveDraft();
+        }),
       ],
       [
         if (!m.own && !_isDm)
@@ -534,6 +523,7 @@ class _ChatViewPageState extends State<ChatViewPage> {
       _api.sendText(_gid, text, replyTo: replyTo);
       _input.clear();
       _replyTo = null;
+      _saveDraft();
       _reload();
     } catch (e) {
       showError(context, e);
@@ -564,6 +554,7 @@ class _ChatViewPageState extends State<ChatViewPage> {
           _attPhase = 'hash';
           if (replyTo != null) _replyTo = null;
         });
+        _saveDraft();
       } else {
         _reload();
       }
@@ -819,13 +810,17 @@ class _ChatViewPageState extends State<ChatViewPage> {
                     ),
                   ),
                 ),
-              if (_replyTo != null) _replyBanner(_replyTo!),
               _InputBar(
                 controller: _input,
                 sending: _sending,
                 onSend: _send,
                 onAttach: _pickAndSendFile,
                 onChanged: _onInputChanged,
+                replyTo: _replyTo,
+                onCancelReply: () {
+                  setState(() => _replyTo = null);
+                  _saveDraft();
+                },
               ),
             ],
           ),
@@ -1067,6 +1062,18 @@ class MessageBubble extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// One-line preview of a message (reply header inside the input box).
+String replyPreviewOf(ChatMessage m) {
+  switch (m.payloadKind) {
+    case MsgPayloadKind.attachment:
+      return '[${L.t.kindAttachment}] ${m.attachment?.name ?? ''}';
+    case MsgPayloadKind.system:
+      return systemTextOf(m);
+    default:
+      return m.text;
   }
 }
 
@@ -1505,6 +1512,8 @@ class _InputBar extends StatelessWidget {
     required this.onSend,
     required this.onAttach,
     this.onChanged,
+    this.replyTo,
+    this.onCancelReply,
   });
 
   final TextEditingController controller;
@@ -1512,6 +1521,41 @@ class _InputBar extends StatelessWidget {
   final VoidCallback onSend;
   final VoidCallback onAttach;
   final ValueChanged<String>? onChanged;
+
+  /// message being quote-replied to; its hint row lives INSIDE this panel
+  final ChatMessage? replyTo;
+  final VoidCallback? onCancelReply;
+
+  /// Reply-edit hint docked above the text field within the input panel
+  /// (v0.5.19: inside the edit box, not a separate bar above it).
+  Widget _replyHeader(BuildContext context, ChatMessage m) {
+    final theme = Theme.of(context);
+    return Container(
+      margin: const EdgeInsets.fromLTRB(4, 0, 4, 6),
+      padding: const EdgeInsets.fromLTRB(10, 6, 4, 6),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.reply, size: 16, color: theme.colorScheme.primary),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text('${m.authorName}: ${replyPreviewOf(m)}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall),
+          ),
+          IconButton(
+            visualDensity: VisualDensity.compact,
+            icon: const Icon(Icons.close, size: 16),
+            onPressed: onCancelReply,
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1524,49 +1568,55 @@ class _InputBar extends StatelessWidget {
           color: theme.colorScheme.surface,
           border: Border(top: BorderSide(color: theme.dividerColor)),
         ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            IconButton(
-              tooltip: L.t.sendFileTip,
-              icon: Icon(Icons.attach_file),
-              onPressed: sending ? null : onAttach,
-            ),
-            Expanded(
-              child: TextField(
-                controller: controller,
-                minLines: 1,
-                maxLines: 5,
-                textInputAction: TextInputAction.send,
-                onChanged: onChanged,
-                onSubmitted: (_) => onSend(),
-                decoration: InputDecoration(
-                  hintText: L.t.inputHint,
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.all(Radius.circular(22))),
-                  contentPadding:
-                      EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                  isDense: true,
+            if (replyTo != null) _replyHeader(context, replyTo!),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                IconButton(
+                  tooltip: L.t.sendFileTip,
+                  icon: Icon(Icons.attach_file),
+                  onPressed: sending ? null : onAttach,
                 ),
-              ),
-            ),
-            SizedBox(width: 6),
-            SizedBox(
-              width: 44,
-              height: 44,
-              child: FilledButton(
-                onPressed: sending ? null : onSend,
-                style: FilledButton.styleFrom(
-                  padding: EdgeInsets.zero,
-                  shape: const CircleBorder(),
+                Expanded(
+                  child: TextField(
+                    controller: controller,
+                    minLines: 1,
+                    maxLines: 5,
+                    textInputAction: TextInputAction.send,
+                    onChanged: onChanged,
+                    onSubmitted: (_) => onSend(),
+                    decoration: InputDecoration(
+                      hintText: L.t.inputHint,
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.all(Radius.circular(22))),
+                      contentPadding:
+                          EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      isDense: true,
+                    ),
+                  ),
                 ),
-                child: sending
-                    ? SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2))
-                    : Icon(Icons.send, size: 20),
-              ),
+                SizedBox(width: 6),
+                SizedBox(
+                  width: 44,
+                  height: 44,
+                  child: FilledButton(
+                    onPressed: sending ? null : onSend,
+                    style: FilledButton.styleFrom(
+                      padding: EdgeInsets.zero,
+                      shape: const CircleBorder(),
+                    ),
+                    child: sending
+                        ? SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2))
+                        : Icon(Icons.send, size: 20),
+                  ),
+                ),
+              ],
             ),
           ],
         ),

@@ -1231,6 +1231,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get kindAttachment => 'File';
 
   @override
+  String get mentionUnread => 'Someone mentioned you';
+
+  @override
+  String get replyUnread => 'Someone replied to you';
+
+  @override
+  String get draftMark => 'Draft';
+
+  @override
   String get actDm => 'DM';
 
   @override

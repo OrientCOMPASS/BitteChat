@@ -633,6 +633,49 @@ impl Store {
             .unwrap_or(0))
     }
 
+    /// Messages received after the read marker (others' only, parsed) —
+    /// backs the conversation-list "someone @-ed me / replied to me" marks.
+    pub fn unread_messages(
+        &self,
+        gid: &Sha1Hash,
+        last_read_ts: i64,
+        own_pk_hex: &str,
+    ) -> Result<Vec<ChatMessage>> {
+        let pk = hex::decode(own_pk_hex).unwrap_or_default();
+        let mut st = self.conn.prepare(
+            "SELECT body FROM messages WHERE group_id=?1 AND ts>?2 AND author_pk<>?3 AND kind IN (1,2,5)",
+        )?;
+        let rows = st.query_map(params![gid.to_vec(), last_read_ts, pk], |r| {
+            r.get::<_, Vec<u8>>(0)
+        })?;
+        let mut out = Vec::new();
+        for b in rows {
+            let b = b?;
+            if let Ok(sm) = crate::chat::message::parse_message_unverified(&b, own_pk_hex) {
+                out.push(sm.msg);
+            }
+        }
+        Ok(out)
+    }
+
+    /// ids of messages we authored in a group (reply-to-me detection).
+    pub fn own_message_ids(
+        &self,
+        gid: &Sha1Hash,
+        own_pk_hex: &str,
+    ) -> Result<std::collections::HashSet<String>> {
+        let pk = hex::decode(own_pk_hex).unwrap_or_default();
+        let mut st = self
+            .conn
+            .prepare("SELECT id FROM messages WHERE group_id=?1 AND author_pk=?2")?;
+        let rows = st.query_map(params![gid.to_vec(), pk], |r| r.get::<_, Vec<u8>>(0))?;
+        let mut out = std::collections::HashSet::new();
+        for id in rows {
+            out.insert(hex::encode(id?));
+        }
+        Ok(out)
+    }
+
     pub fn last_message_ts(&self, gid: &Sha1Hash) -> Result<i64> {
         Ok(self
             .conn

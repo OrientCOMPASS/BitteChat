@@ -2270,6 +2270,24 @@ abstract class AppLocalizations {
   /// **'附件'**
   String get kindAttachment;
 
+  /// No description provided for @mentionUnread.
+  ///
+  /// In zh, this message translates to:
+  /// **'有人@我'**
+  String get mentionUnread;
+
+  /// No description provided for @replyUnread.
+  ///
+  /// In zh, this message translates to:
+  /// **'有人回复了我'**
+  String get replyUnread;
+
+  /// No description provided for @draftMark.
+  ///
+  /// In zh, this message translates to:
+  /// **'草稿'**
+  String get draftMark;
+
   /// No description provided for @actDm.
   ///
   /// In zh, this message translates to:

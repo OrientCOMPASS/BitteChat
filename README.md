@@ -95,6 +95,7 @@ cd app && flutter build apk --release --split-per-abi
 - [x] v0.5.16 **移除双指缩放/平移**（难触发易误操）；**自发种子一律原地做种**（删除 cache 拷贝进下载目录的例外）且 **kind 4 独立 scope**（种子页单独成组「我发布的做种」，不再藏在聊天附件开关后）；详见 docs/VIDEO-PLAYBACK.md §15
 - [x] v0.5.17 **引用回复重做（QQ 式）**：左滑消息时卡片**跟手左移**（让位处显示回复图标、松手回弹），过阈值松手进入回复；回复不再把被引用消息以 `> @昵称: …` 截断复制进正文——协议新增 `r` 字段（被引用消息 ID，旧客户端前向兼容），接收端在气泡内渲染**引用卡片**（作者+时间+整条原消息：文本原文、图片缩略图、其他附件图标+文件名），点卡片跳转原消息；**CI 签名改用仓库 secrets**（`KEYSTORE_BASE64 / KEYSTORE_PASSWORD / KEY_ALIAS / KEY_PASSWORD` 四个 actions secrets/variables，CI 内 keytool 预校验口令与别名；缺失时回退仓内公开密钥）
 - [x] v0.5.18 **删除仓内公开签名密钥**：CI 签名唯一来源为仓库 secrets（PKCS12 单口令归一化 + env 传凭据）；fork PR 无 secrets 时用一次性临时密钥构建（告警非发布签名）；本地开发经 `scripts/make-dev-keystore.sh` 自备 gitignored 密钥；Gradle 无配置时明确报错指引
+- [x] v0.5.19 **输入体验三件**：回复引用条**移入输入框内**（输入面板顶行圆角条，不再悬在输入栏上方）；**会话草稿**（仅内存：切会话/返回保留输入文本+回复引用，会话列表预览行按 QQ 式显示 橙色铅笔+草稿文本）；会话列表预览行**高亮提示**：有人@我（@ 图标）/ 有人回复了我（↩ 图标）——基于未读消息实时计算（core `chat.groups` 新增 `mention_unread` / `reply_unread`），已读后消失；详见 e2e `e2e_list_mention_reply_marks`
 - [ ] 路线图：**LLM 内容过滤** —— 用 LLM 直接判断一条消息是否应被屏蔽（语义级判定，取代当前 包含/等于/正则 的文本匹配；不是"用 LLM 生成过滤脚本"）
 - [ ] 路线图：接入 **PBH（Peer Black Hole / IBD peer 黑名单）** 屏蔽恶意与吸血 peer
 - [ ] 路线图：**桌面端适配** —— Windows / Linux / macOS 三平台（核心是纯 Rust + libtorrent，已有 `build-linux-native.sh` 主机构建链；主要工作在桌面窗口工程、托盘与文件关联）

@@ -166,6 +166,33 @@ impl Api {
                 // UI: "waiting for the peer to accept" chip
                 j["awaiting_accept"] = json!(st.dm_awaiting_accept.contains(&gid_hex));
             }
+            // list-row highlights: someone @-ed us / replied to our message
+            // among the unread ones (recomputed on every chat.groups call, so
+            // fresh messages refresh the marks)
+            let (mention_unread, reply_unread) = if unread > 0 {
+                let um = st
+                    .store
+                    .unread_messages(&row.gid, row.last_read_ts, &own_pk)
+                    .unwrap_or_default();
+                let name = self.inner.active.read().unwrap().name.clone();
+                let mention = um.iter().any(|m| match &m.payload {
+                    Payload::Text { text } => text.contains(&format!("@{name}")),
+                    _ => false,
+                });
+                let replied = um.iter().any(|m| m.reply_to.is_some()) && {
+                    let own_ids = st
+                        .store
+                        .own_message_ids(&row.gid, &own_pk)
+                        .unwrap_or_default();
+                    um.iter()
+                        .any(|m| m.reply_to.as_ref().is_some_and(|r| own_ids.contains(r)))
+                };
+                (mention, replied)
+            } else {
+                (false, false)
+            };
+            j["mention_unread"] = json!(mention_unread);
+            j["reply_unread"] = json!(reply_unread);
             j["unread"] = json!(unread);
             j["last_ts"] = json!(last);
             j["online"] = json!(online);

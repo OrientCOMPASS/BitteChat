@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../core/api.dart';
+import '../core/drafts.dart';
 import '../core/bridge.dart';
 import '../core/intent.dart';
 import '../core/prefs.dart';
@@ -589,11 +590,7 @@ class _GroupTile extends StatelessWidget {
           ],
         ],
       ),
-      subtitle: Text(
-        group.kind3Preview(preview),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
+      subtitle: _previewLine(context, group, preview),
       trailing: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.end,
@@ -637,6 +634,47 @@ class _GroupTile extends StatelessWidget {
                     ?.copyWith(color: theme.colorScheme.outline)),
         ],
       ),
+    );
+  }
+
+  /// Preview line with highlight marks (v0.5.19, QQ-style): unsent draft
+  /// (pencil + draft text) > someone @-ed me > someone replied to me >
+  /// normal last-message preview.
+  Widget _previewLine(
+      BuildContext context, GroupSummary group, String preview) {
+    final theme = Theme.of(context);
+    final draft = DraftBox.get(group.id);
+    if (draft != null) {
+      return _markLine(theme, Icons.edit,
+          draft.text.trim().isEmpty ? L.t.draftMark : draft.text);
+    }
+    if (group.mentionUnread) {
+      return _markLine(theme, Icons.alternate_email, L.t.mentionUnread);
+    }
+    if (group.replyUnread) {
+      return _markLine(theme, Icons.reply, L.t.replyUnread);
+    }
+    return Text(
+      group.kind3Preview(preview),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+    );
+  }
+
+  Widget _markLine(ThemeData theme, IconData icon, String text) {
+    return Row(
+      children: [
+        Icon(icon, size: 14, color: Colors.orange),
+        const SizedBox(width: 4),
+        Expanded(
+          child: Text(
+            text,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodySmall,
+          ),
+        ),
+      ],
     );
   }
 }
