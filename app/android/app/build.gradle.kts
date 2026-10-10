@@ -1,7 +1,21 @@
+import java.io.FileInputStream
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+}
+
+// v0.5.17: CI supplies the release keystore via repository secrets
+// (KEYSTORE_BASE64 / KEYSTORE_PASSWORD / KEY_ALIAS / KEY_PASSWORD ->
+// key.properties, written by the "Release signing from repo secrets" step in
+// .github/workflows/ci.yml). Local builds without key.properties fall back
+// to the committed public key so `flutter build apk` works out of the box.
+val keyProperties = Properties()
+val keyPropertiesFile = rootProject.file("key.properties")
+if (keyPropertiesFile.exists()) {
+    keyProperties.load(FileInputStream(keyPropertiesFile))
 }
 
 android {
@@ -50,14 +64,11 @@ android {
             // "Release signing from repo secrets" step in ci.yml). Local
             // builds without key.properties fall back to the committed
             // public key so `flutter build apk` keeps working out of the box.
-            val kpFile = rootProject.file("key.properties")
-            if (kpFile.exists()) {
-                val kp = java.util.Properties()
-                kpFile.inputStream().use(kp::load)
-                storeFile = rootProject.file(kp.getProperty("storeFile"))
-                storePassword = kp.getProperty("storePassword")
-                keyAlias = kp.getProperty("keyAlias")
-                keyPassword = kp.getProperty("keyPassword")
+            if (keyPropertiesFile.exists()) {
+                storeFile = rootProject.file(keyProperties.getProperty("storeFile"))
+                storePassword = keyProperties.getProperty("storePassword")
+                keyAlias = keyProperties.getProperty("keyAlias")
+                keyPassword = keyProperties.getProperty("keyPassword")
             } else {
                 storeFile = file("../keystore/release.jks")
                 storePassword = "bittechat"
