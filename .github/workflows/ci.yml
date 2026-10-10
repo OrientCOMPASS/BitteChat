@@ -122,6 +122,10 @@ jobs:
   # Android: OpenSSL + libtorrent + C++ wrapper + Rust cdylib + APK
   # ------------------------------------------------------------------
   android:
+    # tags never rebuild: the release job reuses the APKs uploaded by the
+    # branch run of the same commit (saves a full duplicate native+gradle
+    # build per release)
+    if: github.ref_type != 'tag'
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
@@ -336,15 +340,34 @@ jobs:
   # ------------------------------------------------------------------
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [android, core-test, native-smoke]
+    needs: [core-test, native-smoke, app-analyze]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
+      actions: read
     steps:
+      # the APKs were built once, by the branch run of this same commit
+      - name: Locate the branch run that built this commit
+        id: src
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sha="${{ github.sha }}"
+          run_id=$(curl -sS -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/runs?head_sha=$sha&per_page=20" \
+            | python3 -c 'import json,sys;d=json.load(sys.stdin);print(next((str(r["id"]) for r in d["workflow_runs"] if r["conclusion"]=="success" and r["head_branch"]=="main"), ""))')
+          if [ -z "$run_id" ]; then
+            echo "::error::no successful main-branch run for $sha - push the branch first; the release reuses its APK artifact instead of rebuilding"
+            exit 1
+          fi
+          echo "reuse build from run $run_id"
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
       - uses: actions/download-artifact@v4
         with:
-          pattern: bittechat-apk-*
-          merge-multiple: true
+          name: bittechat-apk-${{ github.sha }}
+          run-id: ${{ steps.src.outputs.run_id }}
+          github-token: ${{ github.token }}
           path: apks
       # the artifact already holds the descriptive name from the android job;
       # fail loudly instead of publishing a release with no APK attached

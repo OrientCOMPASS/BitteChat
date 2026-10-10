@@ -37,6 +37,8 @@ pub struct SyncProgress {
     pub missing: usize,
     pub inflight: usize,
     pub heads: usize,
+    /// largest peer-announced stored count (0 = unknown)
+    pub peer_total: i64,
 }
 
 /// Wire format of bc_chat extension payloads (bencoded dicts):
@@ -46,7 +48,14 @@ pub struct SyncProgress {
 ///   {m:4, b:[<raw message>,..]}   blob reply
 #[derive(Debug, Clone)]
 pub enum ExtPayload {
-    Heads(Vec<Sha1Hash>),
+    /// heads announcement; `total` = sender's stored message count for the
+    /// room (v0.5.20, optional on the wire: old peers ignore the extra key),
+    /// lets receivers show the TRUE history gap instead of only the
+    /// currently-known missing ids
+    Heads {
+        heads: Vec<Sha1Hash>,
+        total: i64,
+    },
     Msg(Vec<u8>),
     Want(Vec<Sha1Hash>),
     Blobs(Vec<Vec<u8>>),
@@ -134,12 +143,15 @@ impl ExtPayload {
     pub fn encode(&self) -> Vec<u8> {
         let mut d = Value::dict();
         match self {
-            ExtPayload::Heads(h) => {
+            ExtPayload::Heads { heads, total } => {
                 d.insert("m", Value::Int(1));
                 d.insert(
                     "h",
-                    Value::List(h.iter().map(|x| Value::Str(x.to_vec())).collect()),
+                    Value::List(heads.iter().map(|x| Value::Str(x.to_vec())).collect()),
                 );
+                if *total > 0 {
+                    d.insert("n", Value::Int(*total));
+                }
             }
             ExtPayload::Msg(raw) => {
                 d.insert("m", Value::Int(2));
@@ -226,7 +238,10 @@ impl ExtPayload {
             Some(out)
         };
         match v.get_int("m")? {
-            1 => Some(ExtPayload::Heads(ids("h")?)),
+            1 => Some(ExtPayload::Heads {
+                heads: ids("h")?,
+                total: v.get_int("n").unwrap_or(0),
+            }),
             2 => Some(ExtPayload::Msg(v.get_bytes("msg")?.to_vec())),
             3 => Some(ExtPayload::Want(ids("w")?)),
             4 => {
@@ -335,6 +350,10 @@ pub struct GroupSync {
     rebroadcast_seen: HashSet<Sha1Hash>,
     /// manifest torrent infohash (hex) of this group's swarm
     pub swarm_ih: String,
+    /// largest stored-message count announced by peers for this room
+    /// (v0.5.20, ext Heads "n"); 0 = unknown. Lets the UI show the true
+    /// history gap (peer_total - dag.len()) while parents are still unknown.
+    pub peer_total: i64,
 }
 
 impl GroupSync {
@@ -355,6 +374,7 @@ impl GroupSync {
             dirty_heads: false,
             last_head_poll: 0,
             rebroadcast_seen: HashSet::new(),
+            peer_total: 0,
             swarm_ih,
         }
     }
@@ -364,12 +384,16 @@ impl GroupSync {
     }
 
     pub fn progress(&self) -> SyncProgress {
+        // "missing" = the TRUE history gap when a peer told us its stored
+        // count (peer_total - ours), otherwise the known-missing id queue
+        let gap = (self.peer_total - self.dag.len() as i64).max(0) as usize;
         SyncProgress {
             group: hex::encode(self.gid),
             total: self.dag.len(),
-            missing: self.dag.missing_count(),
+            missing: self.dag.missing_count().max(gap),
             inflight: self.fetching.len(),
             heads: self.dag.heads().len(),
+            peer_total: self.peer_total,
         }
     }
 
@@ -445,7 +469,11 @@ impl GroupSync {
         if heads.is_empty() {
             return;
         }
-        let payload = ExtPayload::Heads(heads).encode();
+        let payload = ExtPayload::Heads {
+            heads,
+            total: self.dag.len() as i64,
+        }
+        .encode();
         let _ = engine.ext_send(&self.swarm_ih, &payload);
     }
 
@@ -550,10 +578,19 @@ impl GroupSync {
             return;
         };
         match ext {
-            ExtPayload::Heads(heads) => {
+            ExtPayload::Heads { heads, total } => {
+                if total > 0 {
+                    self.peer_total = self.peer_total.max(total);
+                }
                 if self.adopt_heads(&heads, engine) {
                     // tell the peer what we have that it might not
-                    reply.push(ExtPayload::Heads(self.dag.heads()).encode());
+                    reply.push(
+                        ExtPayload::Heads {
+                            heads: self.dag.heads(),
+                            total: self.dag.len() as i64,
+                        }
+                        .encode(),
+                    );
                 }
                 self.dirty_heads |= !heads_empty_or_subset(&heads, &self.dag.heads());
             }
@@ -653,11 +690,75 @@ mod tests {
     use crate::crypto::Identity;
 
     #[test]
+    fn progress_missing_uses_peer_total_gap() {
+        let a = Identity::generate();
+        let head = Identity::generate();
+        let manifest = GroupManifest::new("room", "alice", &a, &head, vec![]).unwrap();
+        let gid = manifest.gid;
+        let mut sync = GroupSync::new(gid, manifest, 0, "aa".repeat(20));
+        let mut parents: Vec<Sha1Hash> = vec![];
+        for i in 0..2 {
+            let sm = create_message(
+                &gid,
+                &parents,
+                i + 1,
+                1_700_000_000_000 + i,
+                &a,
+                "alice",
+                MsgKind::Text,
+                &Payload::Text {
+                    text: format!("m{i}"),
+                },
+            )
+            .unwrap();
+            sync.dag
+                .insert(sm.id, sm.msg.clone(), sm.bytes.clone())
+                .unwrap();
+            parents = vec![sm.id];
+        }
+        // nothing referenced-but-absent and no peer info yet => gap 0
+        assert_eq!(sync.progress().missing, 0);
+        // peer announces 11 stored messages: the TRUE gap is 9 even though
+        // the 9 ids are still unknown locally (they sit behind our heads)
+        sync.peer_total = 11;
+        assert_eq!(sync.progress().missing, 9);
+        // peer_total == ours: gap 0, so the known-missing queue decides
+        sync.peer_total = 2;
+        assert_eq!(sync.progress().missing, sync.dag.missing_count());
+        // a stored message referencing an absent parent: known-missing wins
+        let ghost = [9u8; 20];
+        let sm3 = create_message(
+            &gid,
+            &[ghost],
+            3,
+            1_700_000_000_005,
+            &a,
+            "alice",
+            MsgKind::Text,
+            &Payload::Text { text: "m3".into() },
+        )
+        .unwrap();
+        sync.dag
+            .insert(sm3.id, sm3.msg.clone(), sm3.bytes.clone())
+            .unwrap();
+        assert_eq!(sync.dag.missing_count(), 1);
+        sync.peer_total = 3; // 3 vs 3 => gap 0
+        assert_eq!(sync.progress().missing, 1);
+    }
+
+    #[test]
     fn ext_payload_roundtrip() {
         let h = vec![[1u8; 20], [2u8; 20]];
-        let enc = ExtPayload::Heads(h.clone()).encode();
+        let enc = ExtPayload::Heads {
+            heads: h.clone(),
+            total: 7,
+        }
+        .encode();
         match ExtPayload::decode(&enc).unwrap() {
-            ExtPayload::Heads(x) => assert_eq!(x, h),
+            ExtPayload::Heads { heads, total } => {
+                assert_eq!(heads, h);
+                assert_eq!(total, 7);
+            }
             _ => panic!(),
         }
         let raw = b"some message bytes".to_vec();

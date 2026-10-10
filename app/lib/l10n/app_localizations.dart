@@ -2282,12 +2282,6 @@ abstract class AppLocalizations {
   /// **'有人回复了我'**
   String get replyUnread;
 
-  /// No description provided for @draftMark.
-  ///
-  /// In zh, this message translates to:
-  /// **'草稿'**
-  String get draftMark;
-
   /// No description provided for @actDm.
   ///
   /// In zh, this message translates to:

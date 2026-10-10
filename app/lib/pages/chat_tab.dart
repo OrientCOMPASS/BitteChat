@@ -645,8 +645,10 @@ class _GroupTile extends StatelessWidget {
     final theme = Theme.of(context);
     final draft = DraftBox.get(group.id);
     if (draft != null) {
-      return _markLine(theme, Icons.edit,
-          draft.text.trim().isEmpty ? L.t.draftMark : draft.text);
+      // text draft shows the draft itself; a reply-only draft shows [回复]
+      final label =
+          draft.text.trim().isEmpty ? '[${L.t.actReply}]' : draft.text;
+      return _markLine(theme, Icons.edit, label);
     }
     if (group.mentionUnread) {
       return _markLine(theme, Icons.alternate_email, L.t.mentionUnread);

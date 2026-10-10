@@ -1237,9 +1237,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get replyUnread => 'Someone replied to you';
 
   @override
-  String get draftMark => 'Draft';
-
-  @override
   String get actDm => 'DM';
 
   @override

@@ -2014,7 +2014,7 @@ impl Api {
             "head_seq": rt.sync.head_seq,
             "heads": rt.sync.dag.heads().iter().map(hex::encode).collect::<Vec<_>>(),
             "messages": rt.sync.dag.len(),
-            "missing": rt.sync.dag.missing_count(),
+            "missing": rt.sync.progress().missing,
             "peers": peers,
         }))
     }
