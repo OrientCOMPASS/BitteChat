@@ -10,9 +10,9 @@ plugins {
 // v0.5.17: CI supplies the release keystore via repository secrets
 // (KEYSTORE_BASE64 / KEYSTORE_PASSWORD / KEY_ALIAS / KEY_PASSWORD ->
 // normalized + exported as BC_* env by the "Release signing from repo
-// secrets" step in .github/workflows/ci.yml). Local builds can use
-// key.properties; without either, the committed public key is the fallback
-// so `flutter build apk` works out of the box.
+// secrets" step in .github/workflows/ci.yml). v0.5.18: no committed key
+// anymore — local dev builds create key.properties via
+// scripts/make-dev-keystore.sh; anything else is a configuration error.
 val envStoreFile = System.getenv("BC_KEYSTORE_FILE")
 val keyProperties = Properties()
 val keyPropertiesFile = rootProject.file("key.properties")
@@ -72,10 +72,14 @@ android {
                 keyAlias = keyProperties.getProperty("keyAlias")
                 keyPassword = keyProperties.getProperty("keyPassword")
             } else {
-                storeFile = file("../keystore/release.jks")
-                storePassword = "bittechat"
-                keyAlias = "bittechat"
-                keyPassword = "bittechat"
+                // v0.5.18: no committed signing key anymore. CI exports BC_*
+                // from the repository secrets; local dev creates
+                // key.properties via scripts/make-dev-keystore.sh.
+                throw GradleException(
+                    "No release signing config found. CI: configure the " +
+                    "KEYSTORE_* repository secrets. Local: run " +
+                    "scripts/make-dev-keystore.sh (writes key.properties).",
+                )
             }
         }
     }

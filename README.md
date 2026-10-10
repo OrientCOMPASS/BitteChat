@@ -94,6 +94,7 @@ cd app && flutter build apk --release --split-per-abi
 - [x] ~~v0.5.15 双指缩放/平移~~（**已移除**：难触发易误操）+ 音量默认系统音量（可切播放器音量）+ 字幕移除 #auto/#no 伪轨
 - [x] v0.5.16 **移除双指缩放/平移**（难触发易误操）；**自发种子一律原地做种**（删除 cache 拷贝进下载目录的例外）且 **kind 4 独立 scope**（种子页单独成组「我发布的做种」，不再藏在聊天附件开关后）；详见 docs/VIDEO-PLAYBACK.md §15
 - [x] v0.5.17 **引用回复重做（QQ 式）**：左滑消息时卡片**跟手左移**（让位处显示回复图标、松手回弹），过阈值松手进入回复；回复不再把被引用消息以 `> @昵称: …` 截断复制进正文——协议新增 `r` 字段（被引用消息 ID，旧客户端前向兼容），接收端在气泡内渲染**引用卡片**（作者+时间+整条原消息：文本原文、图片缩略图、其他附件图标+文件名），点卡片跳转原消息；**CI 签名改用仓库 secrets**（`KEYSTORE_BASE64 / KEYSTORE_PASSWORD / KEY_ALIAS / KEY_PASSWORD` 四个 actions secrets/variables，CI 内 keytool 预校验口令与别名；缺失时回退仓内公开密钥）
+- [x] v0.5.18 **删除仓内公开签名密钥**：CI 签名唯一来源为仓库 secrets（PKCS12 单口令归一化 + env 传凭据）；fork PR 无 secrets 时用一次性临时密钥构建（告警非发布签名）；本地开发经 `scripts/make-dev-keystore.sh` 自备 gitignored 密钥；Gradle 无配置时明确报错指引
 - [ ] 路线图：**LLM 内容过滤** —— 用 LLM 直接判断一条消息是否应被屏蔽（语义级判定，取代当前 包含/等于/正则 的文本匹配；不是"用 LLM 生成过滤脚本"）
 - [ ] 路线图：接入 **PBH（Peer Black Hole / IBD peer 黑名单）** 屏蔽恶意与吸血 peer
 - [ ] 路线图：**桌面端适配** —— Windows / Linux / macOS 三平台（核心是纯 Rust + libtorrent，已有 `build-linux-native.sh` 主机构建链；主要工作在桌面窗口工程、托盘与文件关联）
@@ -101,13 +102,15 @@ cd app && flutter build apk --release --split-per-abi
 
 ## 许可与第三方组件
 
-**签名**：v0.5.17 起 CI 优先使用仓库 secrets 提供的签名密钥
+**签名**：v0.5.18 起**仓库不再提交任何签名密钥**。CI 一律使用仓库 secrets
 （`KEYSTORE_BASE64 / KEYSTORE_PASSWORD / KEY_ALIAS / KEY_PASSWORD` 四个
-actions secrets/variables，CI 解码为 `app/android/key.properties` 供 Gradle
-读取）；仓内固定公开密钥（`app/android/keystore/release.jks`，口令
-`bittechat`）仅作本地构建与 secrets 缺失（如 fork PR）时的回退——公共领域
-项目经 GitHub Releases 分发，透明密钥保证**可覆盖安装升级**。注意：v0.5.4 起
-更换签名，从旧版本升级需**最后一次**卸载重装，此后均可直接覆盖安装。
+actions secrets）解码并**归一化**后签名（PKCS12 单口令语义：key 口令折为
+store 口令；凭证经环境变量传给 Gradle，不落 Properties 明文密码文件的风险
+面）；secrets 缺失（如 fork PR）时 CI 用一次性临时密钥构建并明确告警"非发布
+签名"。本地开发 release 构建请运行 `scripts/make-dev-keystore.sh` 生成个人
+gitignored 密钥 + `app/android/key.properties`（仅开发用）。注意签名历史：
+v0.5.4 与 v0.5.17 各换签一次——从 ≤v0.5.16 升级需**最后一次**卸载重装，
+v0.5.17 起均为同一把 secrets 密钥，可直接覆盖安装。
 
 本仓库代码为 **Unlicense**（公共领域）。分发的 APK 动态链接以下第三方运行时组件，
 各按其原许可证授权（LGPL 组件以动态库形式链接，用户可替换）：

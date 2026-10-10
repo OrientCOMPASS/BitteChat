@@ -190,7 +190,19 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD || vars.KEY_PASSWORD }}
         run: |
           if [ -z "$KEYSTORE_BASE64" ]; then
-            echo "::warning::KEYSTORE_* not configured - signing with the committed public keystore"
+            # no secrets (fork PRs): still build, but with a throwaway key so
+            # the artifact is clearly NOT release-signed
+            echo "::warning::KEYSTORE_* not configured - building with an EPHEMERAL throwaway keystore; artifacts are NOT release-signed"
+            mkdir -p app/android/keystore
+            keytool -genkeypair -noprompt -keystore app/android/keystore/ephemeral.p12 \
+              -storetype PKCS12 -alias ephemeral -keyalg RSA -keysize 2048 -validity 1 \
+              -storepass ephemeral -keypass ephemeral -dname "CN=BitteChat Ephemeral"
+            {
+              echo "BC_KEYSTORE_FILE=$GITHUB_WORKSPACE/app/android/keystore/ephemeral.p12"
+              echo "BC_STORE_PASSWORD=ephemeral"
+              echo "BC_KEY_ALIAS=ephemeral"
+              echo "BC_KEY_PASSWORD=ephemeral"
+            } >> "$GITHUB_ENV"
             exit 0
           fi
           : "${KEYSTORE_PASSWORD:?KEYSTORE_BASE64 set but KEYSTORE_PASSWORD missing}"
@@ -239,6 +251,9 @@ jobs:
             echo "::warning::key entry was encrypted with a different password than KEY_PASSWORD; re-encrypted during normalization"
           fi
           mv "$norm" app/android/keystore/ci-release.jks
+          if [ "$dest_type" = "PKCS12" ] && [ "$KEY_PASSWORD" != "$KEYSTORE_PASSWORD" ]; then
+            echo "::warning::PKCS12 carries a SINGLE password - keytool ignores -keypass when generating PKCS12, so KEY_PASSWORD is not stored inside the keystore; signing uses KEYSTORE_PASSWORD"
+          fi
           # hand the resolved credentials to gradle via env: no Properties
           # escaping hazards for special characters in passwords
           {
