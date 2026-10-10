@@ -9,9 +9,11 @@ plugins {
 
 // v0.5.17: CI supplies the release keystore via repository secrets
 // (KEYSTORE_BASE64 / KEYSTORE_PASSWORD / KEY_ALIAS / KEY_PASSWORD ->
-// key.properties, written by the "Release signing from repo secrets" step in
-// .github/workflows/ci.yml). Local builds without key.properties fall back
-// to the committed public key so `flutter build apk` works out of the box.
+// normalized + exported as BC_* env by the "Release signing from repo
+// secrets" step in .github/workflows/ci.yml). Local builds can use
+// key.properties; without either, the committed public key is the fallback
+// so `flutter build apk` works out of the box.
+val envStoreFile = System.getenv("BC_KEYSTORE_FILE")
 val keyProperties = Properties()
 val keyPropertiesFile = rootProject.file("key.properties")
 if (keyPropertiesFile.exists()) {
@@ -58,13 +60,13 @@ android {
 
     signingConfigs {
         create("release") {
-            // v0.5.17: CI signs with the keystore kept in the repository
-            // secrets (KEYSTORE_BASE64 / KEYSTORE_PASSWORD / KEY_ALIAS /
-            // KEY_PASSWORD -> app/android/key.properties, written by the
-            // "Release signing from repo secrets" step in ci.yml). Local
-            // builds without key.properties fall back to the committed
-            // public key so `flutter build apk` keeps working out of the box.
-            if (keyPropertiesFile.exists()) {
+            if (!envStoreFile.isNullOrEmpty()) {
+                // CI: resolved + normalized credentials from the secrets step
+                storeFile = file(envStoreFile)
+                storePassword = System.getenv("BC_STORE_PASSWORD")
+                keyAlias = System.getenv("BC_KEY_ALIAS")
+                keyPassword = System.getenv("BC_KEY_PASSWORD")
+            } else if (keyPropertiesFile.exists()) {
                 storeFile = rootProject.file(keyProperties.getProperty("storeFile"))
                 storePassword = keyProperties.getProperty("storePassword")
                 keyAlias = keyProperties.getProperty("keyAlias")

@@ -198,18 +198,56 @@ jobs:
           : "${KEY_PASSWORD:?KEYSTORE_BASE64 set but KEY_PASSWORD missing}"
           mkdir -p app/android/keystore
           printf '%s' "$KEYSTORE_BASE64" | base64 -d > app/android/keystore/ci-release.jks
-          {
-            printf 'storeFile=keystore/ci-release.jks\n'
-            printf 'storePassword=%s\n' "$KEYSTORE_PASSWORD"
-            printf 'keyAlias=%s\n' "$KEY_ALIAS"
-            printf 'keyPassword=%s\n' "$KEY_PASSWORD"
-          } > app/android/key.properties
-          # fail fast on a corrupt/mismatching keystore instead of after a 30min build
           keytool -list -keystore app/android/keystore/ci-release.jks \
             -storepass "$KEYSTORE_PASSWORD" | sed -n '1,4p'
           keytool -list -keystore app/android/keystore/ci-release.jks \
             -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" >/dev/null \
             && echo "alias $KEY_ALIAS present"
+          # JDK PKCS12 cannot carry a key password different from the store
+          # password, while AGP's getKey(alias, keyPassword) fails hard on a
+          # mismatch ("final block not properly padded"). Normalize the store:
+          # re-encrypt the signing entry so the key password is KNOWN (JKS
+          # sources are probed with the candidate passwords first).
+          src_type=$(keytool -list -keystore app/android/keystore/ci-release.jks \
+            -storepass "$KEYSTORE_PASSWORD" 2>/dev/null \
+            | sed -n 's/^Keystore type: *//p' | head -1)
+          echo "src keystore type: $src_type"
+          if [ "$src_type" = "PKCS12" ]; then
+            dest_type=PKCS12; key_pw="$KEYSTORE_PASSWORD"
+          else
+            dest_type=JKS; key_pw="$KEY_PASSWORD"
+          fi
+          norm="app/android/keystore/ci-normalized.$dest_type"
+          rm -f "$norm"
+          ok=""
+          for cand in "$KEY_PASSWORD" "$KEYSTORE_PASSWORD" ""; do
+            if keytool -importkeystore -noprompt \
+                 -srckeystore app/android/keystore/ci-release.jks \
+                 -srcstorepass "$KEYSTORE_PASSWORD" -srcalias "$KEY_ALIAS" \
+                 -srckeypass "$cand" \
+                 -destkeystore "$norm" -deststoretype "$dest_type" \
+                 -deststorepass "$KEYSTORE_PASSWORD" -destkeypass "$key_pw" \
+                 -destalias "$KEY_ALIAS" \
+                 >/dev/null 2>&1; then ok="$cand"; break; fi
+            rm -f "$norm"
+          done
+          if [ -z "$ok" ]; then
+            echo "::error::no candidate key password (KEY_PASSWORD / KEYSTORE_PASSWORD / empty) unlocks alias $KEY_ALIAS - check the repository secrets"
+            exit 1
+          fi
+          if [ "$ok" != "$KEY_PASSWORD" ]; then
+            echo "::warning::key entry was encrypted with a different password than KEY_PASSWORD; re-encrypted during normalization"
+          fi
+          mv "$norm" app/android/keystore/ci-release.jks
+          # hand the resolved credentials to gradle via env: no Properties
+          # escaping hazards for special characters in passwords
+          {
+            echo "BC_KEYSTORE_FILE=$GITHUB_WORKSPACE/app/android/keystore/ci-release.jks"
+            echo "BC_STORE_PASSWORD=$KEYSTORE_PASSWORD"
+            echo "BC_KEY_ALIAS=$KEY_ALIAS"
+            echo "BC_KEY_PASSWORD=$key_pw"
+          } >> "$GITHUB_ENV"
+          echo "signing normalized: type=$dest_type"
 
       - name: Flutter setup
         if: ${{ hashFiles('app/pubspec.yaml') != '' }}
