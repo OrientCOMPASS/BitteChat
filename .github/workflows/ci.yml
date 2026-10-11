@@ -459,8 +459,7 @@ jobs:
             bash scripts/make-dev-keystore.sh
             mkdir -p "$GITHUB_WORKSPACE/shots"
             cd app && flutter pub get && flutter test integration_test/attach_test.dart -d emulator-5554 --reporter expanded && flutter test integration_test/app_test.dart -d emulator-5554 --reporter expanded
-            PKG=$(adb shell pm list packages | tr -d '\r' | grep -i bitte | head -1 | cut -d: -f2); echo "pkg=$PKG"; for f in shot-chat-inline shot-jump-chip; do for loc in "files/$f.png" "/storage/emulated/0/Android/data/$PKG/files/$f.png"; do adb shell "run-as $PKG cat $loc" > "$GITHUB_WORKSPACE/shots/$f.png" 2>/dev/null || true; [ -s "$GITHUB_WORKSPACE/shots/$f.png" ] && break; done; done || true
-            for f in shot-chat-inline-error.txt shot-jump-chip-error.txt; do adb shell "run-as $PKG cat files/$f" > "$GITHUB_WORKSPACE/shots/$f" 2>/dev/null || true; adb shell "run-as $PKG cat /storage/emulated/0/Android/data/$PKG/files/$f" >> "$GITHUB_WORKSPACE/shots/$f" 2>/dev/null || true; done || true
+            bash scripts/pull-shots.sh "$GITHUB_WORKSPACE/shots"
             adb exec-out screencap -p > "$GITHUB_WORKSPACE/shots/after-attach-test.png" || true
       - name: Mark emulator verification green for this source hash
         if: steps.emu-ok.outputs.cache-hit != 'true' && success()

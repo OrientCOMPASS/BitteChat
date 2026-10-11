@@ -143,23 +143,33 @@ void main() {
 /// (the test framework force-stops the app afterwards, so host-side
 /// screencaps only ever catch the launcher).
 Future<void> _shot(WidgetTester tester, String name) async {
+  final log = File('${BitteApi.instance.dataDir}/shot-log.txt');
+  Future<void> note(String s) async {
+    try {
+      await log.writeAsString('$name: $s\n', mode: FileMode.append);
+    } catch (_) {}
+  }
+
   try {
     await tester.pump();
     final ctx = find.byType(BitteChatApp).evaluate().first;
     final boundary =
         ctx.findAncestorRenderObjectOfType<RenderRepaintBoundary>();
-    if (boundary == null) return;
+    if (boundary == null) {
+      await note('no RenderRepaintBoundary ancestor');
+      return;
+    }
     final image = await boundary.toImage();
+    await note('raster ${image.width}x${image.height}');
     final data = await image.toByteData(format: ui.ImageByteFormat.png);
-    if (data == null) return;
-    await File('${BitteApi.instance.dataDir}/$name.png')
-        .writeAsBytes(data.buffer.asUint8List());
+    if (data == null) {
+      await note('toByteData returned null');
+      return;
+    }
+    final f = File('${BitteApi.instance.dataDir}/$name.png');
+    await f.writeAsBytes(data.buffer.asUint8List());
+    await note('wrote ${f.path} (${data.lengthInBytes} B)');
   } catch (e) {
-    // screenshots are a verification aid, never a test failure — but leave
-    // a breadcrumb so CI artifacts show WHY a capture missed
-    try {
-      await File('${BitteApi.instance.dataDir}/$name-error.txt')
-          .writeAsString('$e');
-    } catch (_) {}
+    await note('error: $e');
   }
 }
