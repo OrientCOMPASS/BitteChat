@@ -25,8 +25,11 @@ tag run 仅跑 release（验证 job 在同 commit 的 main push 已绿，避免�
 
 ## 模拟器测试基建
 - 截图：测试内 `RepaintBoundary.toImage()` 写 PNG 到应用私有目录；
-  `scripts/emu-run-and-pull.sh` 在测试运行期间以 adb root 并发拉取
-  （flutter test 退出即卸载应用删数据，事后拉取必空）；产物 `emulator-shots-<sha>`。
+  `scripts/emu-run-and-pull.sh` 在测试运行期间以 adb root 并发拉取，拉完放置
+  `pull-done` 哨兵文件，测试等到哨兵才退出（flutter test 退出即卸载应用删数据，
+  无哨兵时 6s 的测试会和 2s 轮询竞态丢图）；产物 `emulator-shots-<sha>`。
+- 四个测试文件（attach/app/video/ux）合并为单次 `flutter test` 调用：
+  一次 assembleDebug + 一次安装，省 ~2min/轮。
 - 门禁：`emu-ok-<hashFiles(app/lib, integration_test, core rust, pubspec.lock,
   gradle kts, versions.env, emu-run-and-pull.sh, ci.yml)>` marker 缓存；
   命中即跳过真机轮（~1.2min），未命中跑全套并在成功后 save。
