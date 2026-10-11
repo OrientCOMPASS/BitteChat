@@ -21,7 +21,7 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> {
+class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   int _index = 0;
   int _chatUnread = 0;
   StreamSubscription<CoreEvent>? _sub;
@@ -46,15 +46,25 @@ class _HomePageState extends State<HomePage> {
             SnackBar(content: Text(msg), duration: const Duration(seconds: 4)));
       }
     });
+    WidgetsBinding.instance.addObserver(this);
     _reloadBadge();
     _sub = api.events.listen((e) {
       if (e.isChatMessage || e.isChatGroupUpdated) _reloadBadge();
     });
-    _timer = Timer.periodic(const Duration(seconds: 12), (_) => _reloadBadge());
+    // v0.5.27: 3 s polling floor (was 12 s) — badge latency must not depend
+    // on event delivery alone; PiliPlus-style: events + lifecycle + short poll
+    _timer = Timer.periodic(const Duration(seconds: 3), (_) => _reloadBadge());
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // foregrounding must refresh at once (background pushes land silently)
+    if (state == AppLifecycleState.resumed) _reloadBadge();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _errSub?.cancel();
     _sub?.cancel();
     _timer?.cancel();

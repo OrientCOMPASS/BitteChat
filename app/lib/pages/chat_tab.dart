@@ -52,9 +52,10 @@ class _ChatTabState extends State<ChatTab> {
             .showSnackBar(SnackBar(content: Text(L.t.dmRejectedByPeer)));
       }
     });
-    // light polling keeps previews fresh even without events
+    // v0.5.27: 4 s polling floor (was 10 s) keeps previews/badges fresh
+    // even when event delivery is late or absent on a device
     _refreshTimer =
-        Timer.periodic(const Duration(seconds: 10), (_) => _reload());
+        Timer.periodic(const Duration(seconds: 4), (_) => _reload());
     _magnetListener = () {
       final m = pendingMagnet.value;
       if (m == null || m.isEmpty) return;

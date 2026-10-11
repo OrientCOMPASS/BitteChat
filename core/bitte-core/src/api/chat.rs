@@ -1728,6 +1728,7 @@ impl Api {
         let api = Api {
             inner: self.inner.clone(),
         };
+        log::info!("attachment job {job_id} spawned: {path} ({size} B)");
         let job = job_id.clone();
         std::thread::Builder::new()
             .name("bitte-attach".into())
@@ -1771,6 +1772,9 @@ impl Api {
         reply_to: Option<Sha1Hash>,
     ) -> Result<()> {
         let progress = |phase: &str| {
+            // v0.5.27: forensics — device reports of "stuck hashing" need a
+            // core-side record of what was actually emitted and when
+            log::info!("attachment job {job_id}: phase {phase}");
             self.emit_event(
                 "chat.attachment_progress",
                 json!({"job_id": job_id, "phase": phase}),
@@ -1890,6 +1894,7 @@ impl Api {
             json!({"group": gid_hex, "message": sm.msg}),
         );
         self.emit_event("chat.group_updated", json!({"group": gid_hex}));
+        log::info!("attachment job {job_id}: phase sent (msg {})", sm.msg.id);
         self.emit_event(
             "chat.attachment_progress",
             json!({"job_id": job_id, "phase": "sent", "msg_id": sm.msg.id}),

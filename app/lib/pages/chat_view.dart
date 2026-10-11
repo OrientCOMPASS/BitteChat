@@ -49,8 +49,13 @@ class _ChatViewPageState extends State<ChatViewPage> {
   final Set<String> _expandedGaps = {};
   bool _sending = false;
   String? _attJob;
+  int _attSendTs = 0; // ms epoch of the current send, for the poll fallback
   String _attPhase = '';
   Timer? _attWatch; // v0.5.26: gives up on a stuck "hashing…" banner
+  // v0.5.27: messages whose download we started; while any of them still
+  // lacks the file we poll, so completion refreshes the bubble without
+  // needing the user to leave and re-enter the conversation.
+  final Set<String> _dlWatch = {};
   StreamSubscription<CoreEvent>? _sub;
   Map<String, dynamic> _detail = {};
   Timer? _detailTimer;
@@ -87,12 +92,21 @@ class _ChatViewPageState extends State<ChatViewPage> {
       } else if (e.type == 'chat.attachment_progress' &&
           e.data['job_id'] == _attJob) {
         _onAttProgress('${e.data['phase'] ?? ''}', '${e.data['error'] ?? ''}');
+      } else if (e.isBtUpdated) {
+        // torrent state moved (download progress/finished): refresh while
+        // anything is in flight so completions repaint at once
+        if (_hasActiveDownload || _dlWatch.isNotEmpty) _reload();
       }
     });
-    _detailTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+    // v0.5.27: 3 s polling floor — the UI never depends on event delivery
+    // alone (on some devices events arrive late or not at all): while a
+    // send job or a started download is in flight we refresh every tick.
+    _detailTimer = Timer.periodic(const Duration(seconds: 3), (_) {
       if (!mounted) return;
       _loadDetail(silent: true);
-      if (_hasActiveDownload) _reload();
+      if (_hasActiveDownload || _attJob != null || _dlWatch.isNotEmpty) {
+        _reload();
+      }
     });
     _loadDetail(silent: true);
     _scroll.addListener(_onScroll);
@@ -122,6 +136,8 @@ class _ChatViewPageState extends State<ChatViewPage> {
         _messages = msgs;
         _entries = _buildEntries(msgs);
       });
+      if (_attJob != null) _checkAttSent(msgs);
+      _pruneDlWatch(msgs);
       if (markRead) _api.markRead(_gid);
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted || !_scroll.hasClients) return;
@@ -200,6 +216,36 @@ class _ChatViewPageState extends State<ChatViewPage> {
     _reload();
     ScaffoldMessenger.of(context)
         .showSnackBar(SnackBar(content: Text(L.t.attJobTimeout)));
+  }
+
+  /// v0.5.27: event-independent send-completion check. Once our own
+  /// attachment message (created at/after send time) is in the store the
+  /// send finished — no matter whether the terminal `attachment_progress`
+  /// event ever reached Dart (on-device event loss, v0.5.26 bug report).
+  void _checkAttSent(List<ChatMessage> msgs) {
+    final done = msgs.any((m) =>
+        m.own &&
+        m.payloadKind == MsgPayloadKind.attachment &&
+        m.ts >= _attSendTs - 1000);
+    if (!done) return;
+    _attWatch?.cancel();
+    setState(() {
+      _attJob = null;
+      _attPhase = '';
+    });
+    if (mounted) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(L.t.sentSeeding(''))));
+    }
+  }
+
+  /// Drop download-watch entries whose file has arrived — the reload that
+  /// observed `haveFile` already repainted the bubble as media.
+  void _pruneDlWatch(List<ChatMessage> msgs) {
+    if (_dlWatch.isEmpty) return;
+    for (final m in msgs) {
+      if (m.haveFile) _dlWatch.remove(m.id);
+    }
   }
 
   void _onScroll() {
@@ -654,6 +700,7 @@ class _ChatViewPageState extends State<ChatViewPage> {
       // v0.5.2: the core hashes+copies on a worker thread (big videos must
       // not block the UI); we track the job via attachment_progress events
       final replyTo = _replyTo?.id;
+      _attSendTs = DateTime.now().millisecondsSinceEpoch;
       final r = _api.sendFile(_gid, path, name: name, replyTo: replyTo);
       final job = '${r['job_id'] ?? ''}';
       if (job.isNotEmpty) {
@@ -678,6 +725,7 @@ class _ChatViewPageState extends State<ChatViewPage> {
     if (att == null) return;
     try {
       _api.downloadAttachment(_gid, m.id);
+      setState(() => _dlWatch.add(m.id));
       _reload();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
