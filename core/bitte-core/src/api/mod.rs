@@ -770,6 +770,7 @@ impl Api {
                         row: row.clone(),
                         own_seq,
                         last_publish: 0,
+                        last_solicit: 0,
                         pending_dm_req: None,
                     },
                 );
