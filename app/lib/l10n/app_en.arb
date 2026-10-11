@@ -645,6 +645,7 @@
  "attPhaseCopy": "Copying into the seed folder…",
  "attPhaseSeed": "Seeding and sending…",
  "attachFailed": "Attachment failed",
+ "attJobTimeout": "Attachment status timed out; stopped waiting (the file may still be processing in the background)",
  "dmRequestSubtitle": "wants to start a private chat",
  "block": "Block",
  "dmBlocked": "User blocked",

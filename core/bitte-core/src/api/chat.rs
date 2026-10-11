@@ -63,7 +63,10 @@ fn att_local(
     let mut chosen = default;
     let mut size_ok = false;
     for c in &cands {
-        if std::fs::metadata(c).map(|md| md.len() == want).unwrap_or(false) {
+        if std::fs::metadata(c)
+            .map(|md| md.len() == want)
+            .unwrap_or(false)
+        {
             chosen = c.clone();
             size_ok = true;
             break;
@@ -1540,8 +1543,7 @@ impl Api {
                 j["blocked"] = json!(crate::filter::is_blocked(&rules, m));
                 if let Some(rid) = &m.reply_to {
                     if let Some(&qi) = quote_idx.get(rid) {
-                        j["reply_quote"] =
-                            quote_json(&display[qi], &downloads, &states, &st.store);
+                        j["reply_quote"] = quote_json(&display[qi], &downloads, &states, &st.store);
                     }
                 }
                 if let Payload::Attachment(a) = &m.payload {
@@ -1741,8 +1743,7 @@ impl Api {
                     Ok(Ok(())) => None,
                     Ok(Err(e)) => Some(e.to_string()),
                     Err(_) => Some(
-                        "internal crash while preparing the file (see crash_rust.log)"
-                            .to_string(),
+                        "internal crash while preparing the file (see crash_rust.log)".to_string(),
                     ),
                 };
                 if let Some(msg) = err {

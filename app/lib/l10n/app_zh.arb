@@ -645,6 +645,7 @@
  "attPhaseCopy": "正在复制到做种目录…",
  "attPhaseSeed": "正在做种并发送…",
  "attachFailed": "附件发送失败",
+ "attJobTimeout": "附件发送状态超时未更新，已停止等待（文件可能仍在后台处理）",
  "dmRequestSubtitle": "请求与你私聊",
  "block": "屏蔽",
  "dmBlocked": "已屏蔽该用户",
