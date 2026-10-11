@@ -154,6 +154,11 @@ class _BitteChatAppState extends State<BitteChatApp> {
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
       builder: (context, child) {
+        // v0.5.28: refresh the global localization accessor HERE (above all
+        // routes) — previously only the home Builder did it, so pages like
+        // Settings kept showing the OLD locale's strings after a switch
+        // until some unrelated rebuild happened
+        L.update(context);
         // app-wide background: solid theme color + optional wallpaper under
         // every route (scaffolds are transparent)
         final base = Theme.of(context).colorScheme.surface;
