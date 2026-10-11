@@ -41,7 +41,7 @@ void main() {
     final ih =
         (api.call('bt.create_seed', {'path': seed.path}))['infohash'] as String;
     final gid = (api.joinGroup(ih))['group_id'] as String;
-    for (var i = 0; i < 12; i++) {
+    for (var i = 0; i < 40; i++) {
       api.sendText(gid, 'ux $i');
     }
 
@@ -54,7 +54,7 @@ void main() {
     final input = find.byType(TextField).last;
 
     // --- v0.5.25: entry lands exactly on the newest message ---------------
-    expect(find.text('ux 11'), findsOneWidget,
+    expect(find.text('ux 39'), findsOneWidget,
         reason: 'paper-tape entry must show the newest message without scroll');
     expect(find.text('ux 0'), findsNothing,
         reason: 'oldest message must be off-screen at entry');
