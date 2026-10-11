@@ -49,7 +49,7 @@ Flutter (Android) 前端 + Rust 核心 + [libtorrent](https://www.libtorrent.org
 
 - **core-test**：`cargo fmt` / `clippy -D warnings` / 全量单元与端到端测试（两个 Mock 引擎实例模拟双用户全流程：做种进房、hash 直连、离线 DHT 同步、附件传输、长文分块、篡改拒绝、tracker 应用）。
 - **app-analyze**：`flutter analyze` + `flutter test`。
-- **emulator-smoke**（非阻断）：Android 模拟器安装真实构建，跑 `integration_test`：真 libtorrent 引擎启动 → 做种真实文件 → 以裸 infohash 进入群聊 → 默认 tracker 生效校验 → 发消息 → 等待 BEP44 DHT 确认 → UI 渲染校验。
+- **emulator-verify**（**阻断**，v0.5.28 起仓库策略见 `docs/TESTING.md`）：Android 模拟器跑真实构建的集成测试——`attach_test`（FFI 事件送达/发送方附件内联/回底钮语义+截图）、`app_test`（真 libtorrent 做种 → 裸 infohash 进群 → 发消息 → BEP44 DHT 确认 → UI 校验）、`video_test`（ffmpeg 真实 H.264 样片经 media_kit 实播）；源码哈希未变的 push 经 emu-ok 门禁跳过（增量）。
 - **android**：交叉编译 OpenSSL 3.5.5、libtorrent 2.1.2（NDK, arm64-v8a + x86_64）→ Rust `libbitte_core.so` → `flutter build apk --release --split-per-abi`（**分 ABI 产出** `arm64-v8a` / `x86_64` 两个 APK，各自只含本架构原生库；abiFilters 限定 arm64-v8a/x86_64），命名为 `BitteChat-<版本>-android-<abi>.apk` 作为 artifact 上传；打 `v*` tag 自动发布 Release（两个架构包一起挂出）。
 
 本地复现原生构建（需要 NDK + Rust android targets + cargo-ndk）：

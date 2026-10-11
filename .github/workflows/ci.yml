@@ -358,15 +358,16 @@ jobs:
           if-no-files-found: warn
 
   # ------------------------------------------------------------------
-  # On-device verification: Android emulator runs the integration tests
-  # against the REAL libtorrent engine + REAL FFI event callback (the path
-  # host tests cannot see), and captures screenshots of the fixed flows
-  # (own-attachment inline bubble, jump-bottom chip). Non-gating while the
-  # harness matures — screenshots + logs are uploaded for every main run.
+  # On-device verification (GATING per repo policy, docs/TESTING.md): every
+  # round of changes must be covered by an emulator integration test. Runs
+  # the integration suite against the REAL libtorrent engine + REAL FFI
+  # event path (attach_test: event delivery / sender inline attachment /
+  # jump-bottom semantics + screenshots; app_test: DHT confirm; video_test:
+  # real H.264 playback through media_kit). Incremental: skipped when the
+  # source hash matches a previously green run (emu-ok marker cache).
   # ------------------------------------------------------------------
   emulator-verify:
     if: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch' }}
-    continue-on-error: true
     needs: [native-android]
     runs-on: ubuntu-24.04
     timeout-minutes: 75
@@ -428,7 +429,7 @@ jobs:
         id: emu-ok
         with:
           path: emu-ok-marker.txt
-          key: emu-ok-${{ hashFiles('app/lib/**', 'app/integration_test/**', 'core/**/*.rs', 'app/pubspec.lock', 'app/android/app/build.gradle.kts', 'scripts/versions.env', 'scripts/emu-run-and-pull.sh') }}
+          key: emu-ok-${{ hashFiles('app/lib/**', 'app/integration_test/**', 'core/**/*.rs', 'app/pubspec.lock', 'app/android/app/build.gradle.kts', 'scripts/versions.env', 'scripts/emu-run-and-pull.sh', '.github/workflows/ci.yml') }}
 
       - name: Enable KVM
         run: |
@@ -465,8 +466,12 @@ jobs:
             adb wait-for-device
             bash scripts/make-dev-keystore.sh
             mkdir -p "$GITHUB_WORKSPACE/shots"
+            if ! command -v ffmpeg >/dev/null 2>&1; then sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg; fi
+            ffmpeg -y -f lavfi -i testsrc2=size=640x360:rate=25 -f lavfi -i sine=frequency=441:sample_rate=44100 -t 6 -c:v libx264 -pix_fmt yuv420p -profile:v high -level 3.1 -c:a aac -b:a 64k -movflags +faststart /tmp/ci_video.mp4
+            adb push /tmp/ci_video.mp4 /data/local/tmp/ci_video.mp4 && adb shell chmod 644 /data/local/tmp/ci_video.mp4
             bash scripts/emu-run-and-pull.sh "$GITHUB_WORKSPACE/shots"
             cd app && flutter test integration_test/app_test.dart -d emulator-5554 --reporter expanded
+            cd app && flutter test integration_test/video_test.dart -d emulator-5554 --reporter expanded
             adb exec-out screencap -p > "$GITHUB_WORKSPACE/shots/after-attach-test.png" || true
       - name: Mark emulator verification green for this source hash
         if: steps.emu-ok.outputs.cache-hit != 'true' && success()
@@ -476,7 +481,7 @@ jobs:
         uses: actions/cache/save@v6
         with:
           path: emu-ok-marker.txt
-          key: emu-ok-${{ hashFiles('app/lib/**', 'app/integration_test/**', 'core/**/*.rs', 'app/pubspec.lock', 'app/android/app/build.gradle.kts', 'scripts/versions.env', 'scripts/emu-run-and-pull.sh') }}
+          key: emu-ok-${{ hashFiles('app/lib/**', 'app/integration_test/**', 'core/**/*.rs', 'app/pubspec.lock', 'app/android/app/build.gradle.kts', 'scripts/versions.env', 'scripts/emu-run-and-pull.sh', '.github/workflows/ci.yml') }}
       - name: Upload screenshots
         if: always()
         uses: actions/upload-artifact@v7

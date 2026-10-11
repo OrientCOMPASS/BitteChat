@@ -134,7 +134,7 @@ video first frame rendered (tier=mediacodec-copy)
 
 ## 6. CI 覆盖
 
-`.github/workflows/ci.yml` 的 `emulator-smoke`（非阻断）里
+`.github/workflows/ci.yml` 的 `emulator-verify`（v0.5.28 起阻断）里
 `integration_test/video_test.dart` 用 ffmpeg 生成真实 H.264+AAC 样片实播，断言：
 
 1. 收到真实几何的 `video-params`（640×360，排除 960×540 的占位参数）；
@@ -301,6 +301,9 @@ v0.5.14 在顶/底控制条恢复 `Column(mainAxisSize.min)` 包裹，布局回�
 另：按用户要求，CI 不再运行 `emulator-smoke`（模拟器集成测试）job 及其
 jniLibs 上传步骤；门禁为 detect / core-test / app-analyze / native-smoke /
 android / release。
+
+> **v0.5.28 更正**：模拟器集成测试以 `emulator-verify`（阻断+增量门禁）形式恢复，
+> `video_test.dart` 重新纳入每轮 CI；见 `docs/TESTING.md`。
 
 ## 14. v0.5.15：双指缩放、系统音量默认、字幕伪轨清理
 

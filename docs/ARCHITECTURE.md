@@ -147,5 +147,5 @@ CI 缓存 build/android-deps/{downloads,src,deps,build}（key=versions.env+脚�
 4. **Flutter**：`flutter analyze` + `dart format --set-exit-if-changed` + 测试
    （纯 Dart 逻辑：models、桥接解析、日志截断策略、壁纸留白像素填充/边缘延展、
    解码降级链的停摆指纹判定与取景几何，见 `app/test/v056_test.dart`）。
-5. **emulator-smoke**（非阻断）：模拟器实播真实样片，断言当前解码档位无停摆指纹、
+5. **emulator-verify**（阻断+增量门禁）：模拟器实播真实样片（video_test）、断言事件送达/附件内联/回底语义（attach_test，含截图）、DHT 确认（app_test）；
    时钟推进（见 [VIDEO-PLAYBACK.md](VIDEO-PLAYBACK.md) §6）。
