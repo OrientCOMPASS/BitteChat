@@ -166,7 +166,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byIcon(Icons.language));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('中文'));
+    await tester.tap(find.text('Simplified Chinese'));
     await tester.pumpAndSettle();
     expect(find.text('语言'), findsOneWidget,
         reason: 'zh locale must rebuild the settings page in place');
