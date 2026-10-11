@@ -394,6 +394,8 @@ jobs:
             bash scripts/make-dev-keystore.sh
             mkdir -p "$GITHUB_WORKSPACE/shots"
             cd app && flutter pub get && flutter test integration_test/attach_test.dart -d emulator-5554 --reporter expanded
+            adb shell "cp /storage/emulated/0/Android/data/*/files/shot-*.png /data/local/tmp/ 2>/dev/null" || true
+            adb pull /data/local/tmp "$GITHUB_WORKSPACE/shots/" || true
             adb exec-out screencap -p > "$GITHUB_WORKSPACE/shots/after-attach-test.png" || true
             cd app && flutter test integration_test/app_test.dart -d emulator-5554 --reporter expanded
             adb exec-out screencap -p > "$GITHUB_WORKSPACE/shots/after-app-test.png" || true

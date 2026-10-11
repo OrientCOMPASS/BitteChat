@@ -36,6 +36,9 @@ class BitteApi extends ChangeNotifier {
 
   StreamSubscription<String>? _sub;
   Timer? _drainTimer; // v0.5.27: pulls the core event queue (push cb is gone)
+
+  /// Whether the v0.5.27 event-drain timer is active (pull transport).
+  bool get isDraining => _drainTimer?.isActive ?? false;
   final _events = StreamController<CoreEvent>.broadcast();
   Stream<CoreEvent> get events => _events.stream;
 

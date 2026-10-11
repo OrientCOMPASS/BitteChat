@@ -16,6 +16,7 @@
 
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui' as ui;
 
 import 'package:bittechat/core/api.dart';
 import 'package:bittechat/core/prefs.dart';
@@ -110,7 +111,7 @@ void main() {
       );
       // at the bottom the jump chip is hidden
       expect(find.byIcon(Icons.keyboard_double_arrow_down), findsNothing);
-      await _shot(binding, 'chat-own-attachment-inline');
+      await _shot(binding, 'shot-chat-inline');
 
       // 4) jump-bottom semantics on the reverse (paper-tape) list
       final list = find.byType(ListView).first;
@@ -124,7 +125,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byIcon(Icons.keyboard_double_arrow_down), findsOneWidget,
           reason: 'a return-to-bottom slide must raise the chip');
-      await _shot(binding, 'jump-chip-return-intent');
+      await _shot(binding, 'shot-jump-chip');
       // ...and back to the bottom: chip gone again
       await tester.drag(list, const Offset(0, -4000));
       await tester.pumpAndSettle();
@@ -135,9 +136,21 @@ void main() {
   );
 }
 
+/// Render the live widget tree to a PNG inside the app's external files
+/// dir; CI adb-pulls /storage/emulated/0/Android/data/*/files/shot-*.png
+/// (the test framework force-stops the app afterwards, so host-side
+/// screencaps only ever catch the launcher).
 Future<void> _shot(IntegrationTestWidgetsFlutterBinding b, String name) async {
   try {
-    await b.takeScreenshot(name);
+    await b.pump();
+    final view = b.renderView;
+    final layer = view.layer;
+    if (layer == null) return;
+    final image = await layer.toImage(view.paintBounds);
+    final data = await image.toByteData(format: ui.ImageByteFormat.png);
+    if (data == null) return;
+    await File('${BitteApi.instance.dataDir}/$name.png')
+        .writeAsBytes(data.buffer.asUint8List());
   } catch (_) {
     // screenshots are a verification aid, never a test failure
   }
