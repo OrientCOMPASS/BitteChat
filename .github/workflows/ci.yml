@@ -29,7 +29,7 @@ jobs:
     outputs:
       has_app: ${{ steps.check.outputs.has_app }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - id: check
         run: |
           if [ -f app/pubspec.yaml ]; then echo "has_app=true" >> "$GITHUB_OUTPUT";
@@ -39,13 +39,14 @@ jobs:
   # Rust core: fmt, clippy, unit + e2e tests (mock engine, linux)
   # ------------------------------------------------------------------
   core-test:
+    if: github.ref_type != 'tag'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     defaults:
       run:
         working-directory: core
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
@@ -68,15 +69,15 @@ jobs:
   # ------------------------------------------------------------------
   app-analyze:
     needs: detect
-    if: needs.detect.outputs.has_app == 'true'
+    if: github.ref_type != 'tag' && needs.detect.outputs.has_app == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     defaults:
       run:
         working-directory: app
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "17"
@@ -95,10 +96,11 @@ jobs:
   # drift that mock-engine tests cannot see)
   # ------------------------------------------------------------------
   native-smoke:
+    if: github.ref_type != 'tag'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
@@ -106,7 +108,7 @@ jobs:
       - name: system deps
         run: sudo apt-get update -qq && sudo apt-get install -y -qq libboost-dev libssl-dev
       - name: cache host native stack
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: build/linux-deps
           key: native-linux-${{ env.NATIVE_CACHE_V }}-${{ hashFiles('scripts/versions.env', 'core/bitte-bt/cpp/*') }}
@@ -119,22 +121,18 @@ jobs:
             cargo test -p bitte-core --features native-bt --test native_smoke -- --nocapture --test-threads=1
 
   # ------------------------------------------------------------------
-  # Android: OpenSSL + libtorrent + C++ wrapper + Rust cdylib + APK
+  # Android native stack (OpenSSL + libtorrent + C++ wrapper + Rust cdylib),
+  # built ONCE and shared: the android job packages it into release APKs,
+  # the emulator job builds its debug test app against the same .so files.
+  # Split out of `android` so emulator-verify no longer waits for the
+  # release gradle build (critical path -3 min per run).
   # ------------------------------------------------------------------
-  android:
-    # tags never rebuild: the release job reuses the APKs uploaded by the
-    # branch run of the same commit (saves a full duplicate native+gradle
-    # build per release)
+  native-android:
     if: github.ref_type != 'tag'
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v5
-
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
+      - uses: actions/checkout@v7
 
       - name: Rust toolchain (android targets)
         uses: dtolnay/rust-toolchain@stable
@@ -151,7 +149,7 @@ jobs:
           workspaces: "core -> target"
 
       - name: Restore native deps cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             build/android-deps/downloads
@@ -170,8 +168,42 @@ jobs:
       - name: Build native stack
         run: bash scripts/build-android-native.sh
 
+      - name: Upload jniLibs for android + emulator jobs
+        uses: actions/upload-artifact@v7
+        with:
+          name: jnilibs-${{ github.sha }}
+          path: app/android/app/src/main/jniLibs/**
+          retention-days: 3
+          if-no-files-found: error
+
+  # ------------------------------------------------------------------
+  # Android release APKs: packages the jniLibs produced by native-android
+  # (signing from repo secrets, gradle release, split-per-ABI rename)
+  # ------------------------------------------------------------------
+  android:
+    # tags never rebuild: the release job reuses the APKs uploaded by the
+    # branch run of the same commit (saves a full duplicate native+gradle
+    # build per release)
+    if: github.ref_type != 'tag'
+    needs: [native-android]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Restore native libs from native-android job
+        uses: actions/download-artifact@v8
+        with:
+          name: jnilibs-${{ github.sha }}
+          path: app/android/app/src/main/jniLibs
+
       - name: Gradle cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.gradle/caches
@@ -294,16 +326,6 @@ jobs:
           find app/android/app/src/main/jniLibs -type f | sort || true
           ls -la app/build/app/outputs/flutter-apk/ 2>/dev/null || true
 
-      # the emulator-verify job rebuilds a DEBUG app on the runner; it needs
-      # the native libs the android job just compiled (same commit)
-      - name: Upload jniLibs for emulator job
-        uses: actions/upload-artifact@v4
-        with:
-          name: jnilibs-${{ github.sha }}
-          path: app/android/app/src/main/jniLibs/**
-          retention-days: 3
-          if-no-files-found: ignore
-
       # Release assets must be self-describing: `app-arm64-v8a-release.apk`
       # says nothing about which app or version it is once it sits in a
       # Downloads folder next to every other APK. Name each split
@@ -327,23 +349,13 @@ jobs:
 
       - name: Upload APKs
         if: ${{ hashFiles('app/build/app/outputs/flutter-apk/BitteChat-*.apk') != '' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: bittechat-apk-${{ github.sha }}
           path: |
             app/build/app/outputs/flutter-apk/BitteChat-*.apk
           retention-days: 14
           if-no-files-found: warn
-
-      - name: Upload native libs (debug aid)
-        if: ${{ failure() }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: native-build-logs-${{ github.sha }}
-          path: |
-            build/android-deps/build/cpp-*/CMakeFiles/*.dir/*.log
-          retention-days: 5
-          if-no-files-found: ignore
 
   # ------------------------------------------------------------------
   # On-device verification: Android emulator runs the integration tests
@@ -355,12 +367,12 @@ jobs:
   emulator-verify:
     if: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch' }}
     continue-on-error: true
-    needs: [android]
+    needs: [native-android]
     runs-on: ubuntu-24.04
     timeout-minutes: 75
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "17"
@@ -370,14 +382,14 @@ jobs:
           channel: stable
           cache: true
       - name: Restore native libs from android job
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: jnilibs-${{ github.sha }}
           path: app/android/app/src/main/jniLibs
 
       # ---- incremental caches: pub / gradle / NDK / AVD -------------------
       - name: Cache pub dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.pub-cache
           key: pub-${{ runner.os }}-emu-${{ hashFiles('app/pubspec.lock') }}
@@ -387,7 +399,7 @@ jobs:
       # SAME key as the android job: one shared gradle cache for release and
       # debug builds (two separate 2 GB caches blew the 10 GB repo budget)
       - name: Gradle cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.gradle/caches
@@ -396,7 +408,7 @@ jobs:
           restore-keys: |
             gradle-${{ runner.os }}-
       - name: AVD cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         id: avd-cache
         with:
           path: |
@@ -412,7 +424,7 @@ jobs:
       # ---- incremental gate: skip the whole device round when the app /
       # ---- core sources are byte-identical to a previously green run
       - name: Restore emulator-green marker
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         id: emu-ok
         with:
           path: emu-ok-marker.txt
@@ -461,13 +473,13 @@ jobs:
         run: echo "${{ github.sha }}" > emu-ok-marker.txt
       - name: Save emulator-green marker
         if: steps.emu-ok.outputs.cache-hit != 'true' && success()
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: emu-ok-marker.txt
           key: emu-ok-${{ hashFiles('app/lib/**', 'app/integration_test/**', 'core/**/*.rs', 'app/pubspec.lock', 'app/android/app/build.gradle.kts', 'scripts/versions.env', 'scripts/emu-run-and-pull.sh') }}
       - name: Upload screenshots
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: emulator-shots-${{ github.sha }}
           path: shots/
@@ -502,7 +514,7 @@ jobs:
           fi
           echo "reuse build from run $run_id"
           echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: bittechat-apk-${{ github.sha }}
           run-id: ${{ steps.src.outputs.run_id }}
@@ -515,7 +527,7 @@ jobs:
           ls -la apks
           test -n "$(ls -A apks/*.apk 2>/dev/null)" || {
             echo "::error::no APK to publish"; exit 1; }
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           files: apks/*.apk
           name: BitteChat ${{ github.ref_name }}
