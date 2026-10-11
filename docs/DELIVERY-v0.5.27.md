@@ -1,7 +1,9 @@
 # BitteChat v0.5.27 交付说明与装机测试清单
 
 - 版本：`0.5.27+32`（自 `0.5.26+31` 步进 0.0.1）
-- 提交：`562a977` → … → `1fdeb83`（main），标签 `v0.5.27`
+- 提交：`562a977` → … → `37efc5d`（= 标签 `v0.5.27`）；其后 `fcbae94` 等仅 CI 修复，无应用代码变化
+- Release：https://github.com/OrientCOMPASS/BitteChat/releases/tag/v0.5.27
+  （arm64 / x86_64，release keystore 签名，可覆盖安装 v0.5.26）
 - CI：run `38121840642` 全绿（core-test / app-analyze / android / native-smoke /
   emulator-verify），emulator 截图见 CI artifacts `emulator-shots-<sha>`
   （shot-chat-inline.png：发送方气泡内联图片；shot-jump-chip.png：历史中段 50% 半透明回底钮）
@@ -73,32 +75,35 @@ PiliPlus 式三源合一：**事件 + 生命周期 + 短轮询下限**
 
 ---
 
-## 三、验证矩阵（run 38121840642，commit 1fdeb83）
+## 三、验证矩阵（run 38124681388 @37efc5d，全绿）
 | 层 | 内容 | 结果 |
 |---|---|---|
-| core-test | fmt/clippy/e2e（含发送方就地解析断言） | ✅ |
-| app-analyze | format/analyze/flutter test | ✅ |
-| android | release APK（split per ABI） | ✅ |
-| native-smoke | 真 libtorrent FFI 冒烟 | ✅ |
-| emulator-verify | 真引擎集成测试 + 截图（非阻断） | ✅ 截图见下 |
+| core-test | fmt/clippy/e2e（含发送方就地解析断言） | ✅ 0.5–0.8min |
+| app-analyze | format/analyze/flutter test | ✅ ~1min |
+| native-smoke | 真 libtorrent FFI 冒烟 | ✅ ~1.2min |
+| android | release APK（split per ABI） | ✅ ~5.5min |
+| emulator-verify | 真引擎集成测试 + 截图（非阻断） | ✅ 6.7min（缓存命中） |
+| emulator 门禁 | 源码未变 push（run 38126941995） | ✅ 1.2min，真机轮跳过 |
 
-### 模拟器截图（CI 产物，测试内 RepaintBoundary 抓取）
+### 模拟器截图（CI artifacts `emulator-shots-*`，测试内 RepaintBoundary 抓取，已目视确认）
 - `shot-chat-inline.png`：自发附件气泡内联缩略图、无「通过 BT 下载」卡片、无哈希横幅
 - `shot-jump-chip.png`：历史中段朝底部滑动后右下出现 50% 半透明回底钮
-- 抓取机制：测试写 PNG 到应用私有目录，`scripts/emu-run-and-pull.sh` 在测试运行期间
-  以 adb root 并发拉取（flutter test 退出即卸载应用并删除数据目录）
+- 抓取机制：测试写 PNG 到应用私有目录；`scripts/emu-run-and-pull.sh` 在测试运行期间
+  以 adb root 并发拉取（flutter test 退出即卸载应用并删除数据目录，事后拉取必空）
 
 ## 三·二、CI 增量化与缓存（本轮建设）
 | 缓存 | 覆盖 | 效果 |
 |---|---|---|
-| rust-cache + 自建 native 缓存 | core-test / android / native-smoke | 一直命中 |
-| flutter SDK + pub 缓存 | app-analyze / android / emulator | 命中 |
-| gradle 缓存（release & debug 双 key） | android / emulator | debug 构建 348s→111s |
-| NDK r28c 缓存 | android / emulator | 省 ~75s/run |
-| AVD + 启动快照缓存（reactivecircus priming 模式） | emulator | 3.4GB 快照 ~15s 恢复，省 ~4min |
-| **emulator 增量门禁**（emu-ok marker，key=源码哈希） | emulator | 源码未变的 push **跳过整个真机轮**（~2min 内结束） |
+| rust-cache + 自建 native 缓存 | core-test / android / native-smoke | 命中，core-test 0.5min |
+| flutter SDK + pub 缓存 | 全部 flutter job | 命中 |
+| gradle 共享缓存（android+emulator 同 key） | android / emulator | debug 348s→111s |
+| AVD + 启动快照（reactivecircus priming） | emulator | 3.4GB 快照 ~15s 恢复 |
+| emulator 增量门禁 emu-ok marker | emulator | 源码未变 → 跳过真机轮（1.2min） |
 
-emulator-verify Job 耗时：无缓存 ~15min → priming 10.6min → 缓存命中 6.7min → 门禁跳过 ~2min。
+配额管理教训：仓库缓存上限 10GB；曾达 10.43GB，小缓存（门禁 marker、rust core-test）
+被驱逐、门禁失效。已移除性价比低的 NDK 缓存（2.74GB/省75s）并合并双 gradle 缓存，
+当前稳定 ~8.4GB。另修复门禁哈希陷阱：gen-l10n 在 pub get 时重写 app/lib/l10n/*.dart，
+restore（干净 checkout）与 save（gen 后）哈希不一致 → 门永不命中；现 restore 前先 pub get。
 
 ## 四、已知边界
 - 3s/4s 轮询为**兜底下限**：事件正常时一切仍为事件驱动即时刷新；轮询仅轻量 SQL 查询，
