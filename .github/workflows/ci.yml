@@ -472,6 +472,7 @@ jobs:
             bash scripts/emu-run-and-pull.sh "$GITHUB_WORKSPACE/shots"
             cd app && flutter test integration_test/app_test.dart -d emulator-5554 --reporter expanded
             cd app && flutter test integration_test/video_test.dart -d emulator-5554 --reporter expanded
+            cd app && flutter test integration_test/ux_test.dart -d emulator-5554 --reporter expanded
             adb exec-out screencap -p > "$GITHUB_WORKSPACE/shots/after-attach-test.png" || true
       - name: Mark emulator verification green for this source hash
         if: steps.emu-ok.outputs.cache-hit != 'true' && success()

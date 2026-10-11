@@ -18,7 +18,7 @@
 | native-smoke | ✅ | 宿主机真 libtorrent FFI 冒烟 | native 缓存 |
 | native-android | ✅ | OpenSSL+libtorrent+C++ wrapper+Rust cdylib（双 ABI）→ jniLibs 产物 | native+rust 缓存 |
 | android | ✅ | release APK（split-per-ABI）+ 签名 | gradle 共享缓存 |
-| emulator-verify | ✅ | 模拟器集成测试（attach/app/video）+ 截图上传 | AVD 快照+gradle+pub 缓存 + **emu-ok 门禁**（源码哈希未变跳过真机轮） |
+| emulator-verify | ✅ | 模拟器集成测试（attach/app/video/ux）+ 截图上传 | AVD 快照+gradle+pub 缓存 + **emu-ok 门禁**（源码哈希未变跳过真机轮） |
 | release | 仅 tag | 复用分支 run 的 APK 发布 | — |
 
 tag run 仅跑 release（验证 job 在同 commit 的 main push 已绿，避免重复燃烧）。
