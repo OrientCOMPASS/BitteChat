@@ -491,7 +491,10 @@ jobs:
   # ------------------------------------------------------------------
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [core-test, native-smoke, app-analyze]
+    # detect always runs (also on tags); the verify jobs are skipped on tag
+    # runs by design (the commit was already green on its main push) and an
+    # all-skipped `needs` set would skip the release too
+    needs: [detect]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
