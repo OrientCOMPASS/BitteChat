@@ -133,6 +133,11 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byIcon(Icons.keyboard_double_arrow_down), findsNothing,
           reason: 'at the bottom the chip must hide');
+
+      // hold the process (and thus the installed app + its files) until CI
+      // has pulled the screenshots; flutter test uninstalls on exit which
+      // used to race the 2 s adb poll and lose
+      await _waitForPull();
     },
     timeout: const Timeout(Duration(minutes: 6)),
   );
@@ -171,5 +176,15 @@ Future<void> _shot(WidgetTester tester, String name) async {
     await note('wrote ${f.path} (${data.lengthInBytes} B)');
   } catch (e) {
     await note('error: $e');
+  }
+}
+
+/// Wait (<=60 s) for the CI pull script to drop a sentinel into the app's
+/// data dir — see scripts/emu-run-and-pull.sh.
+Future<void> _waitForPull() async {
+  final sentinel = File('${BitteApi.instance.dataDir}/pull-done');
+  for (var i = 0; i < 120; i++) {
+    if (sentinel.existsSync()) return;
+    await Future<void>.delayed(const Duration(milliseconds: 500));
   }
 }

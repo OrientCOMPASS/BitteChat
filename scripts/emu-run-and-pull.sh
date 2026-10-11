@@ -12,7 +12,7 @@ adb wait-for-device || exit 1
 
 cd app || exit 1
 flutter pub get || exit 1
-flutter test integration_test/attach_test.dart -d emulator-5554 --reporter expanded &
+flutter test   integration_test/attach_test.dart   integration_test/app_test.dart   integration_test/video_test.dart   integration_test/ux_test.dart   -d emulator-5554 --reporter expanded &
 TPID=$!
 
 PKG=""
@@ -39,6 +39,9 @@ for f in shot-log.txt shot-chat-inline.png shot-jump-chip.png; do
   done
   echo "$f: pulled from ${got:-<none>} ($(stat -c%s "$OUT/$f" 2>/dev/null || echo 0) bytes)"
 done
+# release the test process (it holds the install alive for us)
+adb shell touch "/storage/emulated/0/Android/data/$PKG/files/pull-done" 2>/dev/null || true
+adb shell touch "/data/data/$PKG/files/pull-done" 2>/dev/null || true
 
 wait $TPID
 RC=$?
