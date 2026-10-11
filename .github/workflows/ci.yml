@@ -391,12 +391,8 @@ jobs:
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -camera-back none
           script: |
             adb wait-for-device
-            cd app && flutter pub get
-            flutter test integration_test/attach_test.dart -d emulator-5554 --reporter expanded
-            flutter test integration_test/app_test.dart -d emulator-5554 --reporter expanded
-            mkdir -p "$GITHUB_WORKSPACE/shots"
-            adb exec-out screencap -p > "$GITHUB_WORKSPACE/shots/final-emulator-screen.png" || true
-            find . -name '*.png' -newer pubspec.yaml -not -path './.dart_tool/*' -exec cp {} "$GITHUB_WORKSPACE/shots/" \; || true
+            cd app && flutter pub get && flutter test integration_test/attach_test.dart -d emulator-5554 --reporter expanded && flutter test integration_test/app_test.dart -d emulator-5554 --reporter expanded
+            cd app && mkdir -p "$GITHUB_WORKSPACE/shots" && (adb exec-out screencap -p > "$GITHUB_WORKSPACE/shots/final-emulator-screen.png" || true) && (find . -name '*.png' -newer pubspec.yaml -not -path './.dart_tool/*' -exec cp {} "$GITHUB_WORKSPACE/shots/" \; || true)
       - name: Upload screenshots
         if: always()
         uses: actions/upload-artifact@v4

@@ -113,7 +113,7 @@ void main() {
       await _shot(binding, 'chat-own-attachment-inline');
 
       // 4) jump-bottom semantics on the reverse (paper-tape) list
-      final list = find.byType(ListView);
+      final list = find.byType(ListView).first;
       // browse history (finger down): chip must NOT appear
       await tester.drag(list, const Offset(0, 600));
       await tester.pumpAndSettle();
