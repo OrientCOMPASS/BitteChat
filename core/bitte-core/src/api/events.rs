@@ -87,7 +87,7 @@ impl Api {
                         };
                         guarded("rss_tick", move || a.rss_tick());
                     }
-                    if tick % 60 == 0 {
+                    if tick.is_multiple_of(60) {
                         log::info!("scheduler alive tick={tick}");
                     }
                     if tick.is_multiple_of(RESUME_TICK_INTERVAL) {
