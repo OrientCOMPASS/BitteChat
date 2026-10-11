@@ -458,8 +458,8 @@ jobs:
             adb wait-for-device
             bash scripts/make-dev-keystore.sh
             mkdir -p "$GITHUB_WORKSPACE/shots"
-            cd app && flutter pub get && flutter test integration_test/attach_test.dart -d emulator-5554 --reporter expanded && flutter test integration_test/app_test.dart -d emulator-5554 --reporter expanded
-            bash scripts/pull-shots.sh "$GITHUB_WORKSPACE/shots"
+            bash scripts/emu-run-and-pull.sh "$GITHUB_WORKSPACE/shots"
+            cd app && flutter test integration_test/app_test.dart -d emulator-5554 --reporter expanded
             adb exec-out screencap -p > "$GITHUB_WORKSPACE/shots/after-attach-test.png" || true
       - name: Mark emulator verification green for this source hash
         if: steps.emu-ok.outputs.cache-hit != 'true' && success()
