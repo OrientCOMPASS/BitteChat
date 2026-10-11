@@ -109,3 +109,37 @@ restore（干净 checkout）与 save（gen 后）哈希不一致 → 门永不�
 - 3s/4s 轮询为**兜底下限**：事件正常时一切仍为事件驱动即时刷新；轮询仅轻量 SQL 查询，
   功耗影响可忽略（如需更激进可再缩短，权衡电池）
 - 发送后删除/移动源文件：自己气泡回退为 BT 卡片（与就地做种决策一致）
+
+## 五、CI 构建审计与去重（本轮答复）
+
+### 构建次数（一次 main push，warm cache）
+| 产物 | 次数 | 位置 |
+|---|---|---|
+| release APK（split-per-ABI，一次 gradle 出 2 文件） | 1 | android job |
+| debug 测试 APK | 1 | emulator-verify（flutter test 内 assembleDebug） |
+| tag run 的 APK | 0 | release 复用分支 run 产物 |
+| native stack（OpenSSL+libtorrent+C++wrapper）host linux | 0 全量（缓存命中） | native-smoke |
+| native stack android 双 ABI | 0 全量（缓存命中） | native-android |
+| emulator 内 native 编译 | 0 | 复用 native-android 的 jniLibs 产物 |
+| Rust cdylib（cargo-ndk 双 ABI） | 增量（rust-cache） | native-android |
+
+### 已消除的重复/串行浪费
+1. tag run 曾重跑 core-test/native-smoke/app-analyze（同 commit 已在 main 验证）→ 现 skip；
+2. emulator 曾串行等 android 的 gradle release（只为拿 jniLibs）→ 拆出 native-android，
+   android 与 emulator 并行消费同一 jniLibs 产物；
+3. gradle 双缓存（release/debug 各 2GB）挤爆 10GB 配额 → 合并单 key 共享；
+4. NDK 每 run 重装 75s → 曾加缓存，后因配额性价比移除（见三·二）。
+
+### 并行拓扑与实测（run 38129619836，warm）
+detect∥core-testapp-analyze∥native-smoke∥native-android → (android ∥ emulator-verify) → release(仅 tag)
+native-android 2.4min；android 4.2min；emulator（门禁跳过）1.6min；**整轮 6.5min**
+（本轮建设前：12–25min；emulator 真机轮执行时 +5min）
+
+### 警告处置
+| 警告 | 处置 |
+|---|---|
+| Node.js 20 deprecated（cache/setup-java/upload/download-artifact） | ✅ 升级主版本（checkout@v7、setup-java@v6、cache@v6、upload@v7、download@v8、gh-release@v3），实测 0 条 |
+| flutter_volume_controller 应用 KGP | 不处置：2.0.2 已是最新版，上游未迁移 Built-in Kotlin；记入风险台账（未来 Flutter 升级前需跟进/换 fork） |
+| media_kit Java deprecated API 注记 | 不处置：维护 fork 上游问题；视频栈功能由 emulator 视频测试兜底 |
+| PKCS12 单密码 / pub「Changed 7 dependencies」 | 故意保留：运维信息（签名归一化说明、依赖漂移提示） |
+| 模拟器引擎噪声（pulseaudio/Netsim/stop not implemented） | 忽略：emulator 自身日志噪声 |
