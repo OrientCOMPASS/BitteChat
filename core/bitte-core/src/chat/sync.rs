@@ -424,7 +424,7 @@ impl GroupSync {
                 }
             }
             if engine.dht_get_immutable(&id).is_ok() {
-                log::debug!(
+                log::info!(
                     "group {}: dht get immutable {}",
                     hex::encode(self.manifest.gid),
                     hex::encode(id)
@@ -478,7 +478,7 @@ impl GroupSync {
     /// Ask the DHT for the group's head item.
     pub fn poll_heads(&mut self, engine: &dyn BtEngine, now_ms: i64) {
         self.last_head_poll = now_ms;
-        log::debug!(
+        log::info!(
             "group {}: poll_heads (DHT mutable get)",
             hex::encode(self.manifest.gid)
         );

@@ -471,7 +471,7 @@ impl Api {
 
     fn on_ext_message(&self, infohash: String, _peer: String, pk: String, payload: Vec<u8>) {
         use crate::chat::sync::ExtPayload;
-        log::debug!("ext recv ih={infohash} pk={pk}");
+        log::info!("ext recv ih={infohash} pk={pk}");
         // DM frames are addressed by channel gid, independent of which swarm
         // they rode in — route them before the per-swarm group handling
         let decoded = ExtPayload::decode(&payload);
