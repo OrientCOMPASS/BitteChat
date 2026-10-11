@@ -154,7 +154,12 @@ Future<void> _shot(WidgetTester tester, String name) async {
     if (data == null) return;
     await File('${BitteApi.instance.dataDir}/$name.png')
         .writeAsBytes(data.buffer.asUint8List());
-  } catch (_) {
-    // screenshots are a verification aid, never a test failure
+  } catch (e) {
+    // screenshots are a verification aid, never a test failure — but leave
+    // a breadcrumb so CI artifacts show WHY a capture missed
+    try {
+      await File('${BitteApi.instance.dataDir}/$name-error.txt')
+          .writeAsString('$e');
+    } catch (_) {}
   }
 }
