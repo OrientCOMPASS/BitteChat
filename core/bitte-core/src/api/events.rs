@@ -31,7 +31,14 @@ impl Api {
                     if *api.inner.shutdown.read().unwrap() {
                         break;
                     }
-                    api.handle_engine_event(ev);
+                    // v0.5.28: a panic here used to kill engine-event
+                    // processing forever (no more ext/DHT deliveries)
+                    let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        api.handle_engine_event(ev);
+                    }));
+                    if let Err(e) = res {
+                        log::error!("engine event handler panicked: {e:?}");
+                    }
                 }
             })
             .expect("spawn event loop");
@@ -51,24 +58,39 @@ impl Api {
                         break;
                     }
                     tick += 1;
+                    // v0.5.28: one poisoned tick must never kill the loop —
+                    // a dead scheduler silently stops ALL proactive sync
+                    // (head polls, fetch pumps, outbox, resume) while sends
+                    // and DM receipt keep working (exactly the v0.5.27
+                    // field-report signature)
                     if tick.is_multiple_of(BT_PUSH_INTERVAL) {
-                        api.push_bt_updates();
+                        let a = Api { inner: api.inner.clone() };
+                        guarded("bt_push", move || a.push_bt_updates());
                     }
                     if tick.is_multiple_of(GROUP_TICK_INTERVAL) {
-                        api.group_tick();
+                        let a = Api { inner: api.inner.clone() };
+                        guarded("group_tick", move || a.group_tick());
                     }
                     if tick.is_multiple_of(OUTBOX_TICK_INTERVAL) {
-                        api.outbox_tick();
+                        let a = Api { inner: api.inner.clone() };
+                        guarded("outbox_tick", move || a.outbox_tick());
                     }
                     if tick.is_multiple_of(RSS_TICK_INTERVAL) {
-                        api.rss_tick();
+                        let a = Api { inner: api.inner.clone() };
+                        guarded("rss_tick", move || a.rss_tick());
+                    }
+                    if tick % 60 == 0 {
+                        log::info!("scheduler alive tick={tick}");
                     }
                     if tick.is_multiple_of(RESUME_TICK_INTERVAL) {
                         // keep <data>/resume/*.fastresume fresh so restarts
                         // never re-check/re-fetch completed torrents
-                        if let Err(e) = api.inner.engine.save_all_resume() {
-                            log::debug!("save_all_resume: {e}");
-                        }
+                        let a = Api { inner: api.inner.clone() };
+                        guarded("resume", move || {
+                            if let Err(e) = a.inner.engine.save_all_resume() {
+                                log::debug!("save_all_resume: {e}");
+                            }
+                        });
                     }
                 }
             })
@@ -93,6 +115,15 @@ impl Api {
             };
             if now - rt.sync.last_head_poll > interval {
                 rt.sync.poll_heads(&*self.inner.engine, now);
+            }
+            // v0.5.28: DHT-independent proactive sync — periodically announce
+            // our heads into the swarm; peers ahead of us answer by pushing
+            // the missing blobs over ext (the path that provably works even
+            // when DHT gets silently fail, e.g. hostile NATs / broken DHT)
+            let solicit = interval * 4;
+            if now - rt.last_solicit > solicit {
+                rt.last_solicit = now;
+                rt.sync.ext_announce_heads(&*self.inner.engine);
             }
             if rt.sync.dirty_heads
                 && now - rt.last_publish > 5_000
@@ -430,6 +461,7 @@ impl Api {
 
     fn on_ext_message(&self, infohash: String, _peer: String, pk: String, payload: Vec<u8>) {
         use crate::chat::sync::ExtPayload;
+        log::debug!("ext recv ih={infohash} pk={pk}");
         // DM frames are addressed by channel gid, independent of which swarm
         // they rode in — route them before the per-swarm group handling
         let decoded = ExtPayload::decode(&payload);
@@ -496,4 +528,11 @@ impl Api {
 fn backoff_ms(attempts: i64) -> i64 {
     let exp = attempts.clamp(0, 6) as u32;
     (5_000 * (1 << exp)).min(300_000)
+}
+
+/// v0.5.28: run one scheduler tick body panic-isolated.
+fn guarded(name: &'static str, f: impl FnOnce()) {
+    if let Err(e) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)) {
+        log::error!("scheduler {name} panicked: {e:?}");
+    }
 }

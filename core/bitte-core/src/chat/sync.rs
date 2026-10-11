@@ -424,6 +424,11 @@ impl GroupSync {
                 }
             }
             if engine.dht_get_immutable(&id).is_ok() {
+                log::debug!(
+                    "group {}: dht get immutable {}",
+                    hex::encode(self.manifest.gid),
+                    hex::encode(id)
+                );
                 self.fetching.insert(id);
             }
         }
@@ -431,6 +436,11 @@ impl GroupSync {
 
     /// Record a failed lookup so we don't hammer the DHT.
     pub fn note_fetch_failure(&mut self, id: &Sha1Hash, now_ms: i64) {
+        log::info!(
+            "group {}: fetch failure {}, backoff applied",
+            hex::encode(self.manifest.gid),
+            hex::encode(id)
+        );
         self.fetching.remove(id);
         // exponential backoff: 15s doubling up to 5 minutes
         let prev = self.fetch_backoff_ts.get(id).copied().unwrap_or(0);
@@ -457,9 +467,21 @@ impl GroupSync {
         &self.fetch_backoff_ts
     }
 
+    /// v0.5.28: a MANUAL refresh must not be suppressed by recent-failure
+    /// backoff — drop both the backoff table and the in-flight markers so
+    /// every missing id is re-queued immediately.
+    pub fn reset_fetch_backoff(&mut self) {
+        self.fetch_backoff_ts.clear();
+        self.fetching.clear();
+    }
+
     /// Ask the DHT for the group's head item.
     pub fn poll_heads(&mut self, engine: &dyn BtEngine, now_ms: i64) {
         self.last_head_poll = now_ms;
+        log::debug!(
+            "group {}: poll_heads (DHT mutable get)",
+            hex::encode(self.manifest.gid)
+        );
         let _ = engine.dht_get_mutable(&self.manifest.head_pk, &self.manifest.head_salt());
     }
 

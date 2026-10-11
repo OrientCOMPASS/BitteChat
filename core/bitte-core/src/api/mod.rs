@@ -46,6 +46,9 @@ pub struct GroupRuntime {
     /// next sequence number for our own messages in this group
     pub own_seq: i64,
     pub last_publish: i64,
+    /// v0.5.28: last swarm heads-solicitation (ext announce without dirty
+    /// heads) — the DHT-independent proactive sync path
+    pub last_solicit: i64,
 }
 
 /// An incoming DM request awaiting the user's accept/decline.
@@ -621,6 +624,7 @@ impl Api {
                     row: row.clone(),
                     own_seq,
                     last_publish: 0,
+                    last_solicit: 0,
                     pending_dm_req: None,
                 },
             );
@@ -954,9 +958,16 @@ impl Api {
             }
             let now = crate::now_ms();
             rt.sync.poll_heads(&*self.inner.engine, now);
+            // manual refresh bypasses failure backoff and ALSO solicits the
+            // swarm: peers ahead of us answer a Heads announce by pushing
+            // missing blobs over ext (works even when DHT gets fail)
+            rt.sync.reset_fetch_backoff();
             let backoff = rt.sync.fetch_backoff_table().clone();
             rt.sync
                 .pump_fetches_filtered(&*self.inner.engine, &backoff, now);
+            rt.sync.ext_announce_heads(&*self.inner.engine);
+            rt.last_solicit = now;
+            log::info!("group {gid_hex}: sync kicked (poll+reset+pump+announce)");
         }
     }
 }
