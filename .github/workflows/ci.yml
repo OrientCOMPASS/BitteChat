@@ -162,12 +162,6 @@ jobs:
           restore-keys: |
             native-${{ env.NATIVE_CACHE_V }}-${{ runner.os }}-
 
-      - name: Cache Android NDK (gradle auto-installs r28c otherwise, ~75 s/run)
-        uses: actions/cache@v4
-        with:
-          path: /usr/local/lib/android/sdk/ndk
-          key: ndk-${{ runner.os }}-r28c-v1
-
       - name: Show NDK
         run: |
           echo "NDK=$ANDROID_NDK_LATEST_HOME"
@@ -400,11 +394,6 @@ jobs:
           restore-keys: |
             gradle-${{ runner.os }}-emu-
             gradle-${{ runner.os }}-
-      - name: Cache Android NDK
-        uses: actions/cache@v4
-        with:
-          path: /usr/local/lib/android/sdk/ndk
-          key: ndk-${{ runner.os }}-r28c-v1
       - name: AVD cache
         uses: actions/cache@v4
         id: avd-cache
