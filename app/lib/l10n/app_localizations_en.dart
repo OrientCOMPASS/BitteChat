@@ -48,16 +48,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'Every torrent is a chat room.\nAdd any BT torrent (magnet link / info hash / .torrent file) to enter its room and talk with the other BitTorrent users in the same swarm.';
 
   @override
-  String get createGroup => 'Create group';
-
-  @override
   String get joinGroup => 'Join group';
 
   @override
   String get groupName => 'Group name';
-
-  @override
-  String get groupNameHint => 'e.g. BT enthusiasts';
 
   @override
   String get create => 'Create';
@@ -87,36 +81,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get paste => 'Paste';
 
   @override
-  String get copyLink => 'Copy link';
-
-  @override
   String get done => 'Done';
 
   @override
   String get inviteMagnet => 'Invite magnet link';
-
-  @override
-  String get magnetHint => 'magnet:?xt=urn:btih:...';
-
-  @override
-  String get alreadyInGroup => 'Already in this group';
-
-  @override
-  String get fetchingManifest =>
-      'Fetching group manifest from the BT network… a member must be online seeding';
-
-  @override
-  String get groupCreated => 'Group created 🎉';
-
-  @override
-  String get inviteHint =>
-      'Share the invite link (the peer must reach you or any online member\'s swarm)';
-
-  @override
-  String get joinViaPaste => 'Paste or scan someone\'s invite link';
-
-  @override
-  String get createGroupDesc => 'Generate an invite magnet to share';
 
   @override
   String get online => 'online';
@@ -133,10 +101,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String historySynced(Object n) {
     return 'History synced · $n peers online';
   }
-
-  @override
-  String get dmEncrypted =>
-      'End-to-end encrypted DM (X25519 + ChaCha20-Poly1305)';
 
   @override
   String get resync => 'Resync';
@@ -186,12 +150,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get anonymous => 'anon';
 
   @override
-  String get copyMessage => 'Copy message text';
-
-  @override
-  String get copyMessageId => 'Copy message ID (SHA-1)';
-
-  @override
   String get copied => 'Copied';
 
   @override
@@ -200,9 +158,6 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get copiedInvite =>
       'Copied: anyone adding this torrent enters the same room';
-
-  @override
-  String get signatureInfo => 'Signature info';
 
   @override
   String sigDetail(Object pk, Object state) {
@@ -217,9 +172,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get blockAuthor => 'Block this author';
-
-  @override
-  String get blockAuthorHint => 'Adds a filter rule (manage in Settings)';
 
   @override
   String blockedAuthor(Object name) {
@@ -260,9 +212,6 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get sysDmInvite => 'sent a DM invite (auto-join)';
-
-  @override
   String sysGeneric(Object code, Object detail) {
     return '[system] $code $detail';
   }
@@ -271,13 +220,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get sysMsg => 'System message';
 
   @override
-  String get chunkSyncing => '〔long message chunks syncing…〕';
-
-  @override
   String get renameGroup => 'Rename group';
-
-  @override
-  String get renameBroadcast => 'Broadcast as a signed system message';
 
   @override
   String get leaveGroup => 'Leave group';
@@ -294,9 +237,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get members => 'Online members';
-
-  @override
-  String get manifestTorrent => 'Manifest torrent';
 
   @override
   String get msgCount => 'Messages';
@@ -705,9 +645,6 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get editName => 'Nickname';
-
-  @override
   String pubkeyLabel(Object pk) {
     return 'Key $pk';
   }
@@ -762,36 +699,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get errDmSelf => 'You cannot DM yourself';
-
-  @override
-  String get errNoKeyInfo =>
-      'No key material for this peer yet: receive at least one message from them in a shared group first';
-
-  @override
-  String get errNameLen => 'Nickname must be 1..32 characters';
-
-  @override
-  String get errGroupNameLen => 'Group name must be 1..96 bytes';
-
-  @override
-  String get errUrlScheme => 'URL must start with http(s)://';
-
-  @override
-  String get errManifestProtected =>
-      'This is a group manifest; leave the group from the Chats tab instead';
-
-  @override
-  String get errNoResource => 'This entry has no downloadable resource';
-
-  @override
-  String get errTextEmpty => 'Empty or too long (≤32KB)';
-
-  @override
   String get fabGroup => 'Torrent room';
-
-  @override
-  String get inviteLink => 'Invite link (channel magnet)';
 
   @override
   String get copyInviteLink => 'Copy invite magnet';
@@ -807,17 +715,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'Each nickname binds one private key: renaming means a NEW identity. Deleted keys cannot be recovered.';
 
   @override
-  String get currentIdentity => 'Current identity';
-
-  @override
   String get createIdentity => 'New identity';
 
   @override
   String get newIdentityName => 'New identity nickname';
-
-  @override
-  String get createIdentityWarn =>
-      'A brand-new Ed25519 key is generated: future messages sign as the new identity; the old one\'s history stays.';
 
   @override
   String get switchIdentity => 'Switch identity';
@@ -863,15 +764,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get activeMark => 'active';
-
-  @override
-  String get errIdentityActive => 'Cannot delete the active identity';
-
-  @override
-  String get errIdentityLast => 'At least one identity must remain';
-
-  @override
-  String get errNameLen2 => 'Nickname must be 1..32 characters';
 
   @override
   String get setAvatar => 'Change avatar';
@@ -930,13 +822,7 @@ class AppLocalizationsEn extends AppLocalizations {
       'Only unbinds the chat room; the torrent task stays on the Torrents page. You can also delete the local history (a chain reset).';
 
   @override
-  String get network => 'Network';
-
-  @override
   String get defaultTrackers => 'Default trackers';
-
-  @override
-  String get defaultTrackersNone => 'Not set (DHT/PEX discovery only)';
 
   @override
   String defaultTrackersSet(Object n) {
@@ -986,9 +872,6 @@ class AppLocalizationsEn extends AppLocalizations {
       'Pinch and drag to frame the image; the controls below preview the final look';
 
   @override
-  String get wallpaperLoadFail => 'Could not load the image';
-
-  @override
   String get exportLogs => 'Export logs';
 
   @override
@@ -1015,16 +898,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get renameLocalNote => 'Local note — only visible to you';
 
   @override
-  String get dmRequestTitle => 'Private chat request';
-
-  @override
   String dmRequestBody(Object name) {
     return '$name wants to start an end-to-end encrypted private chat';
   }
-
-  @override
-  String get dmRequestBodyAnonymous =>
-      'Someone wants to start an end-to-end encrypted private chat';
 
   @override
   String get dmRejectedByPeer => 'The other side declined the private chat';

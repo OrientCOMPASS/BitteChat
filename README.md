@@ -1,140 +1,78 @@
 # BitteChat
 
-**去中心化的 BitTorrent 群聊客户端** —— **任何一个现有的 BT 种子就是一个群聊**：添加种子（磁力链 / info hash / 种子文件）即进入它的聊天室，与同一 swarm 中的其他 BitTorrent 用户交流。聊天记录像 git 一样以哈希链（DAG）保存和传播，无法被任何单点篡改或删除。
+去中心化 BitTorrent 群聊客户端：**种子即群聊，消息哈希链防篡改，附件即 torrent**。
+没有中心服务器——群聊房间是 BitTorrent swarm，消息经 DHT（BEP44）头指针发现、
+以签名 DAG 节点传播与存储；文件附件就地做种、经聊天内 BT 通道传输。
 
-Flutter (Android) 前端 + Rust 核心 + [libtorrent](https://www.libtorrent.org/) 后端。应用分三个经典页签：
+## 功能
 
-| 页签 | 功能 |
-|------|------|
-| 💬 聊天 | **添加种子即进入它的群聊**（磁力链 / 40 位 info hash / 种子文件，QR/系统 magnet 意图唤起）、群名跟随种子名（**本地备注**，不广播）、**端到端加密私聊**（对方同意后才建立；在线状态；消息只在两台设备间直连传输、仅本地存储）、成员列表一键发起私聊、收发文字与文件（附件在后台线程哈希/复制/做种，大文件不卡界面）、长按消息出**文字选择光标 + 锚定悬浮操作浮窗**（复制/复制ID/私聊/屏蔽/验签，QQ 式，取代底部选单）、被屏蔽消息折叠显示、消息哈希链同步、未读角标、**会话长按快捷菜单**（标记已读 / 改本地备注 / 复制邀请磁力链 / 重新同步 / 屏蔽对方 / 退群，无需进入会话）、图片全屏查看（contain 不裁剪 + 双指缩放/双击放大，可整体缩小到原图 50% 松手回弹）、**退群可选清空本地历史**（进错哈希链后重置） |
-| 🧲 种子 | 标准 BT 客户端：磁力链/info hash/种子文件下载、做种、**Tracker 管理（全局默认列表 + 单任务增删）**、文件优先级、peer 列表（标记聊天能力）、任务详情、一键进入该种子的群聊、全局限速 |
-| 📰 订阅 | RSS/Atom 订阅阅读，条目中的磁力链/种子附件一键转入 BT 下载 |
+- **群聊 / 私聊**：消息 = Ed25519 签名的 DAG 节点（哈希链防篡改）；DM 端到端加密
+  （X25519 + AEAD sealed 载荷）；未读徽标、[有人@我]/[有新回复] 标记、草稿
+- **附件**：发送方**就地做种**（不复制文件、不占双份空间）；接收方经聊天内 BT 通道
+  下载（进度/断续/完整校验）；图片缩略图与全屏、视频播放（media_kit + 解码档位回退梯）、
+  音频条、文本预览
+- **引用回复 / @提及**：左滑引用（QQ 式卡片，含图片缩略图）、长按菜单与文本选择
+- **种子页 / RSS 订阅**：完整 BT 能力（tracker 编辑、过滤脚本、下载目录可配）
+- **界面**：Material 3、全局壁纸编辑器、中/英、深色模式
+- **取证**：有界日志 + 崩溃转储（Dart / Rust panic / native 信号三路），设置内一键导出
 
-- **多语言**：简体中文 / English（flutter gen-l10n，跟随系统）。
-- **身份档案**：昵称绑定 Ed25519 私钥；可创建/切换/删除多个身份（改名=新身份，删除不可恢复，均有明确警告）。**头像与昵称仅存本机，不广播**。
-- **全局壁纸**：任意页面透出；选图后进入**取景页**（单指拖动、双指缩放/旋转、双击复位；画布比屏幕宽一圈，四周留白可填 透明/纯黑/**纯白(默认)**；虚线框标出屏幕最终可见范围；重新打开编辑器永远是**原图**而非上一轮成品；留白与图片拼接处做 straight-alpha 混合 + 边缘愈合，浅色填充不再出现灰线）。壁纸解码结果由 app 级缓存持有、不透明度在绘制时按 alpha 调制（无 Opacity 全屏 saveLayer），页面/路由切换零延迟、无重载闪烁。
-- **视频播放**：media_kit（libmpv，PiliPala/PiliPlus 同源方案）+ **解码降级链**：零拷贝硬解（`hwdec=mediacodec`）→ 硬解回读（`mediacodec-copy`）→ 软解（`no`）。mpv 在部分机型的零拷贝 interop 上会「解码器在跑但一帧都渲染不出来」且**自身不回退**（实机指纹：`vo/gpu/aimagereader … Waiting for frame timed out! / acquireLatestImage failed: -30001`，表现即有声无画），本应用按日志指纹 + 首帧看门狗自动降级到下一档并续播，最终可用的档位会记住（下次直接起步）。播放体验（v0.5.8）：**单击画面切换控制条显隐**（隐藏时沉浸全屏、3 秒无操作自动隐藏）、**画面上左右滑动微调进度**（带目标位置/偏移预览）、**按视频宽高比自动决定全屏方向**（宽→横屏、竖→竖屏，离开页面恢复）、「用其他应用打开」移到**右上角**、**倍速 0.5×–3×**；降级到**软解**档时弹 SnackBar 告知「正在使用软件解码」（不再常驻显示解码档位）。**播放抢断**：视频与语音/音乐条开始出声时都申请 Android 音频焦点（`AUDIOFOCUS_GAIN`），让系统里其他正在播放的媒体（音乐 App、浏览器…）暂停，并停掉应用内另一个媒体（视频 ↔ 语音互斥）；用户暂停 / 被夺焦后不会把焦点抢回。诊断日志已瘦身：mpv 逐行日志只进内存供降级判定，落盘仅 error + 档位/首帧/降级事件，logcat 快照只在降级或报错时采集。
-- **诊断**：核心与 Dart 侧各一份**定长日志**（单个文件超过 64 KiB 即删掉前一半行数继续积累，不做多代滚动）+ 崩溃/错误捕获，设置页一键**导出日志到 Download 目录**：导出包里永远是最新的上下文，且不会随时间无限增长。
-- **消息过滤**：按内容/昵称/公钥 × 包含/等于/正则自定义屏蔽规则，支持**过滤脚本**（规则集 JSON 直接编辑/导入/导出，便于批量配置与分享）；被屏蔽消息**不删除**（哈希链完整性不受影响），在界面折叠为「n 条被屏蔽的消息」，可展开审查。
-- **聊天附件隔离**：附件走内部种子通道，不污染种子页（可开关显示）。**发送文件原地做种**（不再复制进下载目录，大文件秒发）；**下载目录可自定义**（新任务与接收的附件生效）。
-- **断点/进度持久化**：所有任务定期快照 libtorrent resume data（重启不重新校验/拉元数据，大文件进度不再"归零"）。
+## 工作原理（简述）
 
-## 核心概念
+```
+Flutter app (app/)  ──dart:ffi JSON──  libbitte_core.so (Rust)
+                                        ├─ bitte-core   消息/DAG/同步/存储/RSS
+                                        ├─ bitte-ffi    C ABI + 事件队列(drain)
+                                        └─ bitte-bt     C++17 → libtorrent 2.x + OpenSSL
+```
 
-- **群 = 种子**：不需要"创建"群聊——**每个 BT 种子天然自带一个聊天室**，房间 ID 就是种子 infohash。添加任意种子（磁力链 / info hash / .torrent）即进入它的群聊；把种子分享给别人 = 邀请进群。群聊头指针的签名密钥由 infohash 确定性派生，任何持有种子的人都能独立推导，无需交换清单文件。
-- **消息 = git 对象**：每条消息经作者 Ed25519 签名，引用父消息的 SHA-1，形成有向无环图（DAG）。并发发言产生多个"头"（heads），后续消息通过引用全部头完成合并——与 git 的分支/合并模型一致。
-- **传播 = BEP44 DHT + BT 扩展消息**：消息本体作为 DHT 不可变条目（内容寻址）存储；每个群的头指针作为 DHT 可变条目（infohash 派生密钥签名、序号单调）发布；同一种子 swarm 内已连接的成员之间通过自定义 BEP10 扩展消息 `bc_chat` 实时直推。扩展握手携带节点身份公钥（`bc_pk`）：支持**定向投递**（私聊帧只发给对方一人）、按身份的**在线状态**；做种端之间保持连接（关闭 redundant-connection 回收），纯做种 swarm 也能聊天同步。
-- **Tracker 支持**：可配置全局默认 Tracker 列表（自动附加到所有新任务与聊天附件）并对单个任务增删 tracker；DHT 引导节点可配置，纯 DHT 环境也能工作。
-- **防篡改**：验签失败/哈希不符的消息直接丢弃；恶意回滚头指针会被诚实成员的 DAG 合并自动纠正；消息一旦扩散无法撤销。
-- **兼容性**：对网络中的其它 BT 客户端（qBittorrent、Transmission……）而言，本应用是一个行为正常的 libtorrent 客户端；不支持 `bc_chat` 扩展的 peer 只是收不到聊天消息，互不影响。你在下载热门种子时，swarm 里其他 BitteChat 用户就是天然的群友。
+- 群 = swarm（房间清单 torrent）+ DHT 可变项头指针；新消息经 swarm 扩展消息直推 +
+  DHT 头轮询/抓取泵双通道同步（详见 `docs/ARCHITECTURE.md`、`docs/PROTOCOL.md`）
+- 事件经 `sys.drain_events` 拉取通道送达 UI（200ms），不依赖平台回调语义
+- 视频解码档位回退梯与停摆指纹检测见 `docs/VIDEO-PLAYBACK.md`
 
-协议细节见 [docs/PROTOCOL.md](docs/PROTOCOL.md)，实现架构见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)，视频播放链路（含「有声无画」根因与解码降级链）见 [docs/VIDEO-PLAYBACK.md](docs/VIDEO-PLAYBACK.md)。
+## 获取与安装
+
+- GitHub Releases 提供 **split-per-ABI** 包（`arm64-v8a` / `x86_64`），CI release keystore
+  签名，可直接覆盖升级；只下自己架构那一半
+- 每轮交付的装机测试清单见 `docs/DELIVERY-<版本>.md`
+
+## 开发构建
+
+前置：Flutter 3.47.x、JDK 17、Rust（`aarch64-linux-android`/`x86_64-linux-android` target
++ `cargo-ndk`）；NDK 由 gradle 自动安装。
+
+```bash
+bash scripts/build-android-native.sh   # OpenSSL+libtorrent+C++ wrapper+Rust cdylib → app jniLibs
+bash scripts/make-dev-keystore.sh      # 本地开发签名（仅开发用；CI 用仓库 secrets）
+cd app && flutter build apk --release --split-per-abi
+```
+
+非 Android 平台运行进入 demo 模式（无 native 库）。
+
+## 测试与 CI
+
+**仓库策略：每轮修改必须附覆盖该修改的模拟器集成测试**（见 `docs/TESTING.md`）。
+
+| Job | 内容 |
+|---|---|
+| core-test | rustfmt / clippy `-D warnings` / cargo test（mock 总线双实例 e2e） |
+| app-analyze | dart format / analyze / flutter test |
+| native-smoke | 宿主机真 libtorrent FFI 冒烟 |
+| native-android → android | native 双 ABI 构建（产物共享）→ release APK |
+| emulator-verify（阻断） | 模拟器真引擎集成测试：`attach_test`（事件送达/附件内联/回底钮+截图）、`app_test`（DHT 确认）、`video_test`（真实 H.264 实播）；源码哈希未变经门禁跳过 |
+| release（仅 tag） | 复用分支 run 的 APK 发布 |
+
+模拟器截图随每次 main run 上传（artifact `emulator-shots-<sha>`）。
 
 ## 仓库结构
 
 ```
-├── app/                  # Flutter 应用（Material 3，zh/en 双语 UI）
-├── core/                 # Rust workspace
-│   ├── bitte-core/       #   纯 Rust 核心：bencode、Ed25519/BEP44、聊天 DAG、
-│   │                     #   SQLite 对象库、RSS、JSON 桥、Mock 引擎（全部可离线测试）
-│   ├── bitte-bt/         #   libtorrent C++ 封装（bc_chat 扩展插件、BEP44、tracker、C ABI）
-│   └── bitte-ffi/        #   libbitte_core.so：暴露给 Dart FFI 的 C ABI
-├── scripts/              # Android 原生构建链（OpenSSL→libtorrent→C++→Rust）
-└── .github/workflows/    # CI：核心测试 / Flutter 分析 / Android 构建 / Release
+app/        Flutter 应用 + integration_test
+core/       bitte-core(Rust) / bitte-ffi(C ABI) / bitte-bt(C++ libtorrent 封装)
+docs/       ARCHITECTURE / PROTOCOL / VIDEO-PLAYBACK / TESTING / DELIVERY-*
+scripts/    native 构建、开发 keystore、模拟器截图拉取
 ```
 
-## 构建
+## License
 
-所有构建都在 GitHub Actions 中进行（沙盒环境不构建）：
-
-- **core-test**：`cargo fmt` / `clippy -D warnings` / 全量单元与端到端测试（两个 Mock 引擎实例模拟双用户全流程：做种进房、hash 直连、离线 DHT 同步、附件传输、长文分块、篡改拒绝、tracker 应用）。
-- **app-analyze**：`flutter analyze` + `flutter test`。
-- **emulator-verify**（**阻断**，v0.5.28 起仓库策略见 `docs/TESTING.md`）：Android 模拟器跑真实构建的集成测试——`attach_test`（FFI 事件送达/发送方附件内联/回底钮语义+截图）、`app_test`（真 libtorrent 做种 → 裸 infohash 进群 → 发消息 → BEP44 DHT 确认 → UI 校验）、`video_test`（ffmpeg 真实 H.264 样片经 media_kit 实播）；源码哈希未变的 push 经 emu-ok 门禁跳过（增量）。
-- **android**：交叉编译 OpenSSL 3.5.5、libtorrent 2.1.2（NDK, arm64-v8a + x86_64）→ Rust `libbitte_core.so` → `flutter build apk --release --split-per-abi`（**分 ABI 产出** `arm64-v8a` / `x86_64` 两个 APK，各自只含本架构原生库；abiFilters 限定 arm64-v8a/x86_64），命名为 `BitteChat-<版本>-android-<abi>.apk` 作为 artifact 上传；打 `v*` tag 自动发布 Release（两个架构包一起挂出）。
-
-本地复现原生构建（需要 NDK + Rust android targets + cargo-ndk）：
-
-```bash
-bash scripts/build-android-native.sh
-cd app && flutter build apk --release --split-per-abi
-```
-
-## 使用须知（v0.x）
-
-- 群聊消息通过公共 DHT 与 swarm 内在线成员传播：冷门种子（无人做种/无 DHT 记录）可能暂时没有历史消息，配置默认 Tracker 可显著改善连通性。
-- 应用退出后同步停止（移动端暂无前台服务）。
-- 仅支持 arm64-v8a / x86_64 设备（Android 9 / API 28 及以上）；单条消息 ≤ ~600 字节文本（超长自动分块链）。
-- 视频播放使用 media_kit（libmpv）后端：v0.5.2 起从 fvp/mdk 切换到 PiliPala 系同源、经大规模实机验证的 mpv 渲染路径；v0.5.6 起加入**解码降级链**（零拷贝硬解 → 硬解回读 → 软解），部分机型的 mpv 零拷贝 interop 取不到帧时会自动降级续播而不是黑屏；v0.5.8 起不再常驻显示解码档位，只在**降级到软解**时提示「正在使用软件解码」（说明本机硬件解码器不支持该编码）。全屏方向按视频宽高比自动选择，画面上左右滑动可微调进度。
-- **v0.5 起群聊模型变更**（种子即群聊），与 v0.4.x 的"清单群"不兼容；私聊（DM）机制不变。
-- 本项目为 Unlicense 公有领域软件，仅供学习交流；请遵守所在地法律法规。
-
-## 路线图
-
-- [x] v0.1 核心协议 + Rust 全逻辑 + CI（49 个 Rust 测试）
-- [x] v0.2 libtorrent 2.1.2 Android 交叉编译链 + APK 产出
-- [x] v0.3 Flutter 三页签 UI 完整接入（16 个 Dart 测试、analyze 0 issue）
-- [x] v0.4.1 多媒体聊天（音频/视频/文本预览、外部打开）+ 聊天种子隔离 + 限速归位
-- [x] v0.4.2 端到端加密私聊（X25519 + ChaCha20-Poly1305）
-- [x] v0.4.3 消息过滤规则引擎（折叠显示，不破坏链完整性）
-- [x] v0.4.5 国际化（zh/en）+ 身份档案管理
-- [x] v0.5.0 **种子即群聊**（移除"凭空建群"，房间 ID = infohash，头密钥确定性派生）+ Tracker 设置（全局默认列表/单任务增删/DHT 引导可配置）+ info hash 直连输入 + fvp 视频软解兜底 + 全局壁纸
-- [x] v0.5.2 **私聊重构**（对方同意制、定向传输、无种子/无 DHT、在线状态）+ 群名改本地备注 + 头像不广播 + 壁纸裁剪预览页（预解码零延迟）+ **音视频栈切换 media_kit/libmpv**（视频纯硬解，修复实机"有声无画"；语音条共享单实例）+ resume data 进度持久化（重启进度不归零）+ 附件后台线程化（大文件不卡 UI）+ DHT 就绪队列（冷启动不丢 BEP44 操作）+ 日志导出到 Download + 做种端保持聊天连接
-- [x] v0.5.4 视频黑屏第二根因修复（mpv `video-sync=display-resample` + ao 三级回退，音频 underrun 不再拖死视频时钟）+ 私聊邀请改为**聊天列表内联 接受/拒绝/屏蔽**（持久化收件箱，不再弹窗轰炸；屏蔽名单静默丢弃后续请求）+ DM 附件下载/会话预览解密封修复 + **固定发布签名密钥（可覆盖安装升级）**
-- [x] v0.5.3 实机视频黑屏根治：**关闭 Impeller**（Skia/GL 渲染——Impeller 外部纹理在部分 Adreno 机型卡死 mpv 的 SurfaceTexture 生产者：aimagereader 帧堆积 -30001、音频 underrun；PiliPala 系同款规避）+ 附件"已下载"判定改为**引擎校验完成态**（修复稀疏预分配文件被当成完整文件打开：接收端"Failed to recognize file format"）+ 播放页文件取证日志（ftyp/moov/零填充）+ 播放器销毁竞态加固
-- [x] v0.5.5 **CI 真视频播放测试**（ffmpeg 生成 H.264 样片 → 模拟器实播，断言解码参数/时钟推进/无渲染停摆特征日志）+ 播放期隐藏壁纸与 logcat 自采集（渲染后端/驱动取证）+ 壁纸编辑重做（完整原图取景/旋转/透明 padding/模糊强度滑杆）+ 过滤脚本编辑/导入/导出 + 自定义下载目录 + 发送文件原地做种（kind 4 独立 scope）+ Tracker 设置移入种子页 + DM 附件下载与预览解密封修复 + 生命周期/意图转发加固
-- [x] v0.5.6 实机问题修复：**视频「有声无画」根治**（mpv `hwdec_aimagereader` 零拷贝 interop 在部分机型取不到帧且自身不回退 → 加入 `mediacodec → mediacodec-copy → 软解` 三档降级链，按日志指纹/首帧看门狗自动降级续播并记住本机可用档位）+ 壁纸取景重做（画布外扩 25% 留白、手势旋转缩放取代四方向按钮、留白填充色 透明/纯黑/纯白/边缘延展、去掉与设置页重复的透明度/模糊滑杆）+ 壁纸解码缓存与不透明度烘进 alpha（切页不再重载/闪烁）+ 聊天图片全屏查看改为 contain 不裁剪 + 退群可清空本地历史（重置错误哈希链）+ 日志改为单文件定长（超 64 KiB 删前一半行数）+ Release 资产带名称与版本号 + 恢复壁纸在播放期的原有行为
-- [x] v0.5.7 实机回归收尾：确认零拷贝硬解在该机型恢复正常（tier 0 settled）后**瘦身播放诊断日志** + 播放器 UX（控制条自动隐藏/沉浸、倍速 0.5–3×、音频焦点阻断其他媒体）+ 壁纸取景修正（默认居中、单指拖动跟手、straight-alpha 消灭拼接灰线、去掉边缘扩展且默认纯白、重编辑回到原图）+ 图片查看支持整体缩小松手回弹
-- [x] v0.5.8 播放器/图片查看 UX 与发布包：**播放器**「用其他应用打开」移到右上角、单击画面切换控制条显隐、画面上左右滑动微调进度（带预览）、按视频宽高比自动决定全屏方向、降级到软解时弹提示（不再常驻显示解码档位）；**播放抢断**统一经 `core/media_focus.dart` 申请音频焦点——音乐/语音条与视频一样会让系统其他媒体暂停、应用内视频↔语音互斥、用户暂停/被夺焦后不抢回；**图片查看**可整体缩小到原图 50%（分辨率感知的缩小下限）；**CI 分 ABI 发布**（`--split-per-abi` 产出 arm64-v8a / x86_64 两个架构专用包，替代通用包）；清理过时的 fvp/libffmpeg 体积文档与失效的解码器设置文案；**聊天会话长按快捷菜单**（标记已读 / 改本地备注 / 复制邀请磁力链 / 重新同步 / 屏蔽对方 / 退群，无需进入会话）
-- [x] v0.5.9 实机问题与播放器补强：**崩溃 dump 落盘**（Dart `crash_dart.log` + Rust `crash_rust.log`，含堆栈/线程/面包屑，切后台闪退可取证）；**播放器字幕适配**（内嵌字幕轨选择 + 加载外部 srt/ass/vtt）与 PiliPlus 式手势补全（双击中间播放/暂停、双击左右 ±10s 可在设置开关、长按临时倍速且倍率可调、左/右竖滑亮度/音量带 OSD、锁定控制、画面填充切换、默认播放倍速）；设置页新增「播放」分区；**消息长按改 QQ 式**（选择光标 + 悬浮浮窗）
-- [x] v0.5.10 聊天模块 UX 雕琢：**设置**手动切换语言（跟随系统/简中/English）、「聊天背景图」更名「背景图」、不透明度数值移入滑杆行；**会话长按**改悬浮弹挂菜单（私聊不显示改群名/退群）；**消息长按** QQ 式重做（文字选择手柄 + 锚定消息卡片下/上方的悬浮操作浮窗：复制/回复｜私聊/屏蔽｜ID/验签，分隔符+短标签+宽度自适应）；**左滑消息**震动并引用回复（输入框引用条）；**长按头像**插入 @、输入 @ 弹出群员选单；**播放器**修复控制条遮罩阻挡点击/锁定失效/单指拖动被挡的问题
-- [x] v0.5.11 播放器手势根治：画面不再挂手势，改为 Stack 中位于画面之上的不透明手势层（屏蔽 media_kit 内嵌 InteractiveViewer 的识别器竞争），修复「UI 显示时单指手势全失效/需双指」；控制条限制为有限高度条修复遮罩吸点击；音量改 Dart 自持增量修复「调下去弹回 100%」；详见 docs/VIDEO-PLAYBACK.md §10
-- [x] ~~v0.5.12 播放器输入层彻底重写~~（**已撤回**：实机布局回归，release/tag 已删除）
-- [x] v0.5.13 播放器「遮罩」根治：控制条改**纯控件**（去掉渐变 Container 与 AppBar 材质背景——带装饰/材质的条带会在 UI 显示时吸收整条指针，即用户看到的上半屏黑色渐变遮罩）；返回键改显式按钮；阴影移除；详见 docs/VIDEO-PLAYBACK.md §12
-- [x] v0.5.14 修复 0.5.12/0.5.13 的进度条居中回归（恢复控制条 `Column(mainAxisSize.min)` 包裹，位置回到 0.5.11 且仍无遮罩/阴影）；**CI 停止 emulator-smoke**（门禁：detect/core-test/app-analyze/native-smoke/android/release）
-- [x] ~~v0.5.15 双指缩放/平移~~（**已移除**：难触发易误操）+ 音量默认系统音量（可切播放器音量）+ 字幕移除 #auto/#no 伪轨
-- [x] v0.5.16 **移除双指缩放/平移**（难触发易误操）；**自发种子一律原地做种**（删除 cache 拷贝进下载目录的例外）且 **kind 4 独立 scope**（种子页单独成组「我发布的做种」，不再藏在聊天附件开关后）；详见 docs/VIDEO-PLAYBACK.md §15
-- [x] v0.5.17 **引用回复重做（QQ 式）**：左滑消息时卡片**跟手左移**（让位处显示回复图标、松手回弹），过阈值松手进入回复；回复不再把被引用消息以 `> @昵称: …` 截断复制进正文——协议新增 `r` 字段（被引用消息 ID，旧客户端前向兼容），接收端在气泡内渲染**引用卡片**（作者+时间+整条原消息：文本原文、图片缩略图、其他附件图标+文件名），点卡片跳转原消息；**CI 签名改用仓库 secrets**（`KEYSTORE_BASE64 / KEYSTORE_PASSWORD / KEY_ALIAS / KEY_PASSWORD` 四个 actions secrets/variables，CI 内 keytool 预校验口令与别名；缺失时回退仓内公开密钥）
-- [x] v0.5.18 **删除仓内公开签名密钥**：CI 签名唯一来源为仓库 secrets（PKCS12 单口令归一化 + env 传凭据）；fork PR 无 secrets 时用一次性临时密钥构建（告警非发布签名）；本地开发经 `scripts/make-dev-keystore.sh` 自备 gitignored 密钥；Gradle 无配置时明确报错指引
-- [x] v0.5.19 **输入体验三件**：回复引用条**移入输入框内**（输入面板顶行圆角条，不再悬在输入栏上方）；**会话草稿**（仅内存：切会话/返回保留输入文本+回复引用，会话列表预览行按 QQ 式显示 橙色铅笔+草稿文本）；会话列表预览行**高亮提示**：有人@我（@ 图标）/ 有人回复了我（↩ 图标）——基于未读消息实时计算（core `chat.groups` 新增 `mention_unread` / `reply_unread`），已读后消失；详见 e2e `e2e_list_mention_reply_marks`
-- [x] v0.5.20 **同步缺口真实化 + 文案/CI 修整**：会话列表/群详情的「缺失历史」改为**真实缺口**（peers 在 ext Heads 通告中附带自己已存消息总数 `n`，缺失 = max(已知缺失队列, 对端总数−本地总数)，旧客户端忽略新键前向兼容；此前只显示"当前已知缺失 id 数"，父链未展开时严重低估）；仅有回复引用的空草稿在列表显示 **[回复]**（不再是「草稿」）；「修改群名」全部改为「**修改备注**」（群名本就是纯本地备注）；**CI 发布不再重复构建**：tag run 跳过 android job，release job 直接复用该 commit 分支 run 上传的 APK 工件（跨 run 下载），找不到则报错指引先推分支
-- [x] v0.5.21 **发送可靠性 + 列表/气泡打磨**：根治 `too many parents` 发送失败——DAG 插入不再把"迟到的父消息（已有存储子消息引用它）"计为头（缺口同步曾使头集合膨胀到 >8），且发送时父链接取**最新 8 个头**（`Dag::parent_set`，v0.5.21 起不再考虑旧客户端兼容）；会话列表 [有人@我]/[有新回复] 改为**高亮色方括号文本**+预览（不再用图标）；带引用卡片的气泡**宽度适应内容**（IntrinsicWidth + stretch，引用卡片铺满气泡宽）；版本 0.5.21+26
-- [x] v0.5.22 **交互修整**：左滑回复触发距离减半（-70→-35px，位移上限 -44px）；会话列表右下角「+ 种子群聊」悬浮标签移除（加入口迁至 AppBar 图标）；「回到底部」按钮不再悬浮遮挡发送键，改为置于输入栏上方右对齐小圆钮；版本 0.5.22+27
-- [x] v0.5.23 **已读链路即时化 + 回底按钮原生化**：`chat.mark_read` 增补 `chat.group_updated` 事件、会话页打开期间新消息即时已读 → 会话列表未读气泡与主页页签徽标**立即**消失（此前仅靠 10s/12s 轮询，观感消失较慢）；「回到底部」改为消息列表 Stack 内的**原生悬浮覆盖层**（列表右下角、输入栏之上，带 elevation，不占布局行、不遮发送键）；版本 0.5.23+28
-- [x] v0.5.24 **回底/引用跳转/崩溃取证三修**：回到底部改为 jump + ~1s settle 循环（异步布局增长曾使落点停在真底部上方约一条消息处），用户主动滚动即取消 pin；引用跳转修复「窗口内未构建行」误报未同步——按索引比例估偏 + 逐环外扩探测构建后再 ensureVisible；崩溃取证补盲：Rust 侧 SIGSEGV/SIGABRT/SIGBUS/SIGILL/SIGFPE 信号处理器写 crash_rust.log（async-signal-safe，随后恢复默认处理保留 tombstone），Dart 侧 session.live 标记检测非干净退出，下次启动补写 crash_dart.log 并附上会话 app.log 尾部；版本 0.5.24+29
-- [x] v0.5.28 **群聊同步韧性 + 诊断**：新增不依赖 DHT 的主动同步路径（周期性与手动刷新时向 swarm 通告 heads，领先的对端经 ext 直推缺失 blob——真机故障路径下唯一被证明可用的通道）；手动下拉刷新重置 fetch 退避并立刻重排队；scheduler/event-loop 每个 tick 加 catch_unwind 隔离（单 tick panic 不再永久杀死主动同步）；同步链路 info 级诊断日志（poll/失败退避/ingest/ext heads）+ scheduler 心跳；版本 0.5.28+33
-- [x] v0.5.27 **事件无关自愈 + 徽标即时化 + 模拟器验证**：附件发送进度条增加不依赖事件的完成自检（自家附件消息入库即视为已发送，≤3s 刷新，worker 增 core 日志取证）；接收下载完成后气泡自动刷新为预览（download-watch + bt.updated + 3s 轮询下限），无需退出重进会话；聊天页签徽标 12s→3s 轮询下限 + 回前台即时刷新（PiliPlus 式：事件 + 生命周期 + 短轮询），会话列表 10s→4s；新增 emulator-verify CI（真 libtorrent + 真 FFI 事件路径跑集成测试，含发送方内联图片与回底按钮语义截图，非阻断+产物上传）；版本 0.5.27+32
-- [x] v0.5.26 **附件两修 + 回底按钮重构**：发送方自己的图片/视频不再显示为「通过 BT 下载」卡片（就地做种的本地解析：kv `att_src:<ih>` 记录源路径 + kind-4 行 save_path 回退，引用卡片同修）；附件发送进度条不再可能永久停留「正在计算文件哈希…」（worker 线程 catch_unwind 必报终止相位 + Dart 侧 90s 看门狗兜底）；「回到底部」按钮改为**仅用户朝底部方向滑动时出现**（翻历史/程序跳转不触发，松手保持可点，回到底部或再次翻历史即隐藏），并按需求改为 50% 半透明；版本 0.5.26+31
-- [x] v0.5.25 **聊天列表改"纸带模型"**：回退 v0.5.24 的 settle 补丁；根因是顶锚定懒列表的 `maxScrollExtent` 为**估算值**（未构建中段按已构建均值外推），进入会话与回底跳转都落在估算底、真实尾部布局后更深 → 两者停在同一错误高度。改为 `reverse: true` 底锚定：offset 0 即真底部（进入/回底**构造性精确**），历史如纸带在固定针头(视口)下方向上延伸；非贴底时按 extent 增长量补偿阅读位置；引用跳转估算改用自底向上索引；版本 0.5.25+30
-- [ ] 路线图：**LLM 内容过滤** —— 用 LLM 直接判断一条消息是否应被屏蔽（语义级判定，取代当前 包含/等于/正则 的文本匹配；不是"用 LLM 生成过滤脚本"）
-- [ ] 路线图：接入 **PBH（Peer Black Hole / IBD peer 黑名单）** 屏蔽恶意与吸血 peer
-- [ ] 路线图：**桌面端适配** —— Windows / Linux / macOS 三平台（核心是纯 Rust + libtorrent，已有 `build-linux-native.sh` 主机构建链；主要工作在桌面窗口工程、托盘与文件关联）
-- [ ] v0.5+：前台服务保活、消息搜索、armeabi-v7a、目录做种
-
-## 许可与第三方组件
-
-**签名**：v0.5.18 起**仓库不再提交任何签名密钥**。CI 一律使用仓库 secrets
-（`KEYSTORE_BASE64 / KEYSTORE_PASSWORD / KEY_ALIAS / KEY_PASSWORD` 四个
-actions secrets）解码并**归一化**后签名（PKCS12 单口令语义：key 口令折为
-store 口令；凭证经环境变量传给 Gradle，不落 Properties 明文密码文件的风险
-面）；secrets 缺失（如 fork PR）时 CI 用一次性临时密钥构建并明确告警"非发布
-签名"。本地开发 release 构建请运行 `scripts/make-dev-keystore.sh` 生成个人
-gitignored 密钥 + `app/android/key.properties`（仅开发用）。注意签名历史：
-v0.5.4 与 v0.5.17 各换签一次——从 ≤v0.5.16 升级需**最后一次**卸载重装，
-v0.5.17 起均为同一把 secrets 密钥，可直接覆盖安装。
-
-本仓库代码为 **Unlicense**（公共领域）。分发的 APK 动态链接以下第三方运行时组件，
-各按其原许可证授权（LGPL 组件以动态库形式链接，用户可替换）：
-
-| 组件 | 许可证 | 用途 |
-|------|--------|------|
-| Flutter / Dart | BSD-3-Clause | UI 框架 |
-| libtorrent | BSD-3-Clause | BT/DHT 引擎（静态链入 libbitte_core.so） |
-| OpenSSL | Apache-2.0 | TLS/加密（静态链入 libbitte_core.so） |
-| Boost | BSL-1.0 | C++ JSON/工具（静态链入 libbitte_core.so） |
-| media_kit / media_kit_video | MIT | 播放器 Dart 层 |
-| mpv / libmpv、FFmpeg | LGPL-2.1+ | 音视频解码渲染（libmpv.so 动态链接；源码见上游 mpv-player/mpv、FFmpeg/FFmpeg） |
-| Rust crates（ed25519-dalek、rusqlite 等） | MIT / Apache-2.0 | 核心加密与存储 |
-
-视频栈架构参考了开源社区在同类硬件上的成熟实践（PiliPala 系应用，其自身为
-GPL-3.0，本项目未复制其代码，仅使用同为 MIT 的 media_kit 上游/fork 包与
-公开的功能性配置）。
+Unlicense（public domain），见 `LICENSE`。

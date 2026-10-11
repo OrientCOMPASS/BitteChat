@@ -47,16 +47,10 @@ class AppLocalizationsZh extends AppLocalizations {
       '一个种子就是一个群聊。\n添加任意 BT 种子（磁力链接 / info hash / 种子文件），即可进入它的聊天室，与同一 swarm 里的其他 BitTorrent 用户交流。';
 
   @override
-  String get createGroup => '创建群聊';
-
-  @override
   String get joinGroup => '加入群聊';
 
   @override
   String get groupName => '群名称';
-
-  @override
-  String get groupNameHint => '例如：BT 爱好者';
 
   @override
   String get create => '创建';
@@ -86,34 +80,10 @@ class AppLocalizationsZh extends AppLocalizations {
   String get paste => '粘贴';
 
   @override
-  String get copyLink => '复制链接';
-
-  @override
   String get done => '完成';
 
   @override
   String get inviteMagnet => '邀请磁力链接';
-
-  @override
-  String get magnetHint => 'magnet:?xt=urn:btih:...';
-
-  @override
-  String get alreadyInGroup => '已经在该群中';
-
-  @override
-  String get fetchingManifest => '正在从 BT 网络获取群清单……需要群内有成员在线做种';
-
-  @override
-  String get groupCreated => '群聊已创建 🎉';
-
-  @override
-  String get inviteHint => '把邀请链接发给朋友（对方需能连上你或任一在线成员的种子网络）';
-
-  @override
-  String get joinViaPaste => '粘贴或扫描他人分享的邀请链接';
-
-  @override
-  String get createGroupDesc => '生成邀请磁力链接，分享给朋友';
 
   @override
   String get online => '在线';
@@ -130,9 +100,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String historySynced(Object n) {
     return '历史已同步 · $n 节点在线';
   }
-
-  @override
-  String get dmEncrypted => '端到端加密私聊（X25519 + ChaCha20-Poly1305）';
 
   @override
   String get resync => '重新同步';
@@ -180,12 +147,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get anonymous => '匿名';
 
   @override
-  String get copyMessage => '复制消息内容';
-
-  @override
-  String get copyMessageId => '复制消息 ID（SHA-1）';
-
-  @override
   String get copied => '已复制';
 
   @override
@@ -193,9 +154,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get copiedInvite => '已复制：对方添加这个种子即可进入同一群聊';
-
-  @override
-  String get signatureInfo => '签名信息';
 
   @override
   String sigDetail(Object pk, Object state) {
@@ -210,9 +168,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get blockAuthor => '屏蔽该作者';
-
-  @override
-  String get blockAuthorHint => '加入过滤规则（可在设置中管理）';
 
   @override
   String blockedAuthor(Object name) {
@@ -253,9 +208,6 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get sysDmInvite => '发来了私聊邀请（自动加入）';
-
-  @override
   String sysGeneric(Object code, Object detail) {
     return '[系统] $code $detail';
   }
@@ -264,13 +216,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get sysMsg => '系统消息';
 
   @override
-  String get chunkSyncing => '〔长消息分块同步中…〕';
-
-  @override
   String get renameGroup => '修改群名';
-
-  @override
-  String get renameBroadcast => '以签名系统消息广播给全群';
 
   @override
   String get leaveGroup => '退出群聊';
@@ -286,9 +232,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get members => '在线成员';
-
-  @override
-  String get manifestTorrent => '清单种子';
 
   @override
   String get msgCount => '消息总数';
@@ -689,9 +632,6 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get editName => '昵称';
-
-  @override
   String pubkeyLabel(Object pk) {
     return '公钥 $pk';
   }
@@ -746,34 +686,7 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get errDmSelf => '不能和自己私聊';
-
-  @override
-  String get errNoKeyInfo => '还没有对方的密钥信息：先在同群聊里收到 TA 至少一条消息';
-
-  @override
-  String get errNameLen => '昵称长度需在 1..32 字符';
-
-  @override
-  String get errGroupNameLen => '群名长度需在 1..96 字节';
-
-  @override
-  String get errUrlScheme => 'URL 必须以 http(s):// 开头';
-
-  @override
-  String get errManifestProtected => '这是群聊清单种子，请通过聊天页退群来移除';
-
-  @override
-  String get errNoResource => '该条目没有可下载的资源';
-
-  @override
-  String get errTextEmpty => '空消息或过长（≤32KB）';
-
-  @override
   String get fabGroup => '种子群聊';
-
-  @override
-  String get inviteLink => '邀请链接（频道磁力）';
 
   @override
   String get copyInviteLink => '复制磁力邀请链接';
@@ -788,16 +701,10 @@ class AppLocalizationsZh extends AppLocalizations {
   String get identitiesHint => '每个昵称绑定一把私钥：改名=新身份。删除后私钥不可恢复。';
 
   @override
-  String get currentIdentity => '当前身份';
-
-  @override
   String get createIdentity => '新建身份';
 
   @override
   String get newIdentityName => '新身份昵称';
-
-  @override
-  String get createIdentityWarn => '将生成全新的 Ed25519 私钥：新消息以新身份署名，旧身份历史保留。';
 
   @override
   String get switchIdentity => '切换身份';
@@ -841,15 +748,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get activeMark => '使用中';
-
-  @override
-  String get errIdentityActive => '不能删除正在使用的身份';
-
-  @override
-  String get errIdentityLast => '至少保留一个身份';
-
-  @override
-  String get errNameLen2 => '昵称长度需在 1..32 字符';
 
   @override
   String get setAvatar => '更换头像';
@@ -902,13 +800,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get leaveRoomHint => '只解除群聊绑定，种子任务保留在种子页；可同时删除本地聊天记录（重置哈希链）。';
 
   @override
-  String get network => '网络';
-
-  @override
   String get defaultTrackers => '默认 Tracker 列表';
-
-  @override
-  String get defaultTrackersNone => '未设置（仅 DHT/PEX 发现节点）';
 
   @override
   String defaultTrackersSet(Object n) {
@@ -957,9 +849,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get wallpaperEditHint => '双指缩放与拖动调整构图；下方滑杆实时预览最终效果';
 
   @override
-  String get wallpaperLoadFail => '图片加载失败';
-
-  @override
   String get exportLogs => '导出日志';
 
   @override
@@ -983,15 +872,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get renameLocalNote => '备注仅自己可见，不会广播';
 
   @override
-  String get dmRequestTitle => '私聊请求';
-
-  @override
   String dmRequestBody(Object name) {
     return '$name 请求与你建立端到端加密私聊';
   }
-
-  @override
-  String get dmRequestBodyAnonymous => '有用户请求与你建立端到端加密私聊';
 
   @override
   String get dmRejectedByPeer => '对方婉拒了私聊请求';

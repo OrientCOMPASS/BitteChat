@@ -170,12 +170,6 @@ abstract class AppLocalizations {
   /// **'一个种子就是一个群聊。\n添加任意 BT 种子（磁力链接 / info hash / 种子文件），即可进入它的聊天室，与同一 swarm 里的其他 BitTorrent 用户交流。'**
   String get noGroupsHint;
 
-  /// No description provided for @createGroup.
-  ///
-  /// In zh, this message translates to:
-  /// **'创建群聊'**
-  String get createGroup;
-
   /// No description provided for @joinGroup.
   ///
   /// In zh, this message translates to:
@@ -187,12 +181,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'群名称'**
   String get groupName;
-
-  /// No description provided for @groupNameHint.
-  ///
-  /// In zh, this message translates to:
-  /// **'例如：BT 爱好者'**
-  String get groupNameHint;
 
   /// No description provided for @create.
   ///
@@ -248,12 +236,6 @@ abstract class AppLocalizations {
   /// **'粘贴'**
   String get paste;
 
-  /// No description provided for @copyLink.
-  ///
-  /// In zh, this message translates to:
-  /// **'复制链接'**
-  String get copyLink;
-
   /// No description provided for @done.
   ///
   /// In zh, this message translates to:
@@ -265,48 +247,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'邀请磁力链接'**
   String get inviteMagnet;
-
-  /// No description provided for @magnetHint.
-  ///
-  /// In zh, this message translates to:
-  /// **'magnet:?xt=urn:btih:...'**
-  String get magnetHint;
-
-  /// No description provided for @alreadyInGroup.
-  ///
-  /// In zh, this message translates to:
-  /// **'已经在该群中'**
-  String get alreadyInGroup;
-
-  /// No description provided for @fetchingManifest.
-  ///
-  /// In zh, this message translates to:
-  /// **'正在从 BT 网络获取群清单……需要群内有成员在线做种'**
-  String get fetchingManifest;
-
-  /// No description provided for @groupCreated.
-  ///
-  /// In zh, this message translates to:
-  /// **'群聊已创建 🎉'**
-  String get groupCreated;
-
-  /// No description provided for @inviteHint.
-  ///
-  /// In zh, this message translates to:
-  /// **'把邀请链接发给朋友（对方需能连上你或任一在线成员的种子网络）'**
-  String get inviteHint;
-
-  /// No description provided for @joinViaPaste.
-  ///
-  /// In zh, this message translates to:
-  /// **'粘贴或扫描他人分享的邀请链接'**
-  String get joinViaPaste;
-
-  /// No description provided for @createGroupDesc.
-  ///
-  /// In zh, this message translates to:
-  /// **'生成邀请磁力链接，分享给朋友'**
-  String get createGroupDesc;
 
   /// No description provided for @online.
   ///
@@ -331,12 +271,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'历史已同步 · {n} 节点在线'**
   String historySynced(Object n);
-
-  /// No description provided for @dmEncrypted.
-  ///
-  /// In zh, this message translates to:
-  /// **'端到端加密私聊（X25519 + ChaCha20-Poly1305）'**
-  String get dmEncrypted;
 
   /// No description provided for @resync.
   ///
@@ -416,18 +350,6 @@ abstract class AppLocalizations {
   /// **'匿名'**
   String get anonymous;
 
-  /// No description provided for @copyMessage.
-  ///
-  /// In zh, this message translates to:
-  /// **'复制消息内容'**
-  String get copyMessage;
-
-  /// No description provided for @copyMessageId.
-  ///
-  /// In zh, this message translates to:
-  /// **'复制消息 ID（SHA-1）'**
-  String get copyMessageId;
-
   /// No description provided for @copied.
   ///
   /// In zh, this message translates to:
@@ -445,12 +367,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'已复制：对方添加这个种子即可进入同一群聊'**
   String get copiedInvite;
-
-  /// No description provided for @signatureInfo.
-  ///
-  /// In zh, this message translates to:
-  /// **'签名信息'**
-  String get signatureInfo;
 
   /// No description provided for @sigDetail.
   ///
@@ -475,12 +391,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'屏蔽该作者'**
   String get blockAuthor;
-
-  /// No description provided for @blockAuthorHint.
-  ///
-  /// In zh, this message translates to:
-  /// **'加入过滤规则（可在设置中管理）'**
-  String get blockAuthorHint;
 
   /// No description provided for @blockedAuthor.
   ///
@@ -530,12 +440,6 @@ abstract class AppLocalizations {
   /// **'📛 {name} 将群名改为「{detail}」'**
   String sysRename(Object name, Object detail);
 
-  /// No description provided for @sysDmInvite.
-  ///
-  /// In zh, this message translates to:
-  /// **'发来了私聊邀请（自动加入）'**
-  String get sysDmInvite;
-
   /// No description provided for @sysGeneric.
   ///
   /// In zh, this message translates to:
@@ -548,23 +452,11 @@ abstract class AppLocalizations {
   /// **'系统消息'**
   String get sysMsg;
 
-  /// No description provided for @chunkSyncing.
-  ///
-  /// In zh, this message translates to:
-  /// **'〔长消息分块同步中…〕'**
-  String get chunkSyncing;
-
   /// No description provided for @renameGroup.
   ///
   /// In zh, this message translates to:
   /// **'修改群名'**
   String get renameGroup;
-
-  /// No description provided for @renameBroadcast.
-  ///
-  /// In zh, this message translates to:
-  /// **'以签名系统消息广播给全群'**
-  String get renameBroadcast;
 
   /// No description provided for @leaveGroup.
   ///
@@ -595,12 +487,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'在线成员'**
   String get members;
-
-  /// No description provided for @manifestTorrent.
-  ///
-  /// In zh, this message translates to:
-  /// **'清单种子'**
-  String get manifestTorrent;
 
   /// No description provided for @msgCount.
   ///
@@ -1364,12 +1250,6 @@ abstract class AppLocalizations {
   /// **'{n} 任务'**
   String tasksCount(Object n);
 
-  /// No description provided for @editName.
-  ///
-  /// In zh, this message translates to:
-  /// **'昵称'**
-  String get editName;
-
   /// No description provided for @pubkeyLabel.
   ///
   /// In zh, this message translates to:
@@ -1442,65 +1322,11 @@ abstract class AppLocalizations {
   /// **'{field} {mode} “{value}”'**
   String filterRuleDesc(Object field, Object mode, Object value);
 
-  /// No description provided for @errDmSelf.
-  ///
-  /// In zh, this message translates to:
-  /// **'不能和自己私聊'**
-  String get errDmSelf;
-
-  /// No description provided for @errNoKeyInfo.
-  ///
-  /// In zh, this message translates to:
-  /// **'还没有对方的密钥信息：先在同群聊里收到 TA 至少一条消息'**
-  String get errNoKeyInfo;
-
-  /// No description provided for @errNameLen.
-  ///
-  /// In zh, this message translates to:
-  /// **'昵称长度需在 1..32 字符'**
-  String get errNameLen;
-
-  /// No description provided for @errGroupNameLen.
-  ///
-  /// In zh, this message translates to:
-  /// **'群名长度需在 1..96 字节'**
-  String get errGroupNameLen;
-
-  /// No description provided for @errUrlScheme.
-  ///
-  /// In zh, this message translates to:
-  /// **'URL 必须以 http(s):// 开头'**
-  String get errUrlScheme;
-
-  /// No description provided for @errManifestProtected.
-  ///
-  /// In zh, this message translates to:
-  /// **'这是群聊清单种子，请通过聊天页退群来移除'**
-  String get errManifestProtected;
-
-  /// No description provided for @errNoResource.
-  ///
-  /// In zh, this message translates to:
-  /// **'该条目没有可下载的资源'**
-  String get errNoResource;
-
-  /// No description provided for @errTextEmpty.
-  ///
-  /// In zh, this message translates to:
-  /// **'空消息或过长（≤32KB）'**
-  String get errTextEmpty;
-
   /// No description provided for @fabGroup.
   ///
   /// In zh, this message translates to:
   /// **'种子群聊'**
   String get fabGroup;
-
-  /// No description provided for @inviteLink.
-  ///
-  /// In zh, this message translates to:
-  /// **'邀请链接（频道磁力）'**
-  String get inviteLink;
 
   /// No description provided for @copyInviteLink.
   ///
@@ -1526,12 +1352,6 @@ abstract class AppLocalizations {
   /// **'每个昵称绑定一把私钥：改名=新身份。删除后私钥不可恢复。'**
   String get identitiesHint;
 
-  /// No description provided for @currentIdentity.
-  ///
-  /// In zh, this message translates to:
-  /// **'当前身份'**
-  String get currentIdentity;
-
   /// No description provided for @createIdentity.
   ///
   /// In zh, this message translates to:
@@ -1543,12 +1363,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'新身份昵称'**
   String get newIdentityName;
-
-  /// No description provided for @createIdentityWarn.
-  ///
-  /// In zh, this message translates to:
-  /// **'将生成全新的 Ed25519 私钥：新消息以新身份署名，旧身份历史保留。'**
-  String get createIdentityWarn;
 
   /// No description provided for @switchIdentity.
   ///
@@ -1615,24 +1429,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'使用中'**
   String get activeMark;
-
-  /// No description provided for @errIdentityActive.
-  ///
-  /// In zh, this message translates to:
-  /// **'不能删除正在使用的身份'**
-  String get errIdentityActive;
-
-  /// No description provided for @errIdentityLast.
-  ///
-  /// In zh, this message translates to:
-  /// **'至少保留一个身份'**
-  String get errIdentityLast;
-
-  /// No description provided for @errNameLen2.
-  ///
-  /// In zh, this message translates to:
-  /// **'昵称长度需在 1..32 字符'**
-  String get errNameLen2;
 
   /// No description provided for @setAvatar.
   ///
@@ -1730,23 +1526,11 @@ abstract class AppLocalizations {
   /// **'只解除群聊绑定，种子任务保留在种子页；可同时删除本地聊天记录（重置哈希链）。'**
   String get leaveRoomHint;
 
-  /// No description provided for @network.
-  ///
-  /// In zh, this message translates to:
-  /// **'网络'**
-  String get network;
-
   /// No description provided for @defaultTrackers.
   ///
   /// In zh, this message translates to:
   /// **'默认 Tracker 列表'**
   String get defaultTrackers;
-
-  /// No description provided for @defaultTrackersNone.
-  ///
-  /// In zh, this message translates to:
-  /// **'未设置（仅 DHT/PEX 发现节点）'**
-  String get defaultTrackersNone;
 
   /// No description provided for @defaultTrackersSet.
   ///
@@ -1820,12 +1604,6 @@ abstract class AppLocalizations {
   /// **'双指缩放与拖动调整构图；下方滑杆实时预览最终效果'**
   String get wallpaperEditHint;
 
-  /// No description provided for @wallpaperLoadFail.
-  ///
-  /// In zh, this message translates to:
-  /// **'图片加载失败'**
-  String get wallpaperLoadFail;
-
   /// No description provided for @exportLogs.
   ///
   /// In zh, this message translates to:
@@ -1868,23 +1646,11 @@ abstract class AppLocalizations {
   /// **'备注仅自己可见，不会广播'**
   String get renameLocalNote;
 
-  /// No description provided for @dmRequestTitle.
-  ///
-  /// In zh, this message translates to:
-  /// **'私聊请求'**
-  String get dmRequestTitle;
-
   /// No description provided for @dmRequestBody.
   ///
   /// In zh, this message translates to:
   /// **'{name} 请求与你建立端到端加密私聊'**
   String dmRequestBody(Object name);
-
-  /// No description provided for @dmRequestBodyAnonymous.
-  ///
-  /// In zh, this message translates to:
-  /// **'有用户请求与你建立端到端加密私聊'**
-  String get dmRequestBodyAnonymous;
 
   /// No description provided for @dmRejectedByPeer.
   ///

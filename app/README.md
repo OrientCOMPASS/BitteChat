@@ -20,6 +20,6 @@ flutter run
 
 ## 与 Rust 核心的边界
 
-- `lib/core/bridge.dart`：dart:ffi 绑定 `libbitte_core.so`（bc_init/bc_call/bc_free/bc_shutdown + 事件回调）
+- `lib/core/bridge.dart`：dart:ffi 绑定 `libbitte_core.so`（bc_init/bc_call/bc_free/bc_shutdown；事件经 sys.drain_events 拉取）
 - `lib/core/api.dart`：类型化 API 包装与事件流
 - 所有命令/事件均为 JSON；二进制用 hex/base64
