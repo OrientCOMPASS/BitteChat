@@ -2,7 +2,12 @@
 //
 // Two channels:
 //   * bc_call(method, jsonParams) -> jsonResult   (synchronous commands)
-//   * event callback -> Stream<String>            (asynchronous UI events)
+//   * sys.drain_events -> Stream<String>           (asynchronous UI events)
+//
+// v0.5.27: events are PULLED on a 200 ms timer. The old NativeCallable push
+// callback never delivered on Android devices/emulator (events silently
+// vanished), which made every "live" UI behaviour depend on slow poll
+// fallbacks. Pulling the same queue through bc_call is boring and reliable.
 //
 // The native library only exists on Android builds produced by CI; on host
 // platforms (flutter test / desktop) [BitteBridge.tryOpen] returns null and
@@ -45,11 +50,6 @@ typedef _ShutdownDart = void Function(int);
 typedef _VersionNative = ffi.Pointer<Utf8> Function();
 typedef _VersionDart = ffi.Pointer<Utf8> Function();
 
-/// Native (C) signature of the event callback. The Dart-side closure uses
-/// `(Pointer<Void>, Pointer<Utf8>, int)` via NativeCallable's conversion.
-typedef _EventNative = ffi.Void Function(
-    ffi.Pointer<ffi.Void>, ffi.Pointer<Utf8>, ffi.Uint32);
-
 class BridgeException implements Exception {
   BridgeException(this.message);
   final String message;
@@ -61,12 +61,10 @@ class BitteBridge {
   /// Why the native library failed to load (null when it loaded).
   static String? lastOpenError;
 
-  BitteBridge._(
-      this._lib, this._handle, this._callable, this._controller, this.events);
+  BitteBridge._(this._lib, this._handle, this._controller, this.events);
 
   final ffi.DynamicLibrary _lib;
   final int _handle;
-  final ffi.NativeCallable<_EventNative> _callable;
   final StreamController<String> _controller;
 
   /// Raw JSON event strings pushed by the core.
@@ -102,29 +100,15 @@ class BitteBridge {
     try {
       final lib = _openLib();
       final controller = StreamController<String>.broadcast();
-      late final ffi.NativeCallable<_EventNative> callable;
-      callable = ffi.NativeCallable<_EventNative>.listener(
-          (ffi.Pointer<ffi.Void> ctx, ffi.Pointer<Utf8> json, int len) {
-        if (json == ffi.nullptr) return;
-        final bytes = json.cast<ffi.Uint8>().asTypedList(len);
-        try {
-          controller.add(utf8.decode(bytes));
-        } catch (_) {
-          // ignore malformed events
-        }
-      });
-
       final init = lib.lookupFunction<_InitNative, _InitDart>('bc_init');
       final cfg = jsonEncode({'data_dir': dataDir, 'listen_port': listenPort});
       final cfgPtr = cfg.toNativeUtf8();
-      final handle = init(cfgPtr, callable.nativeFunction, ffi.nullptr);
+      final handle = init(cfgPtr, ffi.nullptr, ffi.nullptr);
       calloc.free(cfgPtr);
       if (handle <= 0) {
-        callable.close();
         return null;
       }
-      return BitteBridge._(
-          lib, handle, callable, controller, controller.stream);
+      return BitteBridge._(lib, handle, controller, controller.stream);
     } catch (e) {
       return null;
     }
@@ -158,7 +142,6 @@ class BitteBridge {
 
   Future<void> close() async {
     _shutdown(_handle);
-    _callable.close();
     await _controller.close();
   }
 }

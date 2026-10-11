@@ -1,6 +1,9 @@
 //! `libbitte_core.so` — the C ABI consumed by the Flutter app through
 //! dart:ffi. One global registry of API handles; commands cross the boundary
-//! as JSON strings; events are pushed through a Dart-registered callback.
+//! as JSON strings; events are DRAINED by the Dart side through
+//! `sys.drain_events` (v0.5.27): the old NativeCallable push callback never
+//! delivered on Android devices/emulator (events silently vanished), so the
+//! queue is now pulled on a 200 ms Dart timer instead.
 
 use std::collections::HashMap;
 use std::ffi::{c_char, c_void, CStr, CString};
@@ -21,18 +24,9 @@ struct HandleEntry {
     api: Api,
     /// keeps the engine (and thus the event sender) alive for the handle
     _engine: Arc<dyn BtEngine>,
-    _forwarder: std::thread::JoinHandle<()>,
+    /// UI event queue; drained through `sys.drain_events` (v0.5.27)
+    events: std::sync::mpsc::Receiver<String>,
 }
-
-struct Listener {
-    cb: extern "C" fn(*mut c_void, *const c_char, c_uint),
-    ctx: *mut c_void,
-}
-
-// SAFETY: the Dart side guarantees the callback+ctx stay valid for the
-// lifetime of the isolate that registered them (single-isolate usage).
-unsafe impl Send for Listener {}
-unsafe impl Sync for Listener {}
 
 static REGISTRY: Mutex<Option<HashMap<i64, HandleEntry>>> = Mutex::new(None);
 static NEXT_HANDLE: AtomicI64 = AtomicI64::new(1);
@@ -256,8 +250,10 @@ fn create_engine(cfg: Json) -> EngineResult {
 #[no_mangle]
 pub unsafe extern "C" fn bc_init(
     cfg_json: *const c_char,
-    listener: extern "C" fn(*mut c_void, *const c_char, c_uint),
-    ctx: *mut c_void,
+    // v0.5.27: the push callback is ACCEPTED BUT IGNORED — events are pulled
+    // via sys.drain_events instead (the callback never fired on Android)
+    _listener: extern "C" fn(*mut c_void, *const c_char, c_uint),
+    _ctx: *mut c_void,
 ) -> i64 {
     static PANIC_HOOK: OnceLock<()> = OnceLock::new();
     PANIC_HOOK.get_or_init(|| {
@@ -332,21 +328,6 @@ pub unsafe extern "C" fn bc_init(
         }
     };
 
-    // event forwarder: core channel -> Dart callback
-    let listener = Arc::new(Listener { cb: listener, ctx });
-    let listener2 = listener.clone();
-    let forwarder = match std::thread::Builder::new()
-        .name("bitte-events-out".into())
-        .spawn(move || {
-            while let Ok(s) = events.recv() {
-                let l = &*listener2;
-                (l.cb)(l.ctx, s.as_ptr() as *const c_char, s.len() as c_uint);
-            }
-        }) {
-        Ok(f) => f,
-        Err(_) => return -4,
-    };
-
     let handle = NEXT_HANDLE.fetch_add(1, Ordering::SeqCst);
     with_registry(|map| {
         map.insert(
@@ -354,12 +335,10 @@ pub unsafe extern "C" fn bc_init(
             HandleEntry {
                 api,
                 _engine: engine,
-                _forwarder: forwarder,
+                events,
             },
         )
     });
-    // keep the listener alive as long as the forwarder runs
-    std::mem::forget(listener);
     handle
 }
 
@@ -387,7 +366,14 @@ pub unsafe extern "C" fn bc_call(
             }
         };
         with_registry(|map| match map.get(&handle) {
-            Some(entry) => match entry.api.dispatch(&method, params) {
+            Some(entry) => {
+                // v0.5.27: pull channel for UI events (replaces the push
+                // callback that never delivered on Android)
+                if method == "sys.drain_events" {
+                    let evs: Vec<String> = entry.events.try_iter().collect();
+                    return json!({"ok": true, "events": evs}).to_string();
+                }
+                match entry.api.dispatch(&method, params) {
                 Ok(mut v) => {
                     if let Some(o) = v.as_object_mut() {
                         o.insert("ok".to_string(), json!(true));
@@ -395,7 +381,8 @@ pub unsafe extern "C" fn bc_call(
                     v.to_string()
                 }
                 Err(e) => json_error(&e.to_string()),
-            },
+                }
+            }
             None => json_error("invalid handle"),
         })
     }));

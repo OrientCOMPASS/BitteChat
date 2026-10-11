@@ -35,6 +35,7 @@ class BitteApi extends ChangeNotifier {
   bool get available => bridge != null;
 
   StreamSubscription<String>? _sub;
+  Timer? _drainTimer; // v0.5.27: pulls the core event queue (push cb is gone)
   final _events = StreamController<CoreEvent>.broadcast();
   Stream<CoreEvent> get events => _events.stream;
 
@@ -59,6 +60,22 @@ class BitteApi extends ChangeNotifier {
     final api = BitteApi._(bridge, dir);
     if (bridge != null) {
       api._sub = bridge.events.listen(api._onRawEvent);
+      // v0.5.27: events are DRAINED (the NativeCallable push callback never
+      // delivered on Android). 200 ms keeps every "live" behaviour live.
+      api._drainTimer =
+          Timer.periodic(const Duration(milliseconds: 200), (_) {
+        try {
+          final r = bridge.call('sys.drain_events');
+          final evs = r['events'];
+          if (evs is List) {
+            for (final e in evs) {
+              api._onRawEvent('$e');
+            }
+          }
+        } catch (_) {
+          // draining is best-effort; the next tick retries
+        }
+      });
     }
     _instance = api;
     return api;
