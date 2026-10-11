@@ -315,7 +315,7 @@ jobs:
           flutter pub get
           # Per-ABI release packages instead of one universal APK: every phone
           # downloads only its own architecture (~half the bytes — see
-          # docs/APK-SIZE.md §4 "分 ABI 发布"). Restricted to the ABIs we build
+          # split-per-ABI release policy). Restricted to the ABIs we build
           # the native core for (arm64-v8a + x86_64); the gradle abiFilters +
           # jniLibs excludes keep armeabi-v7a engine libs out of the packages.
           flutter build apk --release --split-per-abi \
