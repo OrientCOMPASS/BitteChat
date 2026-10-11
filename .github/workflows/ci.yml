@@ -162,6 +162,12 @@ jobs:
           restore-keys: |
             native-${{ env.NATIVE_CACHE_V }}-${{ runner.os }}-
 
+      - name: Cache Android NDK (gradle auto-installs r28c otherwise, ~75 s/run)
+        uses: actions/cache@v4
+        with:
+          path: /usr/local/lib/android/sdk/ndk
+          key: ndk-${{ runner.os }}-r28c-v1
+
       - name: Show NDK
         run: |
           echo "NDK=$ANDROID_NDK_LATEST_HOME"
@@ -374,12 +380,57 @@ jobs:
         with:
           name: jnilibs-${{ github.sha }}
           path: app/android/app/src/main/jniLibs
+
+      # ---- incremental caches: pub / gradle / NDK / AVD -------------------
+      - name: Cache pub dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.pub-cache
+          key: pub-${{ runner.os }}-emu-${{ hashFiles('app/pubspec.lock') }}
+          restore-keys: |
+            pub-${{ runner.os }}-emu-
+            pub-${{ runner.os }}-
+      - name: Cache gradle (debug builds)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-emu-${{ hashFiles('app/android/gradle/wrapper/gradle-wrapper.properties', 'app/android/app/build.gradle.kts', 'app/android/build.gradle.kts', 'app/android/settings.gradle.kts') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-emu-
+            gradle-${{ runner.os }}-
+      - name: Cache Android NDK
+        uses: actions/cache@v4
+        with:
+          path: /usr/local/lib/android/sdk/ndk
+          key: ndk-${{ runner.os }}-r28c-v1
+      - name: AVD cache
+        uses: actions/cache@v4
+        id: avd-cache
+        with:
+          path: |
+            ~/.android/avd/*
+            ~/.android/adb*
+          key: avd-${{ runner.os }}-34-google_apis-x86_64-pixel6-v1
+
+      # ---- incremental gate: skip the whole device round when the app /
+      # ---- core sources are byte-identical to a previously green run
+      - name: Restore emulator-green marker
+        uses: actions/cache/restore@v4
+        id: emu-ok
+        with:
+          path: emu-ok-marker.txt
+          key: emu-ok-${{ hashFiles('app/lib/**', 'app/integration_test/**', 'core/**/*.rs', 'app/pubspec.lock', 'app/android/app/build.gradle.kts', 'scripts/versions.env') }}
+
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
           ls -la /dev/kvm
-      - name: Run integration tests on emulator
+      # prime the AVD (incl. boot snapshot) exactly once per cache key
+      - name: Create AVD and generate snapshot for caching
+        if: steps.avd-cache.outputs.cache-hit != 'true'
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
@@ -388,28 +439,38 @@ jobs:
           profile: pixel_6
           ram-size: 4096M
           disable-animations: true
-          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -camera-back none
+          force-avd-creation: false
+          emulator-options: -no-window -gpu swiftshader_indirect -camera-back none -no-audio -no-boot-anim
+          script: echo "AVD primed for caching"
+      - name: Run integration tests on emulator
+        if: steps.emu-ok.outputs.cache-hit != 'true'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          ram-size: 4096M
+          disable-animations: true
+          force-avd-creation: false
+          emulator-options: -no-window -gpu swiftshader_indirect -camera-back none -no-audio -no-boot-anim
           script: |
             adb wait-for-device
             bash scripts/make-dev-keystore.sh
             mkdir -p "$GITHUB_WORKSPACE/shots"
-            cd app && flutter pub get && flutter test integration_test/attach_test.dart -d emulator-5554 --reporter expanded
-            PKG=$(adb shell pm list packages | tr -d '\r' | grep -i bitte | head -1 | cut -d: -f2)
-            echo "app package: $PKG"
-            for f in shot-chat-inline shot-jump-chip; do
-              for loc in "files/$f.png" "/storage/emulated/0/Android/data/$PKG/files/$f.png"; do
-                adb shell "run-as $PKG cat $loc" > "$GITHUB_WORKSPACE/shots/$f.png" 2>/dev/null || true
-                [ -s "$GITHUB_WORKSPACE/shots/$f.png" ] && break
-              done
-              ls -la "$GITHUB_WORKSPACE/shots/$f.png" || true
-            done
-            for f in shot-chat-inline-error.txt shot-jump-chip-error.txt; do
-              adb shell "run-as $PKG cat files/$f" > "$GITHUB_WORKSPACE/shots/$f" 2>/dev/null || true
-              adb shell "run-as $PKG cat /storage/emulated/0/Android/data/$PKG/files/$f" > "$GITHUB_WORKSPACE/shots/ext-$f" 2>/dev/null || true
-            done
+            cd app && flutter pub get && flutter test integration_test/attach_test.dart -d emulator-5554 --reporter expanded && flutter test integration_test/app_test.dart -d emulator-5554 --reporter expanded
+            PKG=$(adb shell pm list packages | tr -d '\r' | grep -i bitte | head -1 | cut -d: -f2); echo "pkg=$PKG"; for f in shot-chat-inline shot-jump-chip; do for loc in "files/$f.png" "/storage/emulated/0/Android/data/$PKG/files/$f.png"; do adb shell "run-as $PKG cat $loc" > "$GITHUB_WORKSPACE/shots/$f.png" 2>/dev/null || true; [ -s "$GITHUB_WORKSPACE/shots/$f.png" ] && break; done; done || true
+            for f in shot-chat-inline-error.txt shot-jump-chip-error.txt; do adb shell "run-as $PKG cat files/$f" > "$GITHUB_WORKSPACE/shots/$f" 2>/dev/null || true; adb shell "run-as $PKG cat /storage/emulated/0/Android/data/$PKG/files/$f" >> "$GITHUB_WORKSPACE/shots/$f" 2>/dev/null || true; done || true
             adb exec-out screencap -p > "$GITHUB_WORKSPACE/shots/after-attach-test.png" || true
-            cd app && flutter test integration_test/app_test.dart -d emulator-5554 --reporter expanded
-            adb exec-out screencap -p > "$GITHUB_WORKSPACE/shots/after-app-test.png" || true
+      - name: Mark emulator verification green for this source hash
+        if: steps.emu-ok.outputs.cache-hit != 'true' && success()
+        run: echo "${{ github.sha }}" > emu-ok-marker.txt
+      - name: Save emulator-green marker
+        if: steps.emu-ok.outputs.cache-hit != 'true' && success()
+        uses: actions/cache/save@v4
+        with:
+          path: emu-ok-marker.txt
+          key: emu-ok-${{ hashFiles('app/lib/**', 'app/integration_test/**', 'core/**/*.rs', 'app/pubspec.lock', 'app/android/app/build.gradle.kts', 'scripts/versions.env') }}
       - name: Upload screenshots
         if: always()
         uses: actions/upload-artifact@v4
