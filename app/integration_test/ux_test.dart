@@ -107,7 +107,7 @@ void main() {
     await tester.pumpAndSettle();
     // submit through the input action (onSubmitted -> onSend): immune to
     // IME-induced layout shifts of the send button in the test environment
-    await tester.testTextInput.receiveTextInputAction(TextInputAction.done);
+    await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
     // dismissed the popup earlier; ensure it is gone now too
     await tester.tapAt(const Offset(8, 8));
