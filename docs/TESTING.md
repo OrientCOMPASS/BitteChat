@@ -37,3 +37,5 @@ tag run 仅跑 release（验证 job 在同 commit 的 main push 已绿，避免�
 - v0.5.13–v0.5.27：模拟器集成测试下线（emulator-smoke 停止），仅宿主机测试门禁；
   期间真机专属故障（Android FFI 事件回调不送达）无法在 CI 发现 —— 本策略的直接教训。
 - v0.5.28：emulator-verify 重建（缓存+门禁+截图），并升级为阻断门禁。
+- 交付清单（DELIVERY-*.md）不入库，随每轮交付单独提供；docs/ 仅保留
+  ARCHITECTURE / PROTOCOL / TESTING。

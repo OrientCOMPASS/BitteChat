@@ -28,13 +28,13 @@ Flutter app (app/)  ──dart:ffi JSON──  libbitte_core.so (Rust)
 - 群 = swarm（房间清单 torrent）+ DHT 可变项头指针；新消息经 swarm 扩展消息直推 +
   DHT 头轮询/抓取泵双通道同步（详见 `docs/ARCHITECTURE.md`、`docs/PROTOCOL.md`）
 - 事件经 `sys.drain_events` 拉取通道送达 UI（200ms），不依赖平台回调语义
-- 视频解码档位回退梯与停摆指纹检测见 `docs/VIDEO-PLAYBACK.md`
+- 视频解码档位回退梯与停摆指纹检测见 `docs/ARCHITECTURE.md`「视频播放」
 
 ## 获取与安装
 
 - GitHub Releases 提供 **split-per-ABI** 包（`arm64-v8a` / `x86_64`），CI release keystore
   签名，可直接覆盖升级；只下自己架构那一半
-- 每轮交付的装机测试清单见 `docs/DELIVERY-<版本>.md`
+- 每轮交付的装机测试清单随交付提供（不入库）
 
 ## 开发构建
 
@@ -69,7 +69,7 @@ cd app && flutter build apk --release --split-per-abi
 ```
 app/        Flutter 应用 + integration_test
 core/       bitte-core(Rust) / bitte-ffi(C ABI) / bitte-bt(C++ libtorrent 封装)
-docs/       ARCHITECTURE / PROTOCOL / VIDEO-PLAYBACK / TESTING / DELIVERY-*
+docs/       ARCHITECTURE / PROTOCOL / TESTING
 scripts/    native 构建、开发 keystore、模拟器截图拉取
 ```
 

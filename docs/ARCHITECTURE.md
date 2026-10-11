@@ -97,7 +97,7 @@ OMX 硬解上会「解码器在跑、一帧都取不出来」，且 mpv 对此**
 触发依据两条：mpv 日志停摆指纹（≥3 行立即降）、首帧看门狗（收到真实 video-params 后
 N 秒内没有 `waitUntilFirstFrameRendered`）。降级 = 重建 Player/VideoController 并恢复
 播放位置；稳定 10s 后把档位写入 `<data>/video_prefs.json`，下次直接起步。
-完整证据链与日志读法见 [VIDEO-PLAYBACK.md](VIDEO-PLAYBACK.md)。
+详见本文「视频播放」一节与 `video_test` 的断言设计。
 
 ### 9. 壁纸缓存与绘制 (app/lib/core/wallpaper.dart)
 壁纸解码结果放在 **app 级单例 LRU 缓存**里，key = 路径 + 内容版本 + 目标宽度 + 模糊 sigma
@@ -148,4 +148,32 @@ CI 缓存 build/android-deps/{downloads,src,deps,build}（key=versions.env+脚�
    （纯 Dart 逻辑：models、桥接解析、日志截断策略、壁纸留白像素填充/边缘延展、
    解码降级链的停摆指纹判定与取景几何，见 `app/test/v056_test.dart`）。
 5. **emulator-verify**（阻断+增量门禁）：模拟器实播真实样片（video_test）、断言事件送达/附件内联/回底语义（attach_test，含截图）、DHT 确认（app_test）；
-   时钟推进（见 [VIDEO-PLAYBACK.md](VIDEO-PLAYBACK.md) §6）。
+   时钟推进（见本文「视频播放」一节）。
+
+## 视频播放：渲染链与解码降级梯
+
+```
+文件 → mpv(lavc/MediaCodec) → hwdec interop → vo/gpu(EGL/GLES)
+     → android.view.Surface(SurfaceTexture) → Flutter ExternalTexture → 屏幕
+```
+
+- Dart 侧 media_kit/media_kit_video（Android：`--vo=gpu --gpu-context=android
+  --opengl-es=yes`，`--wid` 指向 Java 层 Surface 全局引用）。
+- 音频链完全独立（`--ao=opensles,aaudio,audiotrack`）：「黑屏+有声」= 解码/渲染链断，
+  与音频无关，排查时不要混。
+
+解码降级梯（`app/lib/core/video_decode.dart`）——mpv 自己不退，就由 Dart 盯着它退：
+
+| 档 | --hwdec | 路径 |
+|---|---|---|
+| 0 | mediacodec | 零拷贝 interop（绝大多数机型） |
+| 1 | mediacodec-copy | 硬解+回读内存上传纹理（绕开 aimagereader interop） |
+| 2 | no | FFmpeg 软解兜底 |
+
+降级触发（任一命中）：① 日志指纹（aimagereader / acquireLatestImage failed /
+Waiting for frame timed out ≥3 行）；② 首帧看门狗（真实几何到达后 8/10/15s 未首帧）。
+实现要点：降级=重建 Player+Controller（恢复播放位置，拆除延后一个事件循环防死锁，
+`_generation` 标签丢弃跨代回调）；稳定 10s 的档位写入 `video_prefs.json` 作为下次起点；
+仅降到软解档时 SnackBar 提示，其余静默并写导出日志。
+CI 覆盖：`integration_test/video_test.dart`（真实 H.264 样片：真实参数到达、时钟推进、
+ settling 档位无停摆指纹、零 error 事件）。
