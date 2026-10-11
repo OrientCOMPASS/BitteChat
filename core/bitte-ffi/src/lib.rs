@@ -374,13 +374,13 @@ pub unsafe extern "C" fn bc_call(
                     return json!({"ok": true, "events": evs}).to_string();
                 }
                 match entry.api.dispatch(&method, params) {
-                Ok(mut v) => {
-                    if let Some(o) = v.as_object_mut() {
-                        o.insert("ok".to_string(), json!(true));
+                    Ok(mut v) => {
+                        if let Some(o) = v.as_object_mut() {
+                            o.insert("ok".to_string(), json!(true));
+                        }
+                        v.to_string()
                     }
-                    v.to_string()
-                }
-                Err(e) => json_error(&e.to_string()),
+                    Err(e) => json_error(&e.to_string()),
                 }
             }
             None => json_error("invalid handle"),

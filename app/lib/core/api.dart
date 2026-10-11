@@ -62,8 +62,7 @@ class BitteApi extends ChangeNotifier {
       api._sub = bridge.events.listen(api._onRawEvent);
       // v0.5.27: events are DRAINED (the NativeCallable push callback never
       // delivered on Android). 200 ms keeps every "live" behaviour live.
-      api._drainTimer =
-          Timer.periodic(const Duration(milliseconds: 200), (_) {
+      api._drainTimer = Timer.periodic(const Duration(milliseconds: 200), (_) {
         try {
           final r = bridge.call('sys.drain_events');
           final evs = r['events'];
