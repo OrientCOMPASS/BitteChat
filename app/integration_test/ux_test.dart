@@ -112,10 +112,20 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byIcon(Icons.fingerprint), findsNothing);
 
+    // send-side proof first: the quoted reply must exist in the store
+    expect(
+        api.chatMessages(gid).any((m) => m.text == 'reply with quote'), isTrue,
+        reason: 'quoted reply must be stored (send side)');
+
     // --- back to the bottom: the quote card is the only 'ux 2' in view ----
-    await tester.drag(find.byType(ListView).first, const Offset(0, -4000));
-    await tester.pumpAndSettle();
-    expect(find.text('reply with quote'), findsOneWidget);
+    for (var i = 0; i < 4; i++) {
+      await tester.drag(find.byType(ListView).first, const Offset(0, -1500));
+      await tester.pumpAndSettle();
+    }
+    expect(find.text('reply with quote'), findsOneWidget,
+        reason: 'quoted reply bubble must be reachable at the tape head; '
+            'visible ux texts: '
+            '${find.textContaining('ux ').evaluate().map((e) => (e.widget as Text).data).toList()}');
     expect(find.text('ux 2'), findsOneWidget,
         reason: 'quote card renders the quoted text; original is off-screen');
     // tapping the card jumps to the quoted original (neighbours appear)
