@@ -421,7 +421,7 @@ jobs:
         id: emu-ok
         with:
           path: emu-ok-marker.txt
-          key: emu-ok-${{ hashFiles('app/lib/**', 'app/integration_test/**', 'core/**/*.rs', 'app/pubspec.lock', 'app/android/app/build.gradle.kts', 'scripts/versions.env') }}
+          key: emu-ok-${{ hashFiles('app/lib/**', 'app/integration_test/**', 'core/**/*.rs', 'app/pubspec.lock', 'app/android/app/build.gradle.kts', 'scripts/versions.env', 'scripts/emu-run-and-pull.sh') }}
 
       - name: Enable KVM
         run: |
@@ -469,7 +469,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: emu-ok-marker.txt
-          key: emu-ok-${{ hashFiles('app/lib/**', 'app/integration_test/**', 'core/**/*.rs', 'app/pubspec.lock', 'app/android/app/build.gradle.kts', 'scripts/versions.env') }}
+          key: emu-ok-${{ hashFiles('app/lib/**', 'app/integration_test/**', 'core/**/*.rs', 'app/pubspec.lock', 'app/android/app/build.gradle.kts', 'scripts/versions.env', 'scripts/emu-run-and-pull.sh') }}
       - name: Upload screenshots
         if: always()
         uses: actions/upload-artifact@v4
