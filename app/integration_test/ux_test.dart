@@ -68,7 +68,13 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('draft survives'), findsOneWidget,
         reason: 'in-memory draft must restore on re-enter');
-    await tester.enterText(input, '');
+    // the harness TextInput connection goes stale across leave/re-enter;
+    // drive the page-owned controller directly from here on
+    void setInput(String v) {
+      (tester.widget(input) as TextField).controller!.text = v;
+    }
+
+    setInput('');
     await tester.pumpAndSettle();
 
     // --- scroll to the TOP of the tape (oldest window) --------------------
@@ -110,11 +116,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byIcon(Icons.close), findsOneWidget,
         reason: 'popup reply action must arm the quote preview');
-    await tester.enterText(input, 'reply with quote');
+    setInput('reply with quote');
     await tester.pumpAndSettle();
-    // submit through the input action (onSubmitted -> onSend): immune to
-    // IME-induced layout shifts of the send button in the test environment
-    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.tap(find.byIcon(Icons.send));
     await tester.pumpAndSettle();
     // dismissed the popup earlier; ensure it is gone now too
     await tester.tapAt(const Offset(8, 8));
