@@ -64,19 +64,27 @@ impl Api {
                     // and DM receipt keep working (exactly the v0.5.27
                     // field-report signature)
                     if tick.is_multiple_of(BT_PUSH_INTERVAL) {
-                        let a = Api { inner: api.inner.clone() };
+                        let a = Api {
+                            inner: api.inner.clone(),
+                        };
                         guarded("bt_push", move || a.push_bt_updates());
                     }
                     if tick.is_multiple_of(GROUP_TICK_INTERVAL) {
-                        let a = Api { inner: api.inner.clone() };
+                        let a = Api {
+                            inner: api.inner.clone(),
+                        };
                         guarded("group_tick", move || a.group_tick());
                     }
                     if tick.is_multiple_of(OUTBOX_TICK_INTERVAL) {
-                        let a = Api { inner: api.inner.clone() };
+                        let a = Api {
+                            inner: api.inner.clone(),
+                        };
                         guarded("outbox_tick", move || a.outbox_tick());
                     }
                     if tick.is_multiple_of(RSS_TICK_INTERVAL) {
-                        let a = Api { inner: api.inner.clone() };
+                        let a = Api {
+                            inner: api.inner.clone(),
+                        };
                         guarded("rss_tick", move || a.rss_tick());
                     }
                     if tick % 60 == 0 {
@@ -85,7 +93,9 @@ impl Api {
                     if tick.is_multiple_of(RESUME_TICK_INTERVAL) {
                         // keep <data>/resume/*.fastresume fresh so restarts
                         // never re-check/re-fetch completed torrents
-                        let a = Api { inner: api.inner.clone() };
+                        let a = Api {
+                            inner: api.inner.clone(),
+                        };
                         guarded("resume", move || {
                             if let Err(e) = a.inner.engine.save_all_resume() {
                                 log::debug!("save_all_resume: {e}");
