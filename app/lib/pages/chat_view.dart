@@ -50,6 +50,7 @@ class _ChatViewPageState extends State<ChatViewPage> {
   bool _sending = false;
   String? _attJob;
   String _attPhase = '';
+  Timer? _attWatch; // v0.5.26: gives up on a stuck "hashing…" banner
   StreamSubscription<CoreEvent>? _sub;
   Map<String, dynamic> _detail = {};
   Timer? _detailTimer;
@@ -101,6 +102,7 @@ class _ChatViewPageState extends State<ChatViewPage> {
     _api.setActiveGroup(null);
     _sub?.cancel();
     _detailTimer?.cancel();
+    _attWatch?.cancel();
     _input.dispose();
     _scroll.dispose();
     super.dispose();
@@ -165,6 +167,7 @@ class _ChatViewPageState extends State<ChatViewPage> {
   void _onAttProgress(String phase, String error) {
     if (!mounted) return;
     if (phase == 'sent') {
+      _attWatch?.cancel();
       setState(() {
         _attJob = null;
         _attPhase = '';
@@ -173,6 +176,7 @@ class _ChatViewPageState extends State<ChatViewPage> {
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(L.t.sentSeeding(''))));
     } else if (phase == 'error') {
+      _attWatch?.cancel();
       setState(() {
         _attJob = null;
         _attPhase = '';
@@ -182,6 +186,21 @@ class _ChatViewPageState extends State<ChatViewPage> {
     } else {
       setState(() => _attPhase = phase);
     }
+  }
+
+  /// v0.5.26: the progress banner must NEVER stick forever. If no terminal
+  /// `chat.attachment_progress` event (sent/error) arrives within 90 s — e.g.
+  /// the worker thread died before emitting — stop waiting, refresh the
+  /// list (the message may well have been ingested) and tell the user.
+  void _onAttStale() {
+    if (!mounted || _attJob == null) return;
+    setState(() {
+      _attJob = null;
+      _attPhase = '';
+    });
+    _reload();
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(L.t.attJobTimeout)));
   }
 
   void _onScroll() {
@@ -619,6 +638,8 @@ class _ChatViewPageState extends State<ChatViewPage> {
           _attPhase = 'hash';
           if (replyTo != null) _replyTo = null;
         });
+        _attWatch?.cancel();
+        _attWatch = Timer(const Duration(seconds: 90), _onAttStale);
         _saveDraft();
       } else {
         _reload();

@@ -1964,6 +1964,12 @@ abstract class AppLocalizations {
   /// **'附件发送失败'**
   String get attachFailed;
 
+  /// No description provided for @attJobTimeout.
+  ///
+  /// In zh, this message translates to:
+  /// **'附件发送状态超时未更新，已停止等待（文件可能仍在后台处理）'**
+  String get attJobTimeout;
+
   /// No description provided for @dmRequestSubtitle.
   ///
   /// In zh, this message translates to:

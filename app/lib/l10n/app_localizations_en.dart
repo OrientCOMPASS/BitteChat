@@ -1068,6 +1068,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get attachFailed => 'Attachment failed';
 
   @override
+  String get attJobTimeout =>
+      'Attachment status timed out; stopped waiting (the file may still be processing in the background)';
+
+  @override
   String get dmRequestSubtitle => 'wants to start a private chat';
 
   @override

@@ -545,6 +545,67 @@ fn e2e_attachment_transfer() {
         .iter()
         .any(|t| t["infohash"].as_str() == Some(ih.as_str())));
 
+    // v0.5.26: the SENDER must see their own attachment as a LOCAL file
+    // (inline image in the bubble), never as a "download via BT" card: the
+    // in-place seed resolves through kv att_src:<ih> / the kind-4 save_path.
+    let msgs_a = call(&a, "chat.messages", json!({"group_id": gid}));
+    let att_msg = msgs_a["messages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| m["payload"]["Attachment"]["infohash"].as_str() == Some(ih.as_str()))
+        .expect("sender must see its own attachment message")
+        .clone();
+    assert_eq!(
+        att_msg["have_file"].as_bool(),
+        Some(true),
+        "sender's own attachment must report have_file=true: {att_msg}"
+    );
+    assert_eq!(
+        att_msg["local_path"].as_str(),
+        Some(fpath.to_string_lossy().as_ref()),
+        "sender's local_path must be the in-place source file"
+    );
+    // the receiver, before downloading, must still report "not having it"
+    let msgs_b = call(&b, "chat.messages", json!({"group_id": gid}));
+    let bmsg = msgs_b["messages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| m["payload"]["Attachment"]["infohash"].as_str() == Some(ih.as_str()))
+        .expect("receiver must see the attachment message")
+        .clone();
+    assert_eq!(
+        bmsg["have_file"].as_bool(),
+        Some(false),
+        "receiver must NOT report have_file before downloading: {bmsg}"
+    );
+    // quote cards of an in-place seed render thumbnails too (reply_quote)
+    let msg_id_a = att_msg["id"].as_str().unwrap().to_string();
+    call(
+        &a,
+        "chat.send",
+        json!({"group_id": gid, "text": "quote check", "reply_to": msg_id_a}),
+    );
+    let r2 = call(&a, "chat.messages", json!({"group_id": gid}));
+    let q = r2["messages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| m["payload"]["Text"]["text"].as_str() == Some("quote check"))
+        .expect("the quoting reply must exist")
+        .clone();
+    assert_eq!(
+        q["reply_quote"]["attachment"]["have_file"].as_bool(),
+        Some(true),
+        "quote card of own in-place seed must have the file: {q}"
+    );
+    assert_eq!(
+        q["reply_quote"]["attachment"]["local_path"].as_str(),
+        Some(fpath.to_string_lossy().as_ref()),
+        "quote card local_path must be the in-place source file"
+    );
+
     // B downloads through the internal chat channel
     let r = call(&b, "chat.messages", json!({"group_id": gid}));
     let msg_id = r["messages"]

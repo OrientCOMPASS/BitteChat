@@ -22,6 +22,63 @@ fn jreply_to(p: &Json) -> Result<Option<Sha1Hash>> {
     }
 }
 
+/// Where a COMPLETE copy of an attachment lives on this device, and whether
+/// we actually have it (`have_file`).
+///
+/// Received files live under `downloads/<ih>/<name>`, but SELF-PUBLISHED
+/// seeds (kind 4, v0.5.16) stay IN PLACE: their torrent row's `save_path` is
+/// the source file's parent directory and nothing is ever copied into the
+/// download dir. Resolving only the downloads layout made senders see their
+/// OWN pictures/videos as "not downloaded" BT cards forever (v0.5.26 fix).
+/// Candidates, first existing exact-size match wins:
+///   1. `downloads/<ih>/<name>`        — received / re-downloaded files
+///   2. kv `att_src:<ih>`              — exact source path recorded at send
+///   3. torrent row `save_path/<name>` — in-place seeds of older installs
+///     (no kv entry yet), `save_path/<row.name>` as a last resort
+fn att_local(
+    store: &crate::store::Store,
+    downloads: &std::path::Path,
+    states: &std::collections::HashMap<String, crate::engine::TorrentState>,
+    a: &AttachmentInfo,
+) -> (std::path::PathBuf, bool) {
+    let default = downloads.join(&a.infohash).join(&a.name);
+    let mut cands = vec![default.clone()];
+    if let Ok(Some(v)) = store.kv_get(&format!("att_src:{}", a.infohash)) {
+        if let Ok(s) = String::from_utf8(v) {
+            if !s.is_empty() {
+                cands.push(std::path::PathBuf::from(s));
+            }
+        }
+    }
+    if let Ok(Some(row)) = store.torrent_get(&a.infohash) {
+        if !row.save_path.is_empty() {
+            let sp = std::path::Path::new(&row.save_path);
+            cands.push(sp.join(&a.name));
+            if row.name != a.name {
+                cands.push(sp.join(&row.name));
+            }
+        }
+    }
+    let want = a.size.max(0) as u64;
+    let mut chosen = default;
+    let mut size_ok = false;
+    for c in &cands {
+        if std::fs::metadata(c).map(|md| md.len() == want).unwrap_or(false) {
+            chosen = c.clone();
+            size_ok = true;
+            break;
+        }
+    }
+    // "have" must mean COMPLETE, not merely present: libtorrent preallocates
+    // the full-size (sparse) file when a download starts, so gate on the
+    // engine's verified state whenever the torrent is in the session.
+    let complete = match states.get(&a.infohash) {
+        Some(s) => s.finished || s.progress >= 0.9999,
+        None => size_ok,
+    };
+    (chosen, size_ok && complete)
+}
+
 /// Snapshot of a QUOTED message for the UI's reply-quote card (v0.5.17):
 /// author + timestamp + the WHOLE payload — text verbatim, attachments with
 /// their local-file state so the card can render image thumbnails.
@@ -29,6 +86,7 @@ fn quote_json(
     m: &crate::chat::message::ChatMessage,
     downloads: &std::path::Path,
     states: &std::collections::HashMap<String, crate::engine::TorrentState>,
+    store: &crate::store::Store,
 ) -> Json {
     let (kind, text, att) = match &m.payload {
         Payload::Text { text } => (1i64, text.clone(), None),
@@ -47,21 +105,14 @@ fn quote_json(
         "text": text,
     });
     if let Some(a) = att {
-        let path = downloads.join(&a.infohash).join(&a.name);
-        let size_ok = std::fs::metadata(&path)
-            .map(|md| md.len() == a.size.max(0) as u64)
-            .unwrap_or(false);
-        let complete = match states.get(&a.infohash) {
-            Some(s) => s.finished || s.progress >= 0.9999,
-            None => size_ok,
-        };
+        let (path, have) = att_local(store, downloads, states, &a);
         j["attachment"] = json!({
             "name": a.name,
             "size": a.size,
             "mime": a.mime,
             "infohash": a.infohash,
             "local_path": path.to_string_lossy(),
-            "have_file": size_ok && complete,
+            "have_file": have,
         });
     }
     j
@@ -1489,27 +1540,14 @@ impl Api {
                 j["blocked"] = json!(crate::filter::is_blocked(&rules, m));
                 if let Some(rid) = &m.reply_to {
                     if let Some(&qi) = quote_idx.get(rid) {
-                        j["reply_quote"] = quote_json(&display[qi], &downloads, &states);
+                        j["reply_quote"] =
+                            quote_json(&display[qi], &downloads, &states, &st.store);
                     }
                 }
                 if let Payload::Attachment(a) = &m.payload {
-                    let path = downloads.join(&a.infohash).join(&a.name);
+                    let (path, have) = att_local(&st.store, &downloads, &states, a);
                     j["local_path"] = json!(path.to_string_lossy());
-                    // "have the file" must mean COMPLETE, not merely present:
-                    // libtorrent preallocates the full-size (sparse) file when
-                    // a download starts, and opening a partial mp4 fails at
-                    // format probing (moov may live at EOF). Gate on the
-                    // engine's verified state + exact size.
-                    let size_ok = std::fs::metadata(&path)
-                        .map(|md| md.len() == a.size.max(0) as u64)
-                        .unwrap_or(false);
-                    let complete = match states.get(&a.infohash) {
-                        Some(s) => s.finished || s.progress >= 0.9999,
-                        // not in the session (e.g. task removed, file kept):
-                        // trust the exact-size check alone
-                        None => size_ok,
-                    };
-                    j["have_file"] = json!(size_ok && complete);
+                    j["have_file"] = json!(have);
                     if let Some(s) = states.get(&a.infohash) {
                         j["dl"] = json!({
                             "progress": s.progress,
@@ -1692,13 +1730,26 @@ impl Api {
         std::thread::Builder::new()
             .name("bitte-attach".into())
             .spawn(move || {
-                if let Err(e) =
+                // v0.5.26: a panic inside the worker used to leave the UI's
+                // "hashing…" banner up FOREVER (no error event ever arrives).
+                // Catch it, dump forensics via the panic hook, and ALWAYS
+                // report a terminal phase so the banner clears.
+                let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     api.attachment_job(&job, &gid_hex, &path, &display_name, &mime, size, reply_to)
-                {
-                    log::warn!("attachment job {job} failed: {e}");
+                }));
+                let err = match res {
+                    Ok(Ok(())) => None,
+                    Ok(Err(e)) => Some(e.to_string()),
+                    Err(_) => Some(
+                        "internal crash while preparing the file (see crash_rust.log)"
+                            .to_string(),
+                    ),
+                };
+                if let Some(msg) = err {
+                    log::warn!("attachment job {job} failed: {msg}");
                     api.emit_event(
                         "chat.attachment_progress",
-                        json!({"job_id": job, "phase": "error", "error": e.to_string()}),
+                        json!({"job_id": job, "phase": "error", "error": msg}),
                     );
                 }
             })
@@ -1775,6 +1826,11 @@ impl Api {
                 group_id: Some(gid),
                 added: now,
             })?;
+            // remember the EXACT source path so chat_messages/quote_json can
+            // resolve our own in-place seed later (the on-disk file name of a
+            // self-published seed never moves into the download dir)
+            st.store
+                .kv_set(&format!("att_src:{ih_hex}"), path.as_bytes())?;
             st.store.torrent_set_magnet(&ih_hex, &att_magnet)?;
             let rt = st
                 .groups

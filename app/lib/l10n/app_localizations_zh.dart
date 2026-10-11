@@ -1033,6 +1033,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get attachFailed => '附件发送失败';
 
   @override
+  String get attJobTimeout => '附件发送状态超时未更新，已停止等待（文件可能仍在后台处理）';
+
+  @override
   String get dmRequestSubtitle => '请求与你私聊';
 
   @override
