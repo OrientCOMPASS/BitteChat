@@ -159,21 +159,23 @@ void main() {
         reason: 'kind-4 self seed must appear in the default BT scope');
 
     // --- v0.5.10: language switch rebuilds the app ------------------------
-    await tester.tap(find.byIcon(Icons.settings));
+    // settings lives in the ChatTab app bar (person icon, tooltip Identity)
+    await tester.tap(find.text('Chats'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.person_outline));
     await tester.pumpAndSettle();
     await tester.tap(find.byIcon(Icons.language));
     await tester.pumpAndSettle();
     await tester.tap(find.text('中文'));
     await tester.pumpAndSettle();
-    expect(find.text('聊天'), findsOneWidget,
-        reason: 'zh locale must rebuild the nav labels');
-    await tester.tap(find.byIcon(Icons.settings));
-    await tester.pumpAndSettle();
+    expect(find.text('语言'), findsOneWidget,
+        reason: 'zh locale must rebuild the settings page in place');
+    // and back to en (we are still on the settings page, now in zh)
     await tester.tap(find.byIcon(Icons.language));
     await tester.pumpAndSettle();
     await tester.tap(find.text('English'));
     await tester.pumpAndSettle();
-    expect(find.text('Chats'), findsOneWidget);
+    expect(find.text('Language'), findsOneWidget);
   },
       timeout: const Timeout(Duration(minutes: 6)));
 }
