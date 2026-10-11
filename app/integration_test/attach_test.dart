@@ -22,6 +22,7 @@ import 'package:bittechat/core/api.dart';
 import 'package:bittechat/core/prefs.dart';
 import 'package:bittechat/main.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 
@@ -96,7 +97,8 @@ void main() {
       // 3) UI: open the room from the chat list
       final prefs =
           UiPrefs(File('${api.dataDir}/ui_prefs_attach_it.json'));
-      await tester.pumpWidget(BitteChatApp(prefs: prefs));
+      await tester.pumpWidget(
+          RepaintBoundary(child: BitteChatApp(prefs: prefs)));
       await tester.pumpAndSettle();
       await tester.tap(find.textContaining('AttRoom').first);
       await tester.pumpAndSettle();
@@ -111,7 +113,7 @@ void main() {
       );
       // at the bottom the jump chip is hidden
       expect(find.byIcon(Icons.keyboard_double_arrow_down), findsNothing);
-      await _shot(binding, 'shot-chat-inline');
+      await _shot(tester, 'shot-chat-inline');
 
       // 4) jump-bottom semantics on the reverse (paper-tape) list
       final list = find.byType(ListView).first;
@@ -125,7 +127,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byIcon(Icons.keyboard_double_arrow_down), findsOneWidget,
           reason: 'a return-to-bottom slide must raise the chip');
-      await _shot(binding, 'shot-jump-chip');
+      await _shot(tester, 'shot-jump-chip');
       // ...and back to the bottom: chip gone again
       await tester.drag(list, const Offset(0, -4000));
       await tester.pumpAndSettle();
@@ -140,13 +142,14 @@ void main() {
 /// dir; CI adb-pulls /storage/emulated/0/Android/data/*/files/shot-*.png
 /// (the test framework force-stops the app afterwards, so host-side
 /// screencaps only ever catch the launcher).
-Future<void> _shot(IntegrationTestWidgetsFlutterBinding b, String name) async {
+Future<void> _shot(WidgetTester tester, String name) async {
   try {
-    await b.pump();
-    final view = b.renderView;
-    final layer = view.layer;
-    if (layer == null) return;
-    final image = await layer.toImage(view.paintBounds);
+    await tester.pump();
+    final ctx = find.byType(BitteChatApp).evaluate().first;
+    final boundary =
+        ctx.findAncestorRenderObjectOfType<RenderRepaintBoundary>();
+    if (boundary == null) return;
+    final image = await boundary.toImage();
     final data = await image.toByteData(format: ui.ImageByteFormat.png);
     if (data == null) return;
     await File('${BitteApi.instance.dataDir}/$name.png')
