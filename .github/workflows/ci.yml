@@ -404,6 +404,11 @@ jobs:
             ~/.android/adb*
           key: avd-${{ runner.os }}-34-google_apis-x86_64-pixel6-v1
 
+      # gen-l10n (generate: true) rewrites app/lib/l10n/*.dart during pub get,
+      # so the gate hash must be computed on the POST-GEN workspace in both
+      # the restore and the save step — run pub get before restoring.
+      - name: Pre-generate l10n (stable gate hash)
+        run: cd app && flutter pub get
       # ---- incremental gate: skip the whole device round when the app /
       # ---- core sources are byte-identical to a previously green run
       - name: Restore emulator-green marker
