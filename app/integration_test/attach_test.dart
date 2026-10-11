@@ -32,7 +32,7 @@ const String _kPngB64 =
     'P8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 
 void main() {
-  final binding = IntegrationTestWidgetsFlutterBinding.ensureInitialized();
+  IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
   testWidgets(
     'sender attachment inline + jump-bottom return-intent spec',
