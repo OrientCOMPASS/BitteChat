@@ -77,7 +77,16 @@ void main() {
     expect(find.text('ux 0'), findsOneWidget);
 
     // --- v0.5.22: left swipe arms the reply preview, cancel clears it -----
-    await tester.drag(find.text('ux 4'), const Offset(-40, 0));
+    // gesture below the bubble text (timestamp strip): SelectionArea owns
+    // the text span and would enter the arena for drags started on it
+    final r4 = tester.getRect(find.text('ux 4'));
+    final swipe = await tester.startGesture(
+        Offset(r4.center.dx, r4.bottom + 10));
+    for (var i = 0; i < 6; i++) {
+      await swipe.moveBy(const Offset(-10, 0));
+      await tester.pump();
+    }
+    await swipe.up();
     await tester.pumpAndSettle();
     expect(find.byIcon(Icons.close), findsOneWidget,
         reason: 'swipe past the -35px trigger must arm the reply preview');
