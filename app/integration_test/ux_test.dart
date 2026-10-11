@@ -72,9 +72,16 @@ void main() {
     await tester.pumpAndSettle();
 
     // --- scroll to the TOP of the tape (oldest window) --------------------
-    await tester.drag(find.byType(ListView).first, const Offset(0, 4000));
+    // drop IME focus first (a focused field keeps the viewport shifted)
+    await tester.tapAt(tester.getCenter(find.byType(ListView).first));
     await tester.pumpAndSettle();
-    expect(find.text('ux 0'), findsOneWidget);
+    for (var i = 0; i < 4; i++) {
+      await tester.drag(find.byType(ListView).first, const Offset(0, 1500));
+      await tester.pumpAndSettle();
+    }
+    expect(find.text('ux 0'), findsOneWidget,
+        reason: 'staged scroll must reach the oldest window; visible: '
+            '${find.textContaining('ux ').evaluate().map((e) => (e.widget as Text).data).toList()}');
 
     // --- v0.5.22: left swipe arms the reply preview, cancel clears it -----
     // gesture below the bubble text (timestamp strip): SelectionArea owns
@@ -129,7 +136,7 @@ void main() {
     }
     expect(find.text('reply with quote'), findsOneWidget,
         reason: 'quoted reply bubble must be reachable at the tape head; '
-            'visible ux texts: '
+            'visible: '
             '${find.textContaining('ux ').evaluate().map((e) => (e.widget as Text).data).toList()}');
     expect(find.text('ux 2'), findsOneWidget,
         reason: 'quote card renders the quoted text; original is off-screen');
