@@ -105,7 +105,9 @@ void main() {
         reason: 'popup reply action must arm the quote preview');
     await tester.enterText(input, 'reply with quote');
     await tester.pumpAndSettle();
-    await tester.tap(find.byIcon(Icons.send));
+    // submit through the input action (onSubmitted -> onSend): immune to
+    // IME-induced layout shifts of the send button in the test environment
+    await tester.testTextInput.receiveTextInputAction(TextInputAction.done);
     await tester.pumpAndSettle();
     // dismissed the popup earlier; ensure it is gone now too
     await tester.tapAt(const Offset(8, 8));
@@ -115,7 +117,10 @@ void main() {
     // send-side proof first: the quoted reply must exist in the store
     expect(
         api.chatMessages(gid).any((m) => m.text == 'reply with quote'), isTrue,
-        reason: 'quoted reply must be stored (send side)');
+        reason: 'quoted reply must be stored (send side); '
+            'input now: '
+            '${(tester.widget(input) as TextField).controller?.text}, '
+            'snackbars: ${find.byType(SnackBar).evaluate().length}');
 
     // --- back to the bottom: the quote card is the only 'ux 2' in view ----
     for (var i = 0; i < 4; i++) {
