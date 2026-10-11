@@ -34,7 +34,7 @@ fn jreply_to(p: &Json) -> Result<Option<Sha1Hash>> {
 ///   1. `downloads/<ih>/<name>`        — received / re-downloaded files
 ///   2. kv `att_src:<ih>`              — exact source path recorded at send
 ///   3. torrent row `save_path/<name>` — in-place seeds of older installs
-///     (no kv entry yet), `save_path/<row.name>` as a last resort
+///      (no kv entry yet), `save_path/<row.name>` as a last resort
 fn att_local(
     store: &crate::store::Store,
     downloads: &std::path::Path,

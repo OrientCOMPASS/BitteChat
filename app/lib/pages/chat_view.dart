@@ -55,6 +55,8 @@ class _ChatViewPageState extends State<ChatViewPage> {
   Map<String, dynamic> _detail = {};
   Timer? _detailTimer;
   bool _showJump = false;
+  double _lastPix = 0; // last scroll offset, for direction detection
+  bool _progScroll = false; // programmatic jump in flight (no user intent)
 
   String get _gid => widget.group.id;
   bool get _isDm => widget.group.dm;
@@ -125,15 +127,12 @@ class _ChatViewPageState extends State<ChatViewPage> {
         if (!mounted || !_scroll.hasClients) return;
         if (stick) {
           // tape head = offset 0 in the reverse list: EXACT, no estimation
-          _scroll.jumpTo(0);
+          _jumpTo(0);
         } else if (had) {
           // keep the line under the needle: newest-side inserts shift a
           // reverse list's offsets by exactly the extent growth
           final delta = _scroll.position.maxScrollExtent - oldMax;
-          if (delta > 0) {
-            _scroll.jumpTo(
-                (oldPix + delta).clamp(0.0, _scroll.position.maxScrollExtent));
-          }
+          if (delta > 0) _jumpTo(oldPix + delta);
         }
       });
     } catch (_) {}
@@ -204,16 +203,41 @@ class _ChatViewPageState extends State<ChatViewPage> {
   }
 
   void _onScroll() {
-    // reverse list: offset 0 IS the bottom, so "away from bottom" is simply
-    // pixels > threshold — exact, never estimated
-    final show = _scroll.position.pixels > 160;
-    if (show != _showJump && mounted) setState(() => _showJump = show);
+    // reverse list: offset 0 IS the bottom; pixels DEcrease while the user
+    // slides toward the bottom (page-down), and increase while browsing
+    // history. v0.5.26 spec: the jump-bottom chip appears ONLY on the
+    // return-to-bottom intent — browsing history hides it again (someone
+    // reading upwards is clearly not trying to reach the bottom), and
+    // programmatic jumps never trigger it. Once shown it stays tappable
+    // (50% transparent) until the bottom is reached or history is browsed.
+    final pix = _scroll.position.pixels;
+    final d = pix - _lastPix;
+    _lastPix = pix;
+    if (pix <= 160) {
+      if (_showJump && mounted) setState(() => _showJump = false);
+      return;
+    }
+    if (_progScroll) return; // not a user gesture: no intent change
+    if (d < -0.5) {
+      if (!_showJump && mounted) setState(() => _showJump = true);
+    } else if (d > 0.5) {
+      if (_showJump && mounted) setState(() => _showJump = false);
+    }
+  }
+
+  /// Programmatic jump: keeps [_lastPix] in sync without letting the abrupt
+  /// offset change register as a (non-existent) user intent.
+  void _jumpTo(double off) {
+    if (!_scroll.hasClients) return;
+    _progScroll = true;
+    _scroll.jumpTo(off.clamp(0.0, _scroll.position.maxScrollExtent));
+    _progScroll = false;
   }
 
   /// The tape head: offset 0 of the reverse list. Exact by construction —
   /// no extent estimation, no settle loop (v0.5.25 paper-tape model).
   void _scrollToBottom() {
-    if (_scroll.hasClients) _scroll.jumpTo(0);
+    _jumpTo(0);
   }
 
   bool _nearBottom() => !_scroll.hasClients || _scroll.position.pixels < 160;
@@ -365,7 +389,7 @@ class _ChatViewPageState extends State<ChatViewPage> {
                 (base + step * ring).clamp(0.0, pos.maxScrollExtent).toDouble(),
               ];
         for (final off in offs) {
-          _scroll.jumpTo(off);
+          _jumpTo(off);
           await WidgetsBinding.instance.endOfFrame;
           ctx = key.currentContext;
           if (ctx != null) break outer;
@@ -374,7 +398,7 @@ class _ChatViewPageState extends State<ChatViewPage> {
     }
     if (ctx == null) {
       // probe failed: show the oldest end of the tape (reverse: max offset)
-      _scroll.jumpTo(_scroll.position.maxScrollExtent);
+      _jumpTo(_scroll.position.maxScrollExtent);
       return;
     }
     // guard the USED context itself across the awaits above
@@ -883,23 +907,28 @@ class _ChatViewPageState extends State<ChatViewPage> {
                             )),
                     // v0.5.23: native floating overlay ABOVE the input bar —
                     // no layout row (no solid band), never covers the send
-                    // button, floats over the message list's bottom-right
+                    // button, floats over the message list's bottom-right.
+                    // v0.5.26: 50% transparent per product spec; appears only
+                    // on a user slide toward the bottom (see _onScroll).
                     if (_showJump)
                       Positioned(
                         right: 12,
                         bottom: 12,
-                        child: Material(
-                          elevation: 2,
-                          color: theme.colorScheme.surfaceContainerHighest,
-                          borderRadius: BorderRadius.circular(18),
-                          child: InkWell(
+                        child: Opacity(
+                          opacity: 0.5,
+                          child: Material(
+                            elevation: 2,
+                            color: theme.colorScheme.surfaceContainerHighest,
                             borderRadius: BorderRadius.circular(18),
-                            onTap: _scrollToBottom,
-                            child: const SizedBox(
-                              width: 36,
-                              height: 36,
-                              child: Icon(Icons.keyboard_double_arrow_down,
-                                  size: 20),
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(18),
+                              onTap: _scrollToBottom,
+                              child: const SizedBox(
+                                width: 36,
+                                height: 36,
+                                child: Icon(Icons.keyboard_double_arrow_down,
+                                    size: 20),
+                              ),
                             ),
                           ),
                         ),
