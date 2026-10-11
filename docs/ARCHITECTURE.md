@@ -8,10 +8,11 @@
 │  Material 3, 状态 = ValueNotifier/Stream, 无第三方状态管理框架                │
 └──────────────────────────────────┬───────────────────────────────────────────┘
                                    │ C ABI (JSON)
-                    bc_init / bc_call / 事件回调(NativeCallable.listener)
+                    bc_init / bc_call / sys.drain_events 事件拉取(200ms, v0.5.27;
+                    旧 NativeCallable 推送回调在 Android 上不触发, 已移除)
 ┌──────────────────────────────────┴───────────────────────────────────────────┐
 │ libbitte_core.so (Rust)                                                      │
-│  bitte-ffi        C ABI 封装、句柄注册表、事件转发线程、panic 安全             │
+│  bitte-ffi        C ABI 封装、句柄注册表、事件队列(drain)、panic 安全             │
 │  bitte-core/api   JSON 桥: dispatch(method, params) + 事件循环 + 调度器        │
 │  bitte-core/chat  消息编解码/签名验证、DAG、房间/DM 清单、同步状态机 (sync.rs)  │
 │  bitte-core/store SQLite: kv/groups/messages/heads/outbox/torrents/feeds      │

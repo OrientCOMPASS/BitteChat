@@ -392,8 +392,11 @@ jobs:
           script: |
             adb wait-for-device
             bash scripts/make-dev-keystore.sh
-            cd app && flutter pub get && flutter test integration_test/attach_test.dart -d emulator-5554 --reporter expanded && flutter test integration_test/app_test.dart -d emulator-5554 --reporter expanded
-            cd app && mkdir -p "$GITHUB_WORKSPACE/shots" && (adb exec-out screencap -p > "$GITHUB_WORKSPACE/shots/final-emulator-screen.png" || true) && (find . -name '*.png' -newer pubspec.yaml -not -path './.dart_tool/*' -exec cp {} "$GITHUB_WORKSPACE/shots/" \; || true)
+            mkdir -p "$GITHUB_WORKSPACE/shots"
+            cd app && flutter pub get && flutter test integration_test/attach_test.dart -d emulator-5554 --reporter expanded
+            adb exec-out screencap -p > "$GITHUB_WORKSPACE/shots/after-attach-test.png" || true
+            cd app && flutter test integration_test/app_test.dart -d emulator-5554 --reporter expanded
+            adb exec-out screencap -p > "$GITHUB_WORKSPACE/shots/after-app-test.png" || true
       - name: Upload screenshots
         if: always()
         uses: actions/upload-artifact@v4
