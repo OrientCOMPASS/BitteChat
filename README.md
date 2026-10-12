@@ -49,6 +49,8 @@ cd app && flutter build apk --release --split-per-abi
 
 非 Android 平台运行进入 demo 模式（无 native 库）。
 
+修改历史与路线图见 [`docs/ROADMAP.md`](docs/ROADMAP.md)。
+
 ## 测试与 CI
 
 **仓库策略：每轮修改必须附覆盖该修改的模拟器集成测试**（见 `docs/TESTING.md`）。
@@ -69,7 +71,7 @@ cd app && flutter build apk --release --split-per-abi
 ```
 app/        Flutter 应用 + integration_test
 core/       bitte-core(Rust) / bitte-ffi(C ABI) / bitte-bt(C++ libtorrent 封装)
-docs/       ARCHITECTURE / PROTOCOL / TESTING
+docs/       ARCHITECTURE / PROTOCOL / TESTING / ROADMAP（修改历史+路线图）
 scripts/    native 构建、开发 keystore、模拟器截图拉取
 ```
 
