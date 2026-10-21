@@ -48,7 +48,7 @@ Route<void> btViewRoute(BtViewPage page) {
 
 enum _FileSort { name, size, progress }
 
-enum _PeerSort { address, progress, down }
+enum _PeerSort { address, progress, down, up }
 
 class BtViewPage extends StatefulWidget {
   const BtViewPage({
@@ -285,6 +285,8 @@ class _BtViewPageState extends State<BtViewPage>
           return a.progress.compareTo(b.progress);
         case _PeerSort.down:
           return a.downSpeed.compareTo(b.downSpeed);
+        case _PeerSort.up:
+          return a.upSpeed.compareTo(b.upSpeed);
       }
     }
 
@@ -1328,16 +1330,21 @@ class _PeersTabState extends State<_PeersTab> {
                 flex: 2,
                 child: _ColHeader(
                   label: L.t.btDetailDown,
+                  icon: Icons.arrow_downward,
                   active: widget.sort == _PeerSort.down,
                   onTap: () => widget.onSort(_PeerSort.down),
                 ),
               ),
               Expanded(
-                  flex: 2,
-                  child: Text(L.t.btDetailUp,
-                      textAlign: TextAlign.end,
-                      style: theme.textTheme.labelSmall
-                          ?.copyWith(color: theme.colorScheme.outline))),
+                flex: 2,
+                child: _ColHeader(
+                  label: L.t.btDetailUp,
+                  icon: Icons.arrow_upward,
+                  alignEnd: true,
+                  active: widget.sort == _PeerSort.up,
+                  onTap: () => widget.onSort(_PeerSort.up),
+                ),
+              ),
               const SizedBox(width: 40),
             ],
           ),
@@ -1367,22 +1374,32 @@ class _ColHeader extends StatelessWidget {
     required this.label,
     required this.active,
     required this.onTap,
+    this.icon,
+    this.alignEnd = false,
   });
 
   final String label;
   final bool active;
   final VoidCallback onTap;
+  final IconData? icon;
+  final bool alignEnd;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final color = active ? cs.primary : cs.outline;
+    final Widget child = icon != null
+        ? Icon(icon, size: 16, color: color)
+        : Text(label,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: color,
+                  fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                ));
     return InkWell(
       onTap: onTap,
-      child: Text(label,
-          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: active ? cs.primary : cs.outline,
-                fontWeight: active ? FontWeight.w700 : FontWeight.w500,
-              )),
+      child: alignEnd
+          ? Align(alignment: Alignment.centerRight, child: child)
+          : child,
     );
   }
 }
