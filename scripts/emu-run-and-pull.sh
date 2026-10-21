@@ -46,7 +46,26 @@ pull_one() {
   return 1
 }
 
-for f in shot-log.txt shot-chat-inline.png shot-jump-chip.png \
+# The app data dir is cleared between integration test files, so the
+# device-side shot-log only ever holds the current file's notes: harvest it
+# incrementally after every successful shot pull and merge line-wise.
+merge_log() {
+  [ -n "$PKG" ] || return 0
+  local tmp="$OUT/shot-log.tail" base
+  : > "$tmp"
+  for base in "/data/data/$PKG/files" "/storage/emulated/0/Android/data/$PKG/files"; do
+    adb shell cat "$base/shot-log.txt" > "$tmp" 2>/dev/null || true
+    [ -s "$tmp" ] && break
+  done
+  if [ -s "$tmp" ]; then
+    cat "$OUT/shot-log.txt" "$tmp" 2>/dev/null | awk '!seen[$0]++' \
+      > "$OUT/shot-log.merged" || true
+    [ -s "$OUT/shot-log.merged" ] && mv "$OUT/shot-log.merged" "$OUT/shot-log.txt"
+  fi
+  rm -f "$tmp"
+}
+
+for f in shot-chat-inline.png shot-jump-chip.png \
          shot-bt-detail-overview.png shot-bt-detail-files.png \
          shot-bt-detail-trackers.png; do
   got=""
@@ -59,28 +78,14 @@ for f in shot-log.txt shot-chat-inline.png shot-jump-chip.png \
     sleep 2
   done
   echo "$f: pulled from ${got:-<none>} ($(stat -c%s "$OUT/$f" 2>/dev/null || echo 0) bytes)"
-  if [ ! -s "$OUT/$f" ]; then
+  if [ -s "$OUT/$f" ]; then
+    merge_log
+  else
     echo "::warning::screenshot harness: $f never appeared (package='${PKG:-<none>}')"
   fi
 done
-# re-pull the forensic log last: the loop above grabs it early (when only
-# the first test file's notes exist) and the device-side log resets between
-# test files (the runner clears the app data per file), so merge the early
-# pull and this tail pull line-wise, order-preserving and de-duplicated
-if [ -n "$PKG" ]; then
-  tmp="$OUT/shot-log.tail"
-  : > "$tmp"
-  for base in "/data/data/$PKG/files" "/storage/emulated/0/Android/data/$PKG/files"; do
-    adb shell cat "$base/shot-log.txt" > "$tmp" 2>/dev/null || true
-    [ -s "$tmp" ] && break
-  done
-  if [ -s "$tmp" ]; then
-    cat "$OUT/shot-log.txt" "$tmp" 2>/dev/null | awk '!seen[$0]++' \
-      > "$OUT/shot-log.merged" || true
-    [ -s "$OUT/shot-log.merged" ] && mv "$OUT/shot-log.merged" "$OUT/shot-log.txt"
-  fi
-  rm -f "$tmp"
-fi
+# final harvest for notes written after the last shot
+merge_log
 echo "app package: ${PKG:-<none>}"
 # release the test process (it holds the install alive for us)
 if [ -n "$PKG" ]; then
