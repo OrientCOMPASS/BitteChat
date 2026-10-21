@@ -124,6 +124,123 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
+  /// qBittorrent-style "append trackers from URL" preferences: enable
+  /// switch, URL field, fetch status and a read-only preview of the last
+  /// successfully fetched list.
+  Future<void> _openTrackerListDialog() async {
+    if (!_api.available) return;
+    var cfg = _api.trackerList();
+    final controller = TextEditingController(text: '${cfg['url'] ?? ''}');
+    var enabled = cfg['enabled'] == true;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialog) => AlertDialog(
+          title: Text(L.t.trkListTitle),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SwitchListTile(
+                    key: const ValueKey('trklist-enable'),
+                    contentPadding: EdgeInsets.zero,
+                    value: enabled,
+                    title: Text(L.t.trkListEnable),
+                    onChanged: (v) => setDialog(() => enabled = v),
+                  ),
+                  TextField(
+                    key: const ValueKey('trklist-url'),
+                    controller: controller,
+                    decoration: InputDecoration(
+                      labelText: L.t.trkListUrl,
+                      hintText: 'https://example.com/trackers.txt',
+                      border: const OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(_trkListStatus(cfg),
+                      style: Theme.of(ctx).textTheme.bodySmall),
+                  const SizedBox(height: 10),
+                  FilledButton.icon(
+                    key: const ValueKey('trklist-refresh'),
+                    icon: const Icon(Icons.refresh, size: 18),
+                    label: Text(L.t.trkListRefresh),
+                    onPressed: () {
+                      try {
+                        _api.refreshTrackerList();
+                      } catch (e) {
+                        showError(ctx, e);
+                        return;
+                      }
+                      Future<void>.delayed(const Duration(seconds: 2), () {
+                        if (ctx.mounted) {
+                          setDialog(() => cfg = _api.trackerList());
+                        }
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 10),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxHeight: 130),
+                    child: SingleChildScrollView(
+                      child: Text(
+                        ((cfg['trackers'] as List?) ?? [])
+                            .map((e) => '$e')
+                            .join('\n'),
+                        style: Theme.of(ctx)
+                            .textTheme
+                            .bodySmall
+                            ?.copyWith(fontFamily: 'monospace'),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx), child: Text(L.t.cancel)),
+            FilledButton(
+              key: const ValueKey('trklist-save'),
+              onPressed: () {
+                try {
+                  _api.setTrackerList(
+                      enabled: enabled, url: controller.text.trim());
+                } catch (e) {
+                  showError(ctx, e);
+                  return;
+                }
+                Navigator.pop(ctx);
+              },
+              child: Text(L.t.save),
+            ),
+          ],
+        ),
+      ),
+    );
+    controller.dispose();
+    _reload();
+  }
+
+  String _trkListStatus(Map<String, dynamic> cfg) {
+    final last = (cfg['last_fetch'] as int?) ?? 0;
+    final err = '${cfg['error'] ?? ''}';
+    final n = ((cfg['trackers'] as List?) ?? []).length;
+    final when = last > 0
+        ? DateTime.fromMillisecondsSinceEpoch(last)
+            .toLocal()
+            .toString()
+            .split('.')
+            .first
+        : '—';
+    final base = '${L.t.trkListLast(when)} · ${L.t.trkListCount(n)}';
+    return err.isEmpty ? base : '$base · $err';
+  }
+
   void _saveRules() {
     try {
       _api.setFilterRules(_rules);
@@ -950,6 +1067,14 @@ class _SettingsPageState extends State<SettingsPage> {
             child: Text(L.t.downloadDirHint,
                 style: theme.textTheme.bodySmall
                     ?.copyWith(color: theme.colorScheme.outline)),
+          ),
+          ListTile(
+            key: const ValueKey('settings-tracker-list'),
+            leading: Icon(Icons.lists_outlined),
+            title: Text(L.t.trkListTitle),
+            subtitle: Text(L.t.trkListHint, style: theme.textTheme.bodySmall),
+            trailing: Icon(Icons.chevron_right, size: 20),
+            onTap: _openTrackerListDialog,
           ),
           const Divider(),
           ListTile(

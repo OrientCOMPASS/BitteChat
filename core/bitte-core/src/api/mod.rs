@@ -191,6 +191,7 @@ impl Api {
         if let Err(e) = api.inner.engine.set_chat_pk(&api.own_pk_hex()) {
             log::warn!("set_chat_pk failed: {e}");
         }
+        api.bootstrap_tracker_list();
         api.restore_state()?;
         api.spawn_event_loop(engine_events);
         api.spawn_scheduler();
@@ -310,6 +311,9 @@ impl Api {
             "bt.remove_tracker" => self.bt_remove_tracker(p),
             "bt.get_default_trackers" => self.bt_get_default_trackers(),
             "bt.set_default_trackers" => self.bt_set_default_trackers(p),
+            "bt.get_tracker_list" => self.bt_get_tracker_list(),
+            "bt.set_tracker_list" => self.bt_set_tracker_list(p),
+            "bt.refresh_tracker_list" => self.bt_refresh_tracker_list(),
 
             "chat.groups" => self.chat_groups(),
             "chat.create_group" => self.chat_create_group(p),
@@ -668,6 +672,35 @@ impl Api {
                 let down = v.get("down").and_then(|x| x.as_i64()).unwrap_or(0);
                 let _ = self.inner.engine.set_limits(up, down);
             }
+        }
+    }
+
+    /// qBittorrent-style bootstrap for the global tracker list: seed the KV
+    /// from the on-disk cache (restarts work offline), then, when enabled,
+    /// kick the first background refresh (the 24 h timer covers the rest).
+    fn bootstrap_tracker_list(&self) {
+        let (enabled, url) = {
+            let st = self.inner.state.lock().unwrap();
+            let cached =
+                std::fs::read_to_string(self.inner.data_dir.join(crate::trackerlist::CACHE_FILE))
+                    .ok();
+            if let Some(text) = cached {
+                let has_kv = st
+                    .store
+                    .kv_get(crate::trackerlist::KV_FETCHED)
+                    .ok()
+                    .flatten()
+                    .is_some();
+                if !has_kv && !text.trim().is_empty() {
+                    let _ = st
+                        .store
+                        .kv_set(crate::trackerlist::KV_FETCHED, text.as_bytes());
+                }
+            }
+            crate::trackerlist::config(&st.store)
+        };
+        if enabled && !url.is_empty() {
+            Api::spawn_tracker_list_fetch(self.inner.clone());
         }
     }
 

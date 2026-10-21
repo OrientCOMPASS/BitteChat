@@ -29,6 +29,7 @@ class _BtTabState extends State<BtTab> {
   late final BitteApi _api = BitteApi.instance;
   List<TorrentInfo> _torrents = [];
   bool _includeChat = false;
+  int _filter = 0;
   SessionStats _stats = SessionStats(
       dhtNodes: -1, uploadRate: 0, downloadRate: 0, numTorrents: 0);
   StreamSubscription<CoreEvent>? _sub;
@@ -51,13 +52,32 @@ class _BtTabState extends State<BtTab> {
     super.dispose();
   }
 
+  /// qBittorrent-style status filter (its transfer-list sidebar), adapted to
+  /// horizontal chips for mobile.
+  static bool _matchesFilter(TorrentInfo t, int f) {
+    switch (f) {
+      case 1:
+        return !t.paused && (t.downloadRate > 0 || t.uploadRate > 0);
+      case 2:
+        return t.paused;
+      case 3:
+        return t.finished;
+      case 4:
+        return t.error.isNotEmpty;
+      default:
+        return true;
+    }
+  }
+
   /// kind 4 (self-published, seeded in place) is its OWN scope: it gets a
   /// header and is listed separately from downloads / subscriptions / chat
   /// attachments, because those files live scattered at their original paths.
   List<Object> _scopeRows() {
-    final mine = _torrents.where((t) => t.kind == 4).toList();
-    if (mine.isEmpty) return List<Object>.from(_torrents);
-    final rest = _torrents.where((t) => t.kind != 4).toList();
+    final torrents =
+        _torrents.where((t) => _matchesFilter(t, _filter)).toList();
+    final mine = torrents.where((t) => t.kind == 4).toList();
+    if (mine.isEmpty) return List<Object>.from(torrents);
+    final rest = torrents.where((t) => t.kind != 4).toList();
     return [
       _ScopeHeader(title: L.t.mySeedsScope, count: mine.length),
       ...mine,
@@ -217,11 +237,13 @@ class _BtTabState extends State<BtTab> {
       ),
       body: Column(
         children: [
-          GestureDetector(
-            onTap: _openLimitsSheet,
-            child: _StatsBar(stats: _stats),
+          _StatusFilterChips(
+            torrents: _torrents,
+            selected: _filter,
+            onSelected: (i) {
+              setState(() => _filter = i);
+            },
           ),
-          const Divider(height: 1),
           Expanded(
             child: _torrents.isEmpty
                 ? Center(
@@ -276,6 +298,10 @@ class _BtTabState extends State<BtTab> {
                   ),
           ),
         ],
+      ),
+      bottomNavigationBar: GestureDetector(
+        onTap: _openLimitsSheet,
+        child: _StatsBar(stats: _stats),
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _showAddSheet(),
@@ -391,6 +417,68 @@ class _BtTabState extends State<BtTab> {
       ),
     );
   }
+}
+
+/// qBittorrent's transfer-list status sidebar, adapted to a horizontal chip
+/// row with live counts.
+class _StatusFilterChips extends StatelessWidget {
+  const _StatusFilterChips({
+    required this.torrents,
+    required this.selected,
+    required this.onSelected,
+  });
+
+  final List<TorrentInfo> torrents;
+  final int selected;
+  final ValueChanged<int> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    String label(int i) {
+      switch (i) {
+        case 1:
+          return L.t.btViewFilterActive;
+        case 2:
+          return L.t.btViewFilterPaused;
+        case 3:
+          return L.t.btViewFilterFinished;
+        case 4:
+          return L.t.btViewFilterError;
+        default:
+          return L.t.btViewFilterAll;
+      }
+    }
+
+    return SizedBox(
+      height: 42,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        children: [
+          for (var i = 0; i < 5; i++)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: FilterChip(
+                label: Text(
+                  '${label(i)} (${torrents.where((t) => _BtTabState._matchesFilter(t, i)).length})',
+                ),
+                selected: selected == i,
+                onSelected: (_) => onSelected(i),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+Color stateColorOf(TorrentInfo t, ColorScheme cs) {
+  if (t.error.isNotEmpty) return cs.error;
+  if (t.paused) return cs.outline;
+  if (t.finished) return cs.tertiary;
+  if (t.downloadRate > 0) return cs.primary;
+  if (t.uploadRate > 0) return cs.tertiary;
+  return cs.outline;
 }
 
 class _StatsBar extends StatelessWidget {
@@ -521,10 +609,7 @@ class _TorrentTile extends StatelessWidget {
             ? theme.colorScheme.tertiaryContainer
             : theme.colorScheme.primaryContainer,
         child: Icon(_kindIcon,
-            size: 20,
-            color: t.isChatInternal
-                ? theme.colorScheme.onTertiaryContainer
-                : theme.colorScheme.onPrimaryContainer),
+            size: 20, color: stateColorOf(t, theme.colorScheme)),
       ),
       title: Row(
         children: [
@@ -532,7 +617,10 @@ class _TorrentTile extends StatelessWidget {
             child: Text(t.name,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontWeight: FontWeight.w500)),
+                style: TextStyle(
+                  fontWeight: FontWeight.w500,
+                  color: stateColorOf(t, theme.colorScheme),
+                )),
           ),
           if (t.groupId.isNotEmpty) ...[
             SizedBox(width: 6),

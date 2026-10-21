@@ -1618,3 +1618,53 @@ fn e2e_dm_identity_guard_and_seq_floor() {
         "author_seq restarted after purge: {new_seq} <= {max_seq} (nonce reuse)"
     );
 }
+
+#[test]
+fn e2e_tracker_list_config_and_refresh_failure() {
+    let bus = MockBus::new();
+    let (a, _ta) = spawn_node(&bus);
+
+    let g = call(&a, "bt.get_tracker_list", json!({}));
+    assert_eq!(g["enabled"], json!(false));
+    assert_eq!(g["trackers"], json!([]));
+
+    // non-http(s) list URLs are rejected
+    let bad = try_call(
+        &a,
+        "bt.set_tracker_list",
+        json!({"enabled": true, "url": "ftp://example/list.txt"}),
+    );
+    assert!(bad.is_err());
+
+    // enable with an unroutable URL: fetch fails fast, error is recorded,
+    // and the (empty) previous list is preserved
+    call(
+        &a,
+        "bt.set_tracker_list",
+        json!({"enabled": true, "url": "https://127.0.0.1:9/none.txt"}),
+    );
+    let r = call(&a, "bt.refresh_tracker_list", json!({}));
+    assert_eq!(r["started"], json!(true));
+    wait_until(&[&a], T, || {
+        let g = call(&a, "bt.get_tracker_list", json!({}));
+        if g["error"].as_str().unwrap_or("").is_empty() {
+            None
+        } else {
+            Some(())
+        }
+    });
+    let g = call(&a, "bt.get_tracker_list", json!({}));
+    assert_eq!(
+        g["trackers"],
+        json!([]),
+        "a failed fetch must not populate or clear the list"
+    );
+
+    call(
+        &a,
+        "bt.set_tracker_list",
+        json!({"enabled": false, "url": "https://127.0.0.1:9/none.txt"}),
+    );
+    let g = call(&a, "bt.get_tracker_list", json!({}));
+    assert_eq!(g["enabled"], json!(false));
+}

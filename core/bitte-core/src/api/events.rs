@@ -16,6 +16,7 @@ const BT_PUSH_INTERVAL: u64 = 3;
 const GROUP_TICK_INTERVAL: u64 = 5;
 const OUTBOX_TICK_INTERVAL: u64 = 10;
 const RSS_TICK_INTERVAL: u64 = 60;
+const TRACKER_LIST_TICK_INTERVAL: u64 = 600;
 const RESUME_TICK_INTERVAL: u64 = 120;
 const RSS_REFRESH_AGE_MS: i64 = 30 * 60 * 1000;
 
@@ -86,6 +87,12 @@ impl Api {
                             inner: api.inner.clone(),
                         };
                         guarded("rss_tick", move || a.rss_tick());
+                    }
+                    if tick.is_multiple_of(TRACKER_LIST_TICK_INTERVAL) {
+                        let a = Api {
+                            inner: api.inner.clone(),
+                        };
+                        guarded("tracker_list_tick", move || a.tracker_list_tick());
                     }
                     if tick.is_multiple_of(60) {
                         log::info!("scheduler alive tick={tick}");
@@ -213,6 +220,21 @@ impl Api {
         };
         for (id, url) in due {
             self.spawn_feed_refresh(id, url);
+        }
+    }
+
+    /// qBittorrent's 24 h tracker-list timer, checked on a coarse tick.
+    fn tracker_list_tick(&self) {
+        let due = {
+            let st = self.inner.state.lock().unwrap();
+            let (enabled, url) = crate::trackerlist::config(&st.store);
+            let (last, _, _) = crate::trackerlist::status(&st.store);
+            enabled
+                && !url.is_empty()
+                && crate::now_ms() - last > crate::trackerlist::REFRESH_INTERVAL_MS
+        };
+        if due {
+            Api::spawn_tracker_list_fetch(self.inner.clone());
         }
     }
 

@@ -347,6 +347,35 @@ class BitteApi extends ChangeNotifier {
   Map<String, dynamic> setDefaultTrackers(List<String> urls) =>
       call('bt.set_default_trackers', {'trackers': urls});
 
+  /// qBittorrent-style global tracker list (URL + enable + fetch state).
+  Map<String, dynamic> trackerList() {
+    if (!available) {
+      return {
+        'enabled': false,
+        'url': '',
+        'last_fetch': 0,
+        'error': '',
+        'trackers': <String>[],
+      };
+    }
+    try {
+      return call('bt.get_tracker_list');
+    } catch (_) {
+      return {
+        'enabled': false,
+        'url': '',
+        'last_fetch': 0,
+        'error': '',
+        'trackers': <String>[],
+      };
+    }
+  }
+
+  void setTrackerList({required bool enabled, required String url}) =>
+      call('bt.set_tracker_list', {'enabled': enabled, 'url': url});
+
+  void refreshTrackerList() => call('bt.refresh_tracker_list');
+
   PieceMap? btPieces(String infohash) {
     if (!available) return null;
     try {

@@ -42,9 +42,13 @@ void main() {
           .pumpWidget(RepaintBoundary(child: BitteChatApp(prefs: prefs)));
       await tester.pumpAndSettle();
 
-      // BT tab -> tap the task row -> animated detail route
+      // BT tab -> qBittorrent-style list UX: status filter chips with
+      // counts and the session stats bar docked at the bottom
       await tester.tap(find.byIcon(Icons.cloud_download_outlined));
       await tester.pumpAndSettle();
+      expect(find.textContaining('All ('), findsOneWidget);
+      expect(find.byIcon(Icons.public), findsOneWidget);
+      await shotWidget(tester, 'shot-bt-tab-ux');
       await tester.tap(find.text(name));
       await tester.pumpAndSettle();
 
@@ -111,6 +115,23 @@ void main() {
       await tester.tap(find.text('Cancel'));
       await tester.pumpAndSettle();
       await shotWidget(tester, 'shot-bt-detail-trackers');
+
+      // settings: qBittorrent-style global tracker list dialog
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      await tester.tap(find.byIcon(Icons.chat_bubble_outline));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byIcon(Icons.person_outline));
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+          find.byKey(const ValueKey('settings-tracker-list')), 300);
+      await tester.tap(find.byKey(const ValueKey('settings-tracker-list')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('trklist-enable')), findsOneWidget);
+      expect(find.byKey(const ValueKey('trklist-url')), findsOneWidget);
+      await shotWidget(tester, 'shot-tracker-list');
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
 
       // hold the install alive until CI pulled the screenshots
       await waitForPullSentinel();

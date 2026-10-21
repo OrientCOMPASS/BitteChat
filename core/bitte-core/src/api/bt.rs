@@ -45,9 +45,21 @@ impl Api {
     /// User-configured default tracker list (applied to every torrent added).
     pub fn default_trackers(&self) -> Vec<String> {
         let st = self.inner.state.lock().unwrap();
+        Self::default_trackers_locked(&st)
+    }
+
+    fn default_trackers_locked(st: &crate::api::CoreState) -> Vec<String> {
         let raw = st.store.kv_get("default_trackers").ok().flatten();
         raw.and_then(|b| serde_json::from_slice::<Vec<String>>(&b).ok())
             .unwrap_or_default()
+    }
+
+    /// qBittorrent "append trackers from URL" semantics: user defaults plus
+    /// the fetched global list (while enabled), de-duplicated.
+    pub fn effective_trackers(&self) -> Vec<String> {
+        let st = self.inner.state.lock().unwrap();
+        let user = Self::default_trackers_locked(&st);
+        crate::trackerlist::effective(&st.store, &user)
     }
 
     /// Add a magnet to the engine and apply the default trackers.
@@ -65,15 +77,16 @@ impl Api {
 
     /// Register default trackers on a live engine torrent (best effort).
     pub fn apply_default_trackers(&self, ih_hex: &str) {
-        for (tier, url) in self.default_trackers().into_iter().enumerate() {
+        for (tier, url) in self.effective_trackers().into_iter().enumerate() {
             let _ = self.inner.engine.add_tracker(ih_hex, &url, tier as i32);
         }
     }
 
     /// The magnet we persist for a torrent: user input extended with the
-    /// default trackers so restarts/rechecks keep them.
+    /// effective tracker list (user defaults + fetched global list) so
+    /// restarts/rechecks keep them.
     pub fn stored_magnet_with_defaults(&self, magnet: &str) -> String {
-        let urls = self.default_trackers();
+        let urls = self.effective_trackers();
         if urls.is_empty() {
             magnet.to_string()
         } else {
@@ -524,6 +537,111 @@ impl Api {
             st.store.torrent_set_magnet(&ih, &m)?;
         }
         Ok(json!({"ok": true}))
+    }
+
+    // ---- global tracker list (qBittorrent "append trackers from URL") ----
+
+    pub fn bt_get_tracker_list(&self) -> Result<Json> {
+        let st = self.inner.state.lock().unwrap();
+        let (enabled, url) = crate::trackerlist::config(&st.store);
+        let (last, error, list) = crate::trackerlist::status(&st.store);
+        Ok(json!({
+            "enabled": enabled,
+            "url": url,
+            "last_fetch": last,
+            "error": error,
+            "trackers": list,
+        }))
+    }
+
+    pub fn bt_set_tracker_list(&self, p: Json) -> Result<Json> {
+        let enabled = jbool(&p, "enabled", false);
+        let url = p
+            .get("url")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim()
+            .to_string();
+        if !url.is_empty() && !(url.starts_with("http://") || url.starts_with("https://")) {
+            return Err(CoreError::Invalid(
+                "tracker list URL 必须以 http(s):// 开头".into(),
+            ));
+        }
+        let changed = {
+            let st = self.inner.state.lock().unwrap();
+            let (old_en, old_url) = crate::trackerlist::config(&st.store);
+            old_en != enabled || old_url != url
+        };
+        {
+            let st = self.inner.state.lock().unwrap();
+            crate::trackerlist::set_config(&st.store, enabled, &url)?;
+        }
+        // qBit: changing the URL (or enabling) triggers an immediate refresh
+        if changed && enabled && !url.is_empty() {
+            Self::spawn_tracker_list_fetch(self.inner.clone());
+        }
+        Ok(json!({"ok": true}))
+    }
+
+    pub fn bt_refresh_tracker_list(&self) -> Result<Json> {
+        let (enabled, url) = {
+            let st = self.inner.state.lock().unwrap();
+            crate::trackerlist::config(&st.store)
+        };
+        if !enabled || url.is_empty() {
+            return Err(CoreError::Invalid("tracker list not configured".into()));
+        }
+        Self::spawn_tracker_list_fetch(self.inner.clone());
+        Ok(json!({"started": true}))
+    }
+
+    /// Async fetch of the global tracker list; success replaces the list and
+    /// the disk cache, failure keeps the previous list and records the error
+    /// (qBittorrent behaviour).
+    pub fn spawn_tracker_list_fetch(inner: std::sync::Arc<crate::api::Inner>) {
+        let _ = std::thread::Builder::new()
+            .name("bitte-trklist".into())
+            .spawn(move || {
+                let (url, data_dir) = {
+                    let st = inner.state.lock().unwrap();
+                    let (_, url) = crate::trackerlist::config(&st.store);
+                    (url, inner.data_dir.clone())
+                };
+                if url.is_empty() {
+                    return;
+                }
+                let result = crate::rss::fetch_url(&url)
+                    .map(|bytes| String::from_utf8_lossy(&bytes).to_string());
+                let now = crate::now_ms();
+                let st = inner.state.lock().unwrap();
+                match result {
+                    Ok(text) => {
+                        let list = crate::trackerlist::parse_tracker_list(&text);
+                        let _ = crate::trackerlist::record_success(&st.store, &list, now);
+                        let _ = std::fs::write(
+                            data_dir.join(crate::trackerlist::CACHE_FILE),
+                            list.join("\n"),
+                        );
+                        log::info!("tracker list updated: {} entries", list.len());
+                        drop(st);
+                        crate::api::Api::emit_from(
+                            &inner,
+                            "bt.tracker_list_updated",
+                            json!({"count": list.len()}),
+                        );
+                    }
+                    Err(e) => {
+                        let _ = crate::trackerlist::record_error(&st.store, &e.to_string());
+                        log::warn!("tracker list update failed: {e}");
+                        drop(st);
+                        crate::api::Api::emit_from(
+                            &inner,
+                            "bt.tracker_list_updated",
+                            json!({"error": e.to_string()}),
+                        );
+                    }
+                }
+            });
     }
 
     pub fn bt_get_default_trackers(&self) -> Result<Json> {

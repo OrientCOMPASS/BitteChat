@@ -718,6 +718,18 @@
  "btDetailTrkUpdating": "Updating",
  "btDetailTrkNotWorking": "Not working",
  "btDetailEditTracker": "Edit tracker URL",
+ "btViewFilterAll": "All",
+ "btViewFilterActive": "Active",
+ "btViewFilterPaused": "Paused",
+ "btViewFilterFinished": "Done",
+ "btViewFilterError": "Error",
+ "trkListTitle": "Global tracker list",
+ "trkListHint": "Auto-update a tracker list from a URL (appended to new downloads)",
+ "trkListEnable": "Enable auto-update",
+ "trkListUrl": "List URL",
+ "trkListRefresh": "Refresh now",
+ "trkListLast": "Last update: {t}",
+ "trkListCount": "{n} trackers fetched",
  "@btDetailPieceTip": {
   "placeholders": {
    "i": {
@@ -728,6 +740,20 @@
    },
    "state": {
     "type": "String"
+   }
+  }
+ },
+ "@trkListLast": {
+  "placeholders": {
+   "t": {
+    "type": "String"
+   }
+  }
+ },
+ "@trkListCount": {
+  "placeholders": {
+   "n": {
+    "type": "int"
    }
   }
  }

@@ -718,6 +718,18 @@
  "btDetailTrkUpdating": "更新中",
  "btDetailTrkNotWorking": "不可用",
  "btDetailEditTracker": "编辑 tracker 地址",
+ "btViewFilterAll": "全部",
+ "btViewFilterActive": "活动",
+ "btViewFilterPaused": "已暂停",
+ "btViewFilterFinished": "完成",
+ "btViewFilterError": "错误",
+ "trkListTitle": "全局 tracker 列表",
+ "trkListHint": "从 URL 定时更新 tracker 列表（追加到新任务）",
+ "trkListEnable": "启用自动更新",
+ "trkListUrl": "列表 URL",
+ "trkListRefresh": "立即更新",
+ "trkListLast": "上次更新：{t}",
+ "trkListCount": "已获取 {n} 个 tracker",
  "@btDetailPieceTip": {
   "placeholders": {
    "i": {
@@ -728,6 +740,20 @@
    },
    "state": {
     "type": "String"
+   }
+  }
+ },
+ "@trkListLast": {
+  "placeholders": {
+   "t": {
+    "type": "String"
+   }
+  }
+ },
+ "@trkListCount": {
+  "placeholders": {
+   "n": {
+    "type": "int"
    }
   }
  }

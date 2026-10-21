@@ -14,7 +14,9 @@
 - **引用回复 / @提及**：左滑引用（QQ 式卡片，含图片缩略图）、长按菜单与文本选择
 - **种子页 / RSS 订阅**：完整 BT 能力（tracker 编辑、过滤脚本、下载目录可配）；
   点击任务进入 VueTorrent 式**详情页**（状态色总进度+速率头、Overview 分组
-  属性卡、Files/Peers/Trackers 标签页、暂停/删除操作）
+  属性卡、Files/Peers/Trackers 标签页、暂停/删除操作）；列表页借鉴 qBittorrent
+  UX（状态过滤 chips、状态着色、底部会话状态栏）；**全局 tracker 列表 URL**
+  定时（24h）自动更新并追加到新任务（qBittorrent 同款设计，设置页可开关/预览）
 - **界面**：Material 3、全局壁纸编辑器、中/英、深色模式
 - **取证**：有界日志 + 崩溃转储（Dart / Rust panic / native 信号三路），设置内一键导出
 
