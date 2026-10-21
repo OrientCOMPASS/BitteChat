@@ -477,7 +477,7 @@ jobs:
             python3 scripts/swarm/gen_torrent.py --out "$RUNNER_TEMP/swarm"
             nohup python3 scripts/swarm/mini_tracker.py --port 6969 --seed-ip 10.0.2.2 --seed-port 6881 >"$RUNNER_TEMP/swarm/tracker.log" 2>&1 &
             if ! command -v aria2c >/dev/null 2>&1; then sudo apt-get update -qq && sudo apt-get install -y -qq aria2; fi
-            aria2c --daemon=true -T "$RUNNER_TEMP/swarm/swarm.torrent" -d "$RUNNER_TEMP/swarm/data" --listen-port=6881 --bt-tracker=http://127.0.0.1:6969/announce --seed-time=120 --bt-stop-timeout=0 --disable-ipv6=true --enable-dht=false --bt-enable-lpd=false --enable-peer-exchange=false --allow-overwrite=true --file-allocation=none --max-overall-upload-limit=256K --log="$RUNNER_TEMP/swarm/aria2.log" --log-level=debug --console-log-level=warn
+            aria2c --daemon=true -T "$RUNNER_TEMP/swarm/swarm.torrent" -d "$RUNNER_TEMP/swarm/data" --listen-port=6881 --bt-tracker=http://127.0.0.1:6969/announce --seed-time=120 --bt-stop-timeout=0 --disable-ipv6=true --enable-dht=false --bt-enable-lpd=false --enable-peer-exchange=false --allow-overwrite=true --file-allocation=none --check-integrity=true --max-overall-upload-limit=256K --log="$RUNNER_TEMP/swarm/aria2.log" --log-level=debug --console-log-level=warn
             sleep 2
             pgrep -x aria2c >/dev/null || echo "::warning::swarm: aria2 seeder is not running"
             ss -ltn 2>/dev/null | grep -E ':(6969|6881)' || true
