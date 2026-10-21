@@ -10,6 +10,7 @@ import 'package:flutter/services.dart';
 import '../core/api.dart';
 import '../core/prefs.dart';
 import '../models.dart';
+import 'bt_view_page.dart';
 import 'chat_view.dart';
 import 'home.dart';
 import '../core/l10n.dart';
@@ -186,6 +187,14 @@ class _BtTabState extends State<BtTab> {
       appBar: AppBar(
         title: Text(L.t.btTab),
         actions: [
+          IconButton(
+            key: const ValueKey('bt-open-dashboard'),
+            tooltip: L.t.btViewTitle,
+            icon: const Icon(Icons.space_dashboard_outlined),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const BtViewPage()),
+            ),
+          ),
           IconButton(
             tooltip: _includeChat ? L.t.hideChatTorrents : L.t.showChatTorrents,
             icon: Icon(_includeChat

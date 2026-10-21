@@ -93,8 +93,8 @@ void main() {
     // gesture below the bubble text (timestamp strip): SelectionArea owns
     // the text span and would enter the arena for drags started on it
     final r4 = tester.getRect(find.text('ux 4'));
-    final swipe = await tester.startGesture(
-        Offset(r4.center.dx, r4.bottom + 10));
+    final swipe =
+        await tester.startGesture(Offset(r4.center.dx, r4.bottom + 10));
     for (var i = 0; i < 6; i++) {
       await swipe.moveBy(const Offset(-10, 0));
       await tester.pump();
@@ -187,6 +187,5 @@ void main() {
             find.text('Language').evaluate().isNotEmpty,
         isTrue,
         reason: 'en locale must restore the UI');
-  },
-      timeout: const Timeout(Duration(minutes: 6)));
+  }, timeout: const Timeout(Duration(minutes: 6)));
 }

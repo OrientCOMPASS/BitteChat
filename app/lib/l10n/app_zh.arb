@@ -677,5 +677,33 @@
  "mySeedsScope": "我发布的做种（文件原地）",
  "otherTasksScope": "其他任务",
  "videoSoftwareDecodeNotice": "正在使用软件解码（硬件解码器不支持此编码）",
- "videoSpeed": "倍速"
+ "videoSpeed": "倍速",
+ "btViewTitle": "仪表盘",
+ "btViewSearch": "搜索任务",
+ "btViewSort": "排序",
+ "btViewSortName": "名称",
+ "btViewSortProgress": "进度",
+ "btViewSortSize": "大小",
+ "btViewSortDown": "下载速度",
+ "btViewSortUp": "上传速度",
+ "btViewSortPeers": "peer 数",
+ "btViewFilterAll": "全部",
+ "btViewFilterActive": "活动",
+ "btViewFilterStalled": "停滞",
+ "btViewFilterPaused": "已暂停",
+ "btViewFilterFinished": "完成",
+ "btViewFilterError": "错误",
+ "btViewModeTable": "表格视图",
+ "btViewModeGrid": "卡片视图",
+ "btViewSelected": "已选 {n} 项",
+ "@btViewSelected": {
+  "placeholders": {
+   "n": {
+    "type": "int"
+   }
+  }
+ },
+ "btViewSelectAll": "全选",
+ "btViewEmpty": "没有匹配的任务"
 }
+

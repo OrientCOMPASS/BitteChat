@@ -677,5 +677,32 @@
  "mySeedsScope": "My published seeds (in place)",
  "otherTasksScope": "Other tasks",
  "videoSoftwareDecodeNotice": "Using software decoding (hardware decoder lacks this codec)",
- "videoSpeed": "Playback speed"
+ "videoSpeed": "Playback speed",
+ "btViewTitle": "Dashboard",
+ "btViewSearch": "Search tasks",
+ "btViewSort": "Sort",
+ "btViewSortName": "Name",
+ "btViewSortProgress": "Progress",
+ "btViewSortSize": "Size",
+ "btViewSortDown": "Download speed",
+ "btViewSortUp": "Upload speed",
+ "btViewSortPeers": "Peers",
+ "btViewFilterAll": "All",
+ "btViewFilterActive": "Active",
+ "btViewFilterStalled": "Stalled",
+ "btViewFilterPaused": "Paused",
+ "btViewFilterFinished": "Done",
+ "btViewFilterError": "Error",
+ "btViewModeTable": "Table view",
+ "btViewModeGrid": "Card view",
+ "btViewSelected": "{n} selected",
+ "@btViewSelected": {
+  "placeholders": {
+   "n": {
+    "type": "int"
+   }
+  }
+ },
+ "btViewSelectAll": "Select all",
+ "btViewEmpty": "No matching tasks"
 }

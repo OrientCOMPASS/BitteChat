@@ -12,7 +12,7 @@ adb wait-for-device || exit 1
 
 cd app || exit 1
 flutter pub get || exit 1
-flutter test   integration_test/attach_test.dart   integration_test/app_test.dart   integration_test/video_test.dart   integration_test/ux_test.dart   -d emulator-5554 --reporter expanded &
+flutter test   integration_test/attach_test.dart   integration_test/app_test.dart   integration_test/video_test.dart   integration_test/ux_test.dart   integration_test/bt_view_test.dart   -d emulator-5554 --reporter expanded &
 TPID=$!
 
 # Detect the package lazily AND re-detect inside the pull loop: the test
@@ -46,7 +46,8 @@ pull_one() {
   return 1
 }
 
-for f in shot-log.txt shot-chat-inline.png shot-jump-chip.png; do
+for f in shot-log.txt shot-chat-inline.png shot-jump-chip.png \
+         shot-bt-view-table.png shot-bt-view-grid.png; do
   got=""
   for _ in $(seq 1 400); do
     [ -n "$PKG" ] || PKG="$(detect_pkg)"
