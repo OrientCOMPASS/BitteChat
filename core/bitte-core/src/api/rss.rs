@@ -144,6 +144,32 @@ impl Api {
         Ok(json!({"ok": true}))
     }
 
+    /// Auto-refresh interval in minutes (0 = manual only), per-tab setting
+    /// surfaced in the RSS tab's own settings sheet.
+    pub fn rss_get_settings(&self) -> Result<Json> {
+        let st = self.inner.state.lock().unwrap();
+        let mins = st
+            .store
+            .kv_get("rss_refresh_mins")
+            .ok()
+            .flatten()
+            .and_then(|b| String::from_utf8(b).ok())
+            .and_then(|s| s.parse::<i64>().ok())
+            .unwrap_or(30);
+        Ok(json!({"refresh_minutes": mins}))
+    }
+
+    pub fn rss_set_settings(&self, p: Json) -> Result<Json> {
+        let mins = ji64(&p, "refresh_minutes", 30);
+        if !(0..=1440).contains(&mins) {
+            return Err(CoreError::Invalid("refresh_minutes must be 0..1440".into()));
+        }
+        let st = self.inner.state.lock().unwrap();
+        st.store
+            .kv_set("rss_refresh_mins", mins.to_string().as_bytes())?;
+        Ok(json!({"ok": true, "refresh_minutes": mins}))
+    }
+
     /// Turn an RSS item into a BT download: magnet link directly, .torrent
     /// enclosure fetched then imported, or a generic file downloaded over
     /// HTTP and re-seeded as a new torrent.

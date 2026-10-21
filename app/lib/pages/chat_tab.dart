@@ -13,6 +13,7 @@ import '../core/intent.dart';
 import '../core/prefs.dart';
 import '../models.dart';
 import '../widgets/avatar.dart';
+import '../widgets/filter_rules_page.dart';
 import '../widgets/time_fmt.dart';
 import 'chat_view.dart';
 import 'home.dart';
@@ -258,6 +259,14 @@ class _ChatTabState extends State<ChatTab> {
             tooltip: L.t.fabGroup,
             icon: Icon(Icons.add_comment),
             onPressed: () => _showAddMenu(context),
+          ),
+          IconButton(
+            key: const ValueKey('chat-filter-rules'),
+            tooltip: L.t.filterRules,
+            icon: Icon(Icons.filter_alt_outlined),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const FilterRulesPage()),
+            ),
           ),
           IconButton(
             tooltip: L.t.identitySettings,

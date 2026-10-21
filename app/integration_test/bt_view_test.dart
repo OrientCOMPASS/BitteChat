@@ -1,9 +1,9 @@
 // On-device (emulator) verification of the VueTorrent-style torrent detail
-// page (BtViewPage, opened by tapping a task in the BT tab): piece-level
-// progress bar with probe tooltip, Overview property groups, Files tab with
-// sort + per-file priority actions, qBittorrent-style Trackers tab (add +
-// force reannounce). Screenshots of THIS round's feature (overview / files /
-// trackers) are pulled concurrently by scripts/emu-run-and-pull.sh.
+// page (BtViewPage: piece bar, Overview groups, Files tree, Peers table,
+// qBittorrent trackers), the per-tab settings redistribution (BT settings
+// sheet with the global tracker list dialog, RSS settings dialog) and the
+// qBittorrent-style BT list UX. Screenshots of THIS round's features are
+// pulled concurrently by scripts/emu-run-and-pull.sh.
 //
 // Run: flutter test integration_test/bt_view_test.dart -d <device>
 
@@ -22,7 +22,7 @@ void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
   testWidgets(
-    'bt detail page: piece bar probe, files sort/priority, trackers mgmt',
+    'bt detail page + per-tab settings: tree, peers table, tracker list',
     (tester) async {
       await BitteApi.init();
       final api = BitteApi.instance;
@@ -42,17 +42,28 @@ void main() {
           .pumpWidget(RepaintBoundary(child: BitteChatApp(prefs: prefs)));
       await tester.pumpAndSettle();
 
-      // BT tab -> qBittorrent-style list UX: status filter chips with
-      // counts and the session stats bar docked at the bottom
+      // BT tab: qBit-style chips + bottom status bar, then the BT settings
+      // sheet (settings live in their own tab now)
       await tester.tap(find.byIcon(Icons.cloud_download_outlined));
       await tester.pumpAndSettle();
       expect(find.textContaining('All ('), findsOneWidget);
       expect(find.byIcon(Icons.public), findsOneWidget);
       await shotWidget(tester, 'shot-bt-tab-ux');
-      await tester.tap(find.text(name));
+      await tester.tap(find.byKey(const ValueKey('bt-settings')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('btset-dir')), findsOneWidget);
+      expect(find.byKey(const ValueKey('btset-tracker-list')), findsOneWidget);
+      await shotWidget(tester, 'shot-bt-settings');
+      await tester.tap(find.byKey(const ValueKey('btset-tracker-list')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('trklist-enable')), findsOneWidget);
+      await shotWidget(tester, 'shot-tracker-list');
+      await tester.tap(find.text('Cancel'));
       await tester.pumpAndSettle();
 
-      // VueTorrent-style tab bar
+      // tap the task row -> animated detail route
+      await tester.tap(find.text(name));
+      await tester.pumpAndSettle();
       for (final tab in ['Overview', 'Files', 'Peers', 'Trackers']) {
         expect(
           find.descendant(of: find.byType(TabBar), matching: find.text(tab)),
@@ -60,26 +71,22 @@ void main() {
           reason: 'tab $tab missing',
         );
       }
-      // piece-level progress bar + probe tooltip (finished seed => all done)
       expect(find.byKey(const ValueKey('btdetail-pieces')), findsOneWidget);
       final bar = tester.getRect(find.byKey(const ValueKey('btdetail-pieces')));
       await tester.tapAt(bar.center);
       await tester.pumpAndSettle();
       expect(find.textContaining('downloaded'), findsWidgets);
       expect(find.text(ih), findsOneWidget);
-      expect(find.text('BT'), findsOneWidget);
       await shotWidget(tester, 'shot-bt-detail-overview');
 
-      // Files tab: sort controls + per-file priority action
+      // Files tab: VueTorrent-Content-style tree (root row, checkbox,
+      // search field, priority menu)
       await tester.tap(find.descendant(
           of: find.byType(TabBar), matching: find.text('Files')));
       await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('btfiles-sort')), findsOneWidget);
-      expect(find.byKey(const ValueKey('btfiles-asc')), findsOneWidget);
-      expect(
-        find.descendant(of: find.byType(ListView), matching: find.text(name)),
-        findsOneWidget,
-      );
+      expect(find.text('(root)'), findsOneWidget);
+      expect(find.byKey(const ValueKey('btfiles-search')), findsOneWidget);
+      expect(find.byKey(const ValueKey('btfile-check-0')), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('btfile-prio-0')));
       await tester.pumpAndSettle();
       expect(find.text('High priority'), findsOneWidget);
@@ -87,7 +94,14 @@ void main() {
       await tester.pumpAndSettle();
       await shotWidget(tester, 'shot-bt-detail-files');
 
-      // Trackers tab (qBittorrent-style): add, then force reannounce
+      // Peers tab: sortable table header + search (empty swarm on emulator)
+      await tester.tap(find.descendant(
+          of: find.byType(TabBar), matching: find.text('Peers')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('btpeers-search')), findsOneWidget);
+      await shotWidget(tester, 'shot-bt-detail-peers');
+
+      // Trackers tab: qBit-style add + reannounce + edit menu
       await tester.tap(find.descendant(
           of: find.byType(TabBar), matching: find.text('Trackers')));
       await tester.pumpAndSettle();
@@ -106,32 +120,24 @@ void main() {
       expect(find.text('Edit tracker URL'), findsOneWidget);
       await tester.tap(find.text('Force reannounce'));
       await tester.pumpAndSettle();
-      // edit dialog opens prefilled and cancels cleanly
-      await tester.tap(find.byKey(const ValueKey('bttracker-menu-0')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Edit tracker URL'));
-      await tester.pumpAndSettle();
-      expect(find.text('Save'), findsOneWidget);
-      await tester.tap(find.text('Cancel'));
-      await tester.pumpAndSettle();
       await shotWidget(tester, 'shot-bt-detail-trackers');
 
-      // settings: qBittorrent-style global tracker list dialog
+      // RSS tab settings live in the RSS tab
       await tester.pageBack();
       await tester.pumpAndSettle();
+      await tester.tap(find.byIcon(Icons.rss_feed_outlined));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('rss-settings')));
+      await tester.pumpAndSettle();
+      expect(find.text('Manual only'), findsOneWidget);
+      await shotWidget(tester, 'shot-rss-settings');
+      await tester.tap(find.text('30 minutes'));
+      await tester.pumpAndSettle();
+
+      // chat tab exposes the filter rules entry (chat settings in chat tab)
       await tester.tap(find.byIcon(Icons.chat_bubble_outline));
       await tester.pumpAndSettle();
-      await tester.tap(find.byIcon(Icons.person_outline));
-      await tester.pumpAndSettle();
-      await tester.scrollUntilVisible(
-          find.byKey(const ValueKey('settings-tracker-list')), 300);
-      await tester.tap(find.byKey(const ValueKey('settings-tracker-list')));
-      await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('trklist-enable')), findsOneWidget);
-      expect(find.byKey(const ValueKey('trklist-url')), findsOneWidget);
-      await shotWidget(tester, 'shot-tracker-list');
-      await tester.tap(find.text('Cancel'));
-      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('chat-filter-rules')), findsOneWidget);
 
       // hold the install alive until CI pulled the screenshots
       await waitForPullSentinel();

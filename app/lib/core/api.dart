@@ -463,6 +463,18 @@ class BitteApi extends ChangeNotifier {
   void rssMarkFeedRead(int feedId) =>
       call('rss.mark_feed_read', {'feed_id': feedId});
 
+  int rssRefreshMinutes() {
+    if (!available) return 30;
+    try {
+      return (call('rss.get_settings')['refresh_minutes'] as int?) ?? 30;
+    } catch (_) {
+      return 30;
+    }
+  }
+
+  void setRssRefreshMinutes(int minutes) =>
+      call('rss.set_settings', {'refresh_minutes': minutes});
+
   Map<String, dynamic> rssDownload(int itemId) =>
       call('rss.download', {'id': itemId});
 

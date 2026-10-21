@@ -18,7 +18,6 @@ const OUTBOX_TICK_INTERVAL: u64 = 10;
 const RSS_TICK_INTERVAL: u64 = 60;
 const TRACKER_LIST_TICK_INTERVAL: u64 = 600;
 const RESUME_TICK_INTERVAL: u64 = 120;
-const RSS_REFRESH_AGE_MS: i64 = 30 * 60 * 1000;
 
 impl Api {
     pub fn spawn_event_loop(self: &Api, rx: Receiver<EngineEvent>) {
@@ -208,13 +207,28 @@ impl Api {
 
     fn rss_tick(&self) {
         let now = crate::now_ms();
+        // user-configurable auto-refresh interval (minutes, 0 = off)
+        let interval = {
+            let st = self.inner.state.lock().unwrap();
+            st.store
+                .kv_get("rss_refresh_mins")
+                .ok()
+                .flatten()
+                .and_then(|b| String::from_utf8(b).ok())
+                .and_then(|s| s.parse::<i64>().ok())
+                .unwrap_or(30)
+        };
+        if interval <= 0 {
+            return;
+        }
+        let age_ms = interval * 60 * 1000;
         let due: Vec<(i64, String)> = {
             let st = self.inner.state.lock().unwrap();
             st.store
                 .feeds_all()
                 .unwrap_or_default()
                 .into_iter()
-                .filter(|(_, _, _, last, _)| now - last > RSS_REFRESH_AGE_MS)
+                .filter(|(_, _, _, last, _)| now - last > age_ms)
                 .map(|(id, url, _, _, _)| (id, url))
                 .collect()
         };

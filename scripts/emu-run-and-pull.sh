@@ -65,10 +65,11 @@ merge_log() {
   rm -f "$tmp"
 }
 
-for f in shot-chat-inline.png shot-jump-chip.png \
+for f in shot-chat-inline.png shot-jump-chip.png shot-bt-tab-ux.png \
+         shot-bt-settings.png shot-tracker-list.png \
          shot-bt-detail-overview.png shot-bt-detail-files.png \
-         shot-bt-detail-trackers.png shot-bt-tab-ux.png \
-         shot-tracker-list.png; do
+         shot-bt-detail-peers.png shot-bt-detail-trackers.png \
+         shot-rss-settings.png; do
   got=""
   for _ in $(seq 1 400); do
     [ -n "$PKG" ] || PKG="$(detect_pkg)"

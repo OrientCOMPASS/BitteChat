@@ -344,6 +344,8 @@ impl Api {
             "rss.item_detail" => self.rss_item_detail(p),
             "rss.mark_read" => self.rss_mark_read(p),
             "rss.mark_feed_read" => self.rss_mark_feed_read(p),
+            "rss.get_settings" => self.rss_get_settings(),
+            "rss.set_settings" => self.rss_set_settings(p),
             "rss.download" => self.rss_download(p),
 
             _ => Err(CoreError::NotFound(format!("method {method}"))),

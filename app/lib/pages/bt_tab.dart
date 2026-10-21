@@ -129,6 +129,224 @@ class _BtTabState extends State<BtTab> {
     }
   }
 
+  /// BT-side settings live in the BT tab (qBittorrent keeps its BitTorrent
+  /// options together): download dir, tracker lists, rate limits.
+  Future<void> _openBtSettings() async {
+    final dir = _api.available ? _api.getDownloadDir() : <String, dynamic>{};
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              key: const ValueKey('btset-dir'),
+              leading: const Icon(Icons.drive_file_move_outlined),
+              title: Text(L.t.downloadDir),
+              subtitle: Text('${dir['path'] ?? ''}',
+                  style: Theme.of(ctx).textTheme.bodySmall),
+              onTap: () {
+                Navigator.pop(ctx);
+                _editDownloadDir();
+              },
+            ),
+            ListTile(
+              key: const ValueKey('btset-tracker-list'),
+              leading: const Icon(Icons.list),
+              title: Text(L.t.trkListTitle),
+              subtitle: Text(L.t.trkListHint,
+                  style: Theme.of(ctx).textTheme.bodySmall),
+              onTap: () {
+                Navigator.pop(ctx);
+                _openTrackerListDialog();
+              },
+            ),
+            ListTile(
+              key: const ValueKey('btset-default-trackers'),
+              leading: const Icon(Icons.hub_outlined),
+              title: Text(L.t.defaultTrackers),
+              onTap: () {
+                Navigator.pop(ctx);
+                showDefaultTrackersEditor(context, onSaved: _reload);
+              },
+            ),
+            ListTile(
+              key: const ValueKey('btset-limits'),
+              leading: const Icon(Icons.speed),
+              title: Text(L.t.rateLimits),
+              onTap: () {
+                Navigator.pop(ctx);
+                _openLimitsSheet();
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    _reload();
+  }
+
+  Future<void> _editDownloadDir() async {
+    final cur = _api.available ? _api.getDownloadDir() : <String, dynamic>{};
+    final controller = TextEditingController(text: '${cur['path'] ?? ''}');
+    final messenger = ScaffoldMessenger.of(context);
+    final path = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(L.t.downloadDir),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(L.t.downloadDirHint, style: Theme.of(ctx).textTheme.bodySmall),
+            const SizedBox(height: 8),
+            TextField(
+              controller: controller,
+              decoration: const InputDecoration(border: OutlineInputBorder()),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx), child: Text(L.t.cancel)),
+          TextButton(
+            onPressed: () => controller.text = '${cur['default'] ?? ''}',
+            child: Text(L.t.downloadDirReset),
+          ),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+              child: Text(L.t.save)),
+        ],
+      ),
+    );
+    if (path == null) return;
+    try {
+      final reset = path.isEmpty || path == '${cur['default'] ?? ''}';
+      final r = _api.setDownloadDir(reset ? '' : path);
+      _reload();
+      messenger.showSnackBar(SnackBar(
+          content: Text('${L.t.downloadDirSaved}: ${r['path'] ?? ''}')));
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('$e')));
+    }
+  }
+
+  /// qBittorrent-style "append trackers from URL" preferences dialog.
+  Future<void> _openTrackerListDialog() async {
+    if (!_api.available) return;
+    var cfg = _api.trackerList();
+    final controller = TextEditingController(text: '${cfg['url'] ?? ''}');
+    var enabled = cfg['enabled'] == true;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialog) => AlertDialog(
+          title: Text(L.t.trkListTitle),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SwitchListTile(
+                    key: const ValueKey('trklist-enable'),
+                    contentPadding: EdgeInsets.zero,
+                    value: enabled,
+                    title: Text(L.t.trkListEnable),
+                    onChanged: (v) => setDialog(() => enabled = v),
+                  ),
+                  TextField(
+                    key: const ValueKey('trklist-url'),
+                    controller: controller,
+                    decoration: InputDecoration(
+                      labelText: L.t.trkListUrl,
+                      hintText: 'https://example.com/trackers.txt',
+                      border: const OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(_trkListStatus(cfg),
+                      style: Theme.of(ctx).textTheme.bodySmall),
+                  const SizedBox(height: 10),
+                  FilledButton.icon(
+                    key: const ValueKey('trklist-refresh'),
+                    icon: const Icon(Icons.refresh, size: 18),
+                    label: Text(L.t.trkListRefresh),
+                    onPressed: () {
+                      try {
+                        _api.refreshTrackerList();
+                      } catch (e) {
+                        showError(ctx, e);
+                        return;
+                      }
+                      Future<void>.delayed(const Duration(seconds: 2), () {
+                        if (ctx.mounted) {
+                          setDialog(() => cfg = _api.trackerList());
+                        }
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 10),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxHeight: 130),
+                    child: SingleChildScrollView(
+                      child: Text(
+                        ((cfg['trackers'] as List?) ?? [])
+                            .map((e) => '$e')
+                            .join('\n'),
+                        style: Theme.of(ctx)
+                            .textTheme
+                            .bodySmall
+                            ?.copyWith(fontFamily: 'monospace'),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx), child: Text(L.t.cancel)),
+            FilledButton(
+              key: const ValueKey('trklist-save'),
+              onPressed: () {
+                try {
+                  _api.setTrackerList(
+                      enabled: enabled, url: controller.text.trim());
+                } catch (e) {
+                  showError(ctx, e);
+                  return;
+                }
+                Navigator.pop(ctx);
+              },
+              child: Text(L.t.save),
+            ),
+          ],
+        ),
+      ),
+    );
+    controller.dispose();
+    _reload();
+  }
+
+  String _trkListStatus(Map<String, dynamic> cfg) {
+    final last = (cfg['last_fetch'] as int?) ?? 0;
+    final err = '${cfg['error'] ?? ''}';
+    final n = ((cfg['trackers'] as List?) ?? []).length;
+    final when = last > 0
+        ? DateTime.fromMillisecondsSinceEpoch(last)
+            .toLocal()
+            .toString()
+            .split('.')
+            .first
+        : '—';
+    final base = '${L.t.trkListLast(when)} · ${L.t.trkListCount(n)}';
+    return err.isEmpty ? base : '$base · $err';
+  }
+
   Future<void> _addMagnet() async {
     final controller = TextEditingController();
     final magnet = await showDialog<String>(
@@ -218,15 +436,10 @@ class _BtTabState extends State<BtTab> {
             },
           ),
           IconButton(
-            tooltip: L.t.defaultTrackers,
-            icon: Icon(Icons.hub_outlined),
-            onPressed: () =>
-                showDefaultTrackersEditor(context, onSaved: _reload),
-          ),
-          IconButton(
-            tooltip: L.t.rateLimits,
-            icon: Icon(Icons.speed),
-            onPressed: _openLimitsSheet,
+            key: const ValueKey('bt-settings'),
+            tooltip: L.t.btSettingsTitle,
+            icon: Icon(Icons.tune),
+            onPressed: _openBtSettings,
           ),
           IconButton(
             tooltip: L.t.refresh,
@@ -450,20 +663,23 @@ class _StatusFilterChips extends StatelessWidget {
     }
 
     return SizedBox(
-      height: 42,
+      height: 48,
       child: ListView(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 12),
         children: [
           for (var i = 0; i < 5; i++)
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: FilterChip(
-                label: Text(
-                  '${label(i)} (${torrents.where((t) => _BtTabState._matchesFilter(t, i)).length})',
+            Align(
+              alignment: Alignment.center,
+              child: Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: FilterChip(
+                  label: Text(
+                    '${label(i)} (${torrents.where((t) => _BtTabState._matchesFilter(t, i)).length})',
+                  ),
+                  selected: selected == i,
+                  onSelected: (_) => onSelected(i),
                 ),
-                selected: selected == i,
-                onSelected: (_) => onSelected(i),
               ),
             ),
         ],

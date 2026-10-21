@@ -56,6 +56,34 @@ class _RssTabState extends State<RssTab> {
     } catch (_) {}
   }
 
+  /// RSS-side settings live in the RSS tab: auto-refresh interval.
+  Future<void> _openRssSettings() async {
+    final current = _api.available ? _api.rssRefreshMinutes() : 30;
+    final picked = await showDialog<int>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: Text(L.t.rssAutoRefresh),
+        children: [
+          for (final m in const [15, 30, 60, 240, 0])
+            ListTile(
+              dense: true,
+              leading: Icon(m == current
+                  ? Icons.radio_button_checked
+                  : Icons.radio_button_off),
+              title: Text(m == 0 ? L.t.rssIntervalOff : L.t.rssIntervalMins(m)),
+              onTap: () => Navigator.pop(ctx, m),
+            ),
+        ],
+      ),
+    );
+    if (picked == null) return;
+    try {
+      _api.setRssRefreshMinutes(picked);
+    } catch (e) {
+      if (mounted) showError(context, e);
+    }
+  }
+
   Future<void> _addFeed() async {
     final controller = TextEditingController();
     final url = await showDialog<String>(
@@ -106,6 +134,12 @@ class _RssTabState extends State<RssTab> {
       appBar: AppBar(
         title: Text(L.t.rssTab),
         actions: [
+          IconButton(
+            key: const ValueKey('rss-settings'),
+            tooltip: L.t.rssSettingsTitle,
+            icon: Icon(Icons.tune),
+            onPressed: _openRssSettings,
+          ),
           IconButton(
             tooltip: L.t.refreshAll,
             icon: Icon(Icons.refresh),

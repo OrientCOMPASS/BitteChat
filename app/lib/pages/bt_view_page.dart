@@ -815,8 +815,9 @@ class _Row extends StatelessWidget {
   }
 }
 
-/// Files ("Content") with sort menu and per-file priority actions.
-class _FilesTab extends StatelessWidget {
+/// Files ("Content") as a collapsible tree with search, download checkboxes
+/// and per-file priority — after VueTorrent's Content tab.
+class _FilesTab extends StatefulWidget {
   const _FilesTab({
     required this.files,
     required this.sort,
@@ -833,6 +834,114 @@ class _FilesTab extends StatelessWidget {
   final VoidCallback onToggleAsc;
   final void Function(int index, int prio) onPriority;
 
+  @override
+  State<_FilesTab> createState() => _FilesTabState();
+}
+
+class _FileNode {
+  _FileNode(this.name);
+
+  final String name;
+  bool isDir = false;
+  final List<_FileNode> children = [];
+  int index = -1;
+  int size = 0;
+  double progress = 0;
+  int priority = 4;
+  int aggSize = 0;
+  double aggDone = 0;
+  int fileCount = 0;
+}
+
+class _FilesTabState extends State<_FilesTab> {
+  final TextEditingController _search = TextEditingController();
+  final Set<String> _collapsed = {};
+  String _query = '';
+
+  _FileNode _buildTree() {
+    final root = _FileNode('')..isDir = true;
+    final ordered = List<Map<String, dynamic>>.from(widget.files)
+      ..sort((a, b) => ((a['index'] as num?)?.toInt() ?? 0)
+          .compareTo((b['index'] as num?)?.toInt() ?? 0));
+    for (final f in ordered) {
+      final path = '${f['path']}';
+      final parts = path.split('/').where((p) => p.isNotEmpty).toList();
+      if (parts.isEmpty) continue;
+      var node = root;
+      for (var i = 0; i < parts.length - 1; i++) {
+        var child =
+            node.children.where((c) => c.isDir && c.name == parts[i]).toList();
+        _FileNode dir;
+        if (child.isEmpty) {
+          dir = _FileNode(parts[i])..isDir = true;
+          node.children.add(dir);
+        } else {
+          dir = child.first;
+        }
+        node = dir;
+      }
+      final size = (f['size'] as num?)?.toInt() ?? 0;
+      final prog = (f['progress'] as num?)?.toDouble() ?? 0;
+      node.children.add(_FileNode(parts.last)
+        ..index = (f['index'] as num?)?.toInt() ?? 0
+        ..size = size
+        ..progress = prog
+        ..priority = (f['priority'] as num?)?.toInt() ?? 4);
+    }
+    _aggregate(root);
+    _sortNode(root);
+    return root;
+  }
+
+  void _aggregate(_FileNode n) {
+    if (!n.isDir) {
+      n.aggSize = n.size;
+      n.aggDone = n.size * n.progress;
+      n.fileCount = 1;
+      return;
+    }
+    n.aggSize = 0;
+    n.aggDone = 0;
+    n.fileCount = 0;
+    for (final c in n.children) {
+      _aggregate(c);
+      n.aggSize += c.aggSize;
+      n.aggDone += c.aggDone;
+      n.fileCount += c.fileCount;
+    }
+  }
+
+  void _sortNode(_FileNode n) {
+    if (!n.isDir) return;
+    int cmp(_FileNode a, _FileNode b) {
+      if (a.isDir != b.isDir) return a.isDir ? -1 : 1;
+      switch (widget.sort) {
+        case _FileSort.name:
+          return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+        case _FileSort.size:
+          return a.aggSize.compareTo(b.aggSize);
+        case _FileSort.progress:
+          final pa = a.aggSize > 0 ? a.aggDone / a.aggSize : 0;
+          final pb = b.aggSize > 0 ? b.aggDone / b.aggSize : 0;
+          return pa.compareTo(pb);
+      }
+    }
+
+    n.children.sort((a, b) {
+      final c = cmp(a, b);
+      return widget.asc ? c : -c;
+    });
+    for (final c in n.children) {
+      _sortNode(c);
+    }
+  }
+
+  bool _matchesQuery(_FileNode n) {
+    if (_query.isEmpty) return true;
+    if (!n.isDir) return n.name.toLowerCase().contains(_query);
+    return n.children.any(_matchesQuery);
+  }
+
   String _sortLabel(_FileSort s) {
     switch (s) {
       case _FileSort.name:
@@ -845,120 +954,278 @@ class _FilesTab extends StatelessWidget {
   }
 
   @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    if (files.isEmpty) {
+    if (widget.files.isEmpty) {
       return Center(
         child: Text(L.t.noMetadata,
             style: theme.textTheme.bodySmall
                 ?.copyWith(color: theme.colorScheme.outline)),
       );
     }
-    return ListView(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(L.t.filesCount(files.length),
-                  style: theme.textTheme.titleSmall),
+    final root = _buildTree();
+    final rows = <Widget>[];
+    rows.add(Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 8, 4),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(L.t.filesCount(widget.files.length),
+                style: theme.textTheme.titleSmall),
+          ),
+          SizedBox(
+            width: 150,
+            height: 36,
+            child: TextField(
+              key: const ValueKey('btfiles-search'),
+              controller: _search,
+              style: theme.textTheme.bodySmall,
+              decoration: InputDecoration(
+                isDense: true,
+                hintText: L.t.btFileSearch,
+                prefixIcon: const Icon(Icons.search, size: 18),
+                border:
+                    OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              onChanged: (v) => setState(() => _query = v.toLowerCase()),
             ),
-            IconButton(
-              key: const ValueKey('btfiles-asc'),
-              icon: Icon(asc ? Icons.arrow_upward : Icons.arrow_downward,
-                  size: 18),
-              tooltip: asc ? L.t.btDetailSortAsc : L.t.btDetailSortDesc,
-              onPressed: onToggleAsc,
-            ),
-            PopupMenuButton<_FileSort>(
-              key: const ValueKey('btfiles-sort'),
-              icon: const Icon(Icons.sort, size: 20),
-              tooltip: L.t.btDetailSort,
-              onSelected: onSort,
-              itemBuilder: (ctx) => [
-                for (final s in _FileSort.values)
-                  PopupMenuItem(
-                    value: s,
-                    child: Row(
-                      children: [
-                        if (sort == s)
-                          Icon(Icons.check,
-                              size: 18, color: theme.colorScheme.primary)
-                        else
-                          const SizedBox(width: 18),
-                        const SizedBox(width: 8),
-                        Text(_sortLabel(s)),
-                      ],
-                    ),
+          ),
+          IconButton(
+            key: const ValueKey('btfiles-asc'),
+            icon: Icon(widget.asc ? Icons.arrow_upward : Icons.arrow_downward,
+                size: 18),
+            tooltip: widget.asc ? L.t.btDetailSortAsc : L.t.btDetailSortDesc,
+            onPressed: widget.onToggleAsc,
+          ),
+          PopupMenuButton<_FileSort>(
+            key: const ValueKey('btfiles-sort'),
+            icon: const Icon(Icons.sort, size: 20),
+            tooltip: L.t.btDetailSort,
+            onSelected: widget.onSort,
+            itemBuilder: (ctx) => [
+              for (final s in _FileSort.values)
+                PopupMenuItem(
+                  value: s,
+                  child: Row(
+                    children: [
+                      if (widget.sort == s)
+                        Icon(Icons.check,
+                            size: 18, color: theme.colorScheme.primary)
+                      else
+                        const SizedBox(width: 18),
+                      const SizedBox(width: 8),
+                      Text(_sortLabel(s)),
+                    ],
                   ),
-              ],
-            ),
-          ],
-        ),
-        ...files.map((f) {
-          final prog = (f['progress'] as num?)?.toDouble() ?? 0;
-          final idx = (f['index'] as num?)?.toInt() ?? 0;
-          final prio = (f['priority'] as num?)?.toInt() ?? 4;
-          return Padding(
-            padding: const EdgeInsets.symmetric(vertical: 6),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(f['path'] as String? ?? '',
-                          maxLines: 1, overflow: TextOverflow.ellipsis),
-                    ),
-                    Text(formatBytes((f['size'] as num?)?.toInt() ?? 0),
-                        style: theme.textTheme.bodySmall),
-                    PopupMenuButton<int>(
-                      key: ValueKey('btfile-prio-$idx'),
-                      icon: Icon(
-                        prio == 0
-                            ? Icons.block
-                            : prio >= 6
-                                ? Icons.keyboard_double_arrow_up
-                                : Icons.more_vert,
-                        size: 18,
-                        color: prio == 0
-                            ? theme.colorScheme.outline
-                            : theme.colorScheme.onSurface,
-                      ),
-                      tooltip: L.t.btDetailPriority,
-                      onSelected: (p) => onPriority(idx, p),
-                      itemBuilder: (ctx) => [
-                        PopupMenuItem(
-                            value: 0, child: Text(L.t.btDetailPrioSkip)),
-                        PopupMenuItem(
-                            value: 4, child: Text(L.t.btDetailPrioNormal)),
-                        PopupMenuItem(
-                            value: 6, child: Text(L.t.btDetailPrioHigh)),
-                      ],
-                    ),
-                  ],
                 ),
-                const SizedBox(height: 4),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(3),
-                  child: LinearProgressIndicator(
-                      value: prog,
-                      minHeight: 4,
-                      color: prio == 0
-                          ? theme.colorScheme.outline
-                          : theme.colorScheme.primary),
-                ),
-              ],
+            ],
+          ),
+        ],
+      ),
+    ));
+    void walk(_FileNode node, int depth, String path) {
+      for (final c in node.children) {
+        if (!_matchesQuery(c)) continue;
+        final key = '$path/${c.name}';
+        if (c.isDir) {
+          final open = !_collapsed.contains(key);
+          rows.add(_DirRow(
+            node: c,
+            depth: depth,
+            open: open,
+            onToggle: () => setState(() {
+              if (open) {
+                _collapsed.add(key);
+              } else {
+                _collapsed.remove(key);
+              }
+            }),
+          ));
+          if (open) walk(c, depth + 1, key);
+        } else {
+          rows.add(_FileRow(
+            node: c,
+            depth: depth,
+            onPriority: widget.onPriority,
+          ));
+        }
+      }
+    }
+
+    rows.add(_DirRow(
+      node: root,
+      depth: 0,
+      open: true,
+      root: true,
+      onToggle: () {},
+    ));
+    walk(root, 1, '');
+    return ListView(children: rows);
+  }
+}
+
+class _DirRow extends StatelessWidget {
+  const _DirRow({
+    required this.node,
+    required this.depth,
+    required this.open,
+    required this.onToggle,
+    this.root = false,
+  });
+
+  final _FileNode node;
+  final int depth;
+  final bool open;
+  final bool root;
+  final VoidCallback onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final prog = node.aggSize > 0 ? node.aggDone / node.aggSize : 0.0;
+    return Padding(
+      padding: EdgeInsets.only(left: 8.0 + depth * 16, right: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          InkWell(
+            onTap: root ? null : onToggle,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Row(
+                children: [
+                  Icon(
+                      root
+                          ? Icons.folder_special_outlined
+                          : (open ? Icons.expand_more : Icons.chevron_right),
+                      size: 18,
+                      color: theme.colorScheme.outline),
+                  const SizedBox(width: 6),
+                  Icon(Icons.folder_outlined,
+                      size: 18, color: theme.colorScheme.primary),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(root ? '(root)' : node.name,
+                        style: theme.textTheme.bodyMedium),
+                  ),
+                  Text(
+                    '${formatBytes(node.aggSize)} · ${node.fileCount}f',
+                    style: theme.textTheme.bodySmall
+                        ?.copyWith(color: theme.colorScheme.outline),
+                  ),
+                ],
+              ),
             ),
-          );
-        }),
-      ],
+          ),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(3),
+            child: LinearProgressIndicator(
+                value: prog,
+                minHeight: 4,
+                color: theme.colorScheme.tertiary,
+                backgroundColor: theme.colorScheme.surfaceContainerHighest),
+          ),
+        ],
+      ),
     );
   }
 }
 
-/// Peers with sort menu and copy-address action.
-class _PeersTab extends StatelessWidget {
+class _FileRow extends StatelessWidget {
+  const _FileRow({
+    required this.node,
+    required this.depth,
+    required this.onPriority,
+  });
+
+  final _FileNode node;
+  final int depth;
+  final void Function(int index, int prio) onPriority;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: EdgeInsets.only(left: 8.0 + depth * 16, right: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              SizedBox(
+                width: 32,
+                height: 32,
+                child: Checkbox(
+                  key: ValueKey('btfile-check-${node.index}'),
+                  value: node.priority != 0,
+                  onChanged: (v) => onPriority(node.index, v == true ? 4 : 0),
+                ),
+              ),
+              Icon(Icons.insert_drive_file_outlined,
+                  size: 18, color: theme.colorScheme.outline),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(node.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: node.priority == 0
+                          ? theme.colorScheme.outline
+                          : theme.colorScheme.onSurface,
+                    )),
+              ),
+              Text(formatBytes(node.size), style: theme.textTheme.bodySmall),
+              PopupMenuButton<int>(
+                key: ValueKey('btfile-prio-${node.index}'),
+                icon: Icon(
+                  node.priority == 0
+                      ? Icons.block
+                      : node.priority >= 6
+                          ? Icons.keyboard_double_arrow_up
+                          : Icons.more_vert,
+                  size: 18,
+                  color: node.priority == 0
+                      ? theme.colorScheme.outline
+                      : theme.colorScheme.onSurface,
+                ),
+                tooltip: L.t.btDetailPriority,
+                onSelected: (p) => onPriority(node.index, p),
+                itemBuilder: (ctx) => [
+                  PopupMenuItem(value: 0, child: Text(L.t.btDetailPrioSkip)),
+                  PopupMenuItem(value: 4, child: Text(L.t.btDetailPrioNormal)),
+                  PopupMenuItem(value: 6, child: Text(L.t.btDetailPrioHigh)),
+                ],
+              ),
+            ],
+          ),
+          Padding(
+            padding: const EdgeInsets.only(left: 40, right: 8, bottom: 6),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(3),
+              child: LinearProgressIndicator(
+                  value: node.progress,
+                  minHeight: 4,
+                  color: node.priority == 0
+                      ? theme.colorScheme.outline
+                      : theme.colorScheme.primary,
+                  backgroundColor: theme.colorScheme.surfaceContainerHighest),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Peers as a compact sortable table with search — after VueTorrent's
+/// Peers tab (host / progress / down / up columns, client on second line).
+class _PeersTab extends StatefulWidget {
   const _PeersTab({
     required this.peers,
     required this.sort,
@@ -975,100 +1242,213 @@ class _PeersTab extends StatelessWidget {
   final VoidCallback onToggleAsc;
   final ValueChanged<PeerInfo> onCopyAddress;
 
-  String _sortLabel(_PeerSort s) {
-    switch (s) {
-      case _PeerSort.address:
-        return L.t.btDetailSortAddress;
-      case _PeerSort.progress:
-        return L.t.btDetailSortProgress;
-      case _PeerSort.down:
-        return L.t.btDetailSortDown;
-    }
+  @override
+  State<_PeersTab> createState() => _PeersTabState();
+}
+
+class _PeersTabState extends State<_PeersTab> {
+  final TextEditingController _search = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    if (peers.isEmpty) {
+    if (widget.peers.isEmpty) {
       return Center(
         child: Text(L.t.noPeers,
             style: theme.textTheme.bodySmall
                 ?.copyWith(color: theme.colorScheme.outline)),
       );
     }
-    return ListView(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+    final rows = widget.peers
+        .where((p) =>
+            _query.isEmpty ||
+            '${p.ip}:${p.port}'.contains(_query) ||
+            p.client.toLowerCase().contains(_query))
+        .toList();
+    return Column(
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                child: Text(L.t.peersCount(peers.length),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 8, 4),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(L.t.peersCount(widget.peers.length),
                     style: theme.textTheme.titleSmall),
               ),
-            ),
-            IconButton(
-              key: const ValueKey('btpeers-asc'),
-              icon: Icon(asc ? Icons.arrow_upward : Icons.arrow_downward,
-                  size: 18),
-              tooltip: asc ? L.t.btDetailSortAsc : L.t.btDetailSortDesc,
-              onPressed: onToggleAsc,
-            ),
-            PopupMenuButton<_PeerSort>(
-              key: const ValueKey('btpeers-sort'),
-              icon: const Icon(Icons.sort, size: 20),
-              tooltip: L.t.btDetailSort,
-              onSelected: onSort,
-              itemBuilder: (ctx) => [
-                for (final s in _PeerSort.values)
-                  PopupMenuItem(
-                    value: s,
-                    child: Row(
-                      children: [
-                        if (sort == s)
-                          Icon(Icons.check,
-                              size: 18, color: theme.colorScheme.primary)
-                        else
-                          const SizedBox(width: 18),
-                        const SizedBox(width: 8),
-                        Text(_sortLabel(s)),
-                      ],
-                    ),
+              SizedBox(
+                width: 150,
+                height: 36,
+                child: TextField(
+                  key: const ValueKey('btpeers-search'),
+                  controller: _search,
+                  style: theme.textTheme.bodySmall,
+                  decoration: InputDecoration(
+                    isDense: true,
+                    hintText: L.t.btPeerSearch,
+                    prefixIcon: const Icon(Icons.search, size: 18),
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10)),
                   ),
-              ],
-            ),
-          ],
+                  onChanged: (v) => setState(() => _query = v.toLowerCase()),
+                ),
+              ),
+              IconButton(
+                key: const ValueKey('btpeers-asc'),
+                icon: Icon(
+                    widget.asc ? Icons.arrow_upward : Icons.arrow_downward,
+                    size: 18),
+                tooltip:
+                    widget.asc ? L.t.btDetailSortAsc : L.t.btDetailSortDesc,
+                onPressed: widget.onToggleAsc,
+              ),
+            ],
+          ),
         ),
-        ...peers.map((p) => ListTile(
-              dense: true,
-              leading: Icon(
-                p.chatCapable ? Icons.chat : Icons.cloud_outlined,
-                size: 18,
-                color: theme.colorScheme.primary,
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
+            children: [
+              Expanded(
+                flex: 4,
+                child: _ColHeader(
+                  label: L.t.btPeerHost,
+                  active: widget.sort == _PeerSort.address,
+                  onTap: () => widget.onSort(_PeerSort.address),
+                ),
               ),
-              title:
-                  Text('${p.ip}:${p.port}', style: theme.textTheme.bodySmall),
-              subtitle: Text(
-                '${p.client} · ${(p.progress * 100).toStringAsFixed(0)}%'
-                ' · ↓${formatSpeed(p.downSpeed)} ↑${formatSpeed(p.upSpeed)}'
-                '${p.chatCapable ? L.t.chatCapableMark : ''}',
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: theme.colorScheme.outline),
+              Expanded(
+                flex: 2,
+                child: _ColHeader(
+                  label: L.t.btDetailProgress,
+                  active: widget.sort == _PeerSort.progress,
+                  onTap: () => widget.onSort(_PeerSort.progress),
+                ),
               ),
-              trailing: PopupMenuButton<String>(
-                key: ValueKey('btpeer-menu-${p.ip}:${p.port}'),
-                icon: const Icon(Icons.more_vert, size: 18),
-                onSelected: (v) {
-                  if (v == 'copy') onCopyAddress(p);
-                },
-                itemBuilder: (ctx) => [
-                  PopupMenuItem(
-                      value: 'copy', child: Text(L.t.btDetailCopyAddress)),
-                ],
+              Expanded(
+                flex: 2,
+                child: _ColHeader(
+                  label: L.t.btDetailDown,
+                  active: widget.sort == _PeerSort.down,
+                  onTap: () => widget.onSort(_PeerSort.down),
+                ),
               ),
-            )),
+              Expanded(
+                  flex: 2,
+                  child: Text(L.t.btDetailUp,
+                      textAlign: TextAlign.end,
+                      style: theme.textTheme.labelSmall
+                          ?.copyWith(color: theme.colorScheme.outline))),
+              const SizedBox(width: 40),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+        Expanded(
+          child: ListView(
+            children: [
+              for (final p in rows)
+                _PeerRow(peer: p, onCopyAddress: widget.onCopyAddress),
+            ],
+          ),
+        ),
       ],
+    );
+  }
+}
+
+class _ColHeader extends StatelessWidget {
+  const _ColHeader({
+    required this.label,
+    required this.active,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool active;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return InkWell(
+      onTap: onTap,
+      child: Text(label,
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: active ? cs.primary : cs.outline,
+                fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+              )),
+    );
+  }
+}
+
+class _PeerRow extends StatelessWidget {
+  const _PeerRow({required this.peer, required this.onCopyAddress});
+
+  final PeerInfo peer;
+  final ValueChanged<PeerInfo> onCopyAddress;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return ListTile(
+      dense: true,
+      leading: Icon(
+        peer.chatCapable ? Icons.chat : Icons.cloud_outlined,
+        size: 18,
+        color: theme.colorScheme.primary,
+      ),
+      title: Row(
+        children: [
+          Expanded(
+            flex: 4,
+            child: Text('${peer.ip}:${peer.port}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall),
+          ),
+          Expanded(
+            flex: 2,
+            child: Text('${(peer.progress * 100).toStringAsFixed(0)}%',
+                textAlign: TextAlign.end, style: theme.textTheme.bodySmall),
+          ),
+          Expanded(
+            flex: 2,
+            child: Text(formatSpeed(peer.downSpeed),
+                textAlign: TextAlign.end,
+                style: theme.textTheme.bodySmall
+                    ?.copyWith(color: theme.colorScheme.primary)),
+          ),
+          Expanded(
+            flex: 2,
+            child: Text(formatSpeed(peer.upSpeed),
+                textAlign: TextAlign.end,
+                style: theme.textTheme.bodySmall
+                    ?.copyWith(color: theme.colorScheme.tertiary)),
+          ),
+        ],
+      ),
+      subtitle: Text(peer.client,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.bodySmall
+              ?.copyWith(color: theme.colorScheme.outline)),
+      trailing: PopupMenuButton<String>(
+        key: ValueKey('btpeer-menu-${peer.ip}:${peer.port}'),
+        icon: const Icon(Icons.more_vert, size: 18),
+        onSelected: (v) {
+          if (v == 'copy') onCopyAddress(peer);
+        },
+        itemBuilder: (ctx) => [
+          PopupMenuItem(value: 'copy', child: Text(L.t.btDetailCopyAddress)),
+        ],
+      ),
     );
   }
 }

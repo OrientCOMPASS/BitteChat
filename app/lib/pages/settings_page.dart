@@ -9,7 +9,6 @@ import 'package:file_picker/file_picker.dart';
 
 import '../core/api.dart';
 import '../core/applog.dart';
-import '../widgets/filter_script_page.dart';
 import '../core/prefs.dart';
 import 'wallpaper_edit.dart';
 import '../models.dart';
@@ -30,9 +29,7 @@ class _SettingsPageState extends State<SettingsPage> {
   late final BitteApi _api = BitteApi.instance;
   Identity? _identity;
   Map<String, dynamic> _info = {};
-  List<FilterRule> _rules = [];
   List<IdentityInfo> _identities = [];
-  Map<String, dynamic> _dlDir = {};
 
   @override
   void initState() {
@@ -45,284 +42,8 @@ class _SettingsPageState extends State<SettingsPage> {
     setState(() {
       _identity = _api.identity();
       _info = _api.sysInfo();
-      _rules = _api.filterRules();
       _identities = _api.identities();
-      try {
-        _dlDir = _api.getDownloadDir();
-      } catch (_) {}
     });
-  }
-
-  Future<void> _editDownloadDir() async {
-    final messenger = ScaffoldMessenger.of(context);
-    final controller = TextEditingController(text: '${_dlDir['path'] ?? ''}');
-    final saved = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(L.t.downloadDir),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(L.t.downloadDirHint,
-                style: Theme.of(ctx)
-                    .textTheme
-                    .bodySmall
-                    ?.copyWith(color: Theme.of(ctx).colorScheme.outline)),
-            const SizedBox(height: 12),
-            TextField(
-              controller: controller,
-              maxLines: 2,
-              style: const TextStyle(fontSize: 12),
-              decoration: InputDecoration(border: const OutlineInputBorder()),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                TextButton.icon(
-                  icon: const Icon(Icons.folder_open, size: 18),
-                  label: Text(L.t.downloadDirPick),
-                  onPressed: () async {
-                    final dir = await FilePicker.getDirectoryPath();
-                    if (dir != null) controller.text = dir;
-                  },
-                ),
-                TextButton.icon(
-                  icon: const Icon(Icons.restart_alt, size: 18),
-                  label: Text(L.t.downloadDirReset),
-                  onPressed: () =>
-                      controller.text = '${_dlDir['default'] ?? ''}',
-                ),
-              ],
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: Text(L.t.cancel)),
-          FilledButton(
-              onPressed: () => Navigator.pop(ctx, true), child: Text(L.t.save)),
-        ],
-      ),
-    );
-    if (saved != true) {
-      controller.dispose();
-      return;
-    }
-    final path = controller.text.trim();
-    controller.dispose();
-    try {
-      // empty string resets to the app-private default
-      final reset = path.isEmpty || path == '${_dlDir['default'] ?? ''}';
-      final r = _api.setDownloadDir(reset ? '' : path);
-      _reload();
-      messenger.showSnackBar(SnackBar(
-          content: Text('${L.t.downloadDirSaved}: ${r['path'] ?? ''}')));
-    } catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text('$e')));
-    }
-  }
-
-  /// qBittorrent-style "append trackers from URL" preferences: enable
-  /// switch, URL field, fetch status and a read-only preview of the last
-  /// successfully fetched list.
-  Future<void> _openTrackerListDialog() async {
-    if (!_api.available) return;
-    var cfg = _api.trackerList();
-    final controller = TextEditingController(text: '${cfg['url'] ?? ''}');
-    var enabled = cfg['enabled'] == true;
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialog) => AlertDialog(
-          title: Text(L.t.trkListTitle),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  SwitchListTile(
-                    key: const ValueKey('trklist-enable'),
-                    contentPadding: EdgeInsets.zero,
-                    value: enabled,
-                    title: Text(L.t.trkListEnable),
-                    onChanged: (v) => setDialog(() => enabled = v),
-                  ),
-                  TextField(
-                    key: const ValueKey('trklist-url'),
-                    controller: controller,
-                    decoration: InputDecoration(
-                      labelText: L.t.trkListUrl,
-                      hintText: 'https://example.com/trackers.txt',
-                      border: const OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Text(_trkListStatus(cfg),
-                      style: Theme.of(ctx).textTheme.bodySmall),
-                  const SizedBox(height: 10),
-                  FilledButton.icon(
-                    key: const ValueKey('trklist-refresh'),
-                    icon: const Icon(Icons.refresh, size: 18),
-                    label: Text(L.t.trkListRefresh),
-                    onPressed: () {
-                      try {
-                        _api.refreshTrackerList();
-                      } catch (e) {
-                        showError(ctx, e);
-                        return;
-                      }
-                      Future<void>.delayed(const Duration(seconds: 2), () {
-                        if (ctx.mounted) {
-                          setDialog(() => cfg = _api.trackerList());
-                        }
-                      });
-                    },
-                  ),
-                  const SizedBox(height: 10),
-                  ConstrainedBox(
-                    constraints: const BoxConstraints(maxHeight: 130),
-                    child: SingleChildScrollView(
-                      child: Text(
-                        ((cfg['trackers'] as List?) ?? [])
-                            .map((e) => '$e')
-                            .join('\n'),
-                        style: Theme.of(ctx)
-                            .textTheme
-                            .bodySmall
-                            ?.copyWith(fontFamily: 'monospace'),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(ctx), child: Text(L.t.cancel)),
-            FilledButton(
-              key: const ValueKey('trklist-save'),
-              onPressed: () {
-                try {
-                  _api.setTrackerList(
-                      enabled: enabled, url: controller.text.trim());
-                } catch (e) {
-                  showError(ctx, e);
-                  return;
-                }
-                Navigator.pop(ctx);
-              },
-              child: Text(L.t.save),
-            ),
-          ],
-        ),
-      ),
-    );
-    controller.dispose();
-    _reload();
-  }
-
-  String _trkListStatus(Map<String, dynamic> cfg) {
-    final last = (cfg['last_fetch'] as int?) ?? 0;
-    final err = '${cfg['error'] ?? ''}';
-    final n = ((cfg['trackers'] as List?) ?? []).length;
-    final when = last > 0
-        ? DateTime.fromMillisecondsSinceEpoch(last)
-            .toLocal()
-            .toString()
-            .split('.')
-            .first
-        : '—';
-    final base = '${L.t.trkListLast(when)} · ${L.t.trkListCount(n)}';
-    return err.isEmpty ? base : '$base · $err';
-  }
-
-  void _saveRules() {
-    try {
-      _api.setFilterRules(_rules);
-      _reload();
-    } catch (e) {
-      showError(context, e);
-    }
-  }
-
-  Future<void> _editRule(FilterRule? existing) async {
-    final rule = existing ??
-        FilterRule(
-          id: DateTime.now().millisecondsSinceEpoch % 1000000,
-          enabled: true,
-          field: 'text',
-          mode: 'contains',
-          value: '',
-        );
-    final valueCtrl = TextEditingController(text: rule.value);
-    String field = rule.field;
-    String mode = rule.mode;
-    bool caseSensitive = rule.caseSensitive;
-    final saved = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setSheet) => AlertDialog(
-          title: Text(existing == null ? L.t.addRule : L.t.editRule),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              DropdownButtonFormField<String>(
-                initialValue: field,
-                items: [
-                  DropdownMenuItem(value: 'text', child: Text(L.t.fieldText)),
-                  DropdownMenuItem(
-                      value: 'author_name', child: Text(L.t.fieldName)),
-                  DropdownMenuItem(
-                      value: 'author_pk', child: Text(L.t.fieldPk)),
-                ],
-                onChanged: (v) => setSheet(() => field = v!),
-              ),
-              DropdownButtonFormField<String>(
-                initialValue: mode,
-                items: [
-                  DropdownMenuItem(
-                      value: 'contains', child: Text(L.t.modeContains)),
-                  DropdownMenuItem(
-                      value: 'equals', child: Text(L.t.modeEquals)),
-                  DropdownMenuItem(value: 'regex', child: Text(L.t.modeRegex)),
-                ],
-                onChanged: (v) => setSheet(() => mode = v!),
-              ),
-              TextField(
-                controller: valueCtrl,
-                decoration: InputDecoration(
-                    labelText: L.t.matchValue, border: OutlineInputBorder()),
-              ),
-              SwitchListTile(
-                value: caseSensitive,
-                title: Text(L.t.caseSensitive),
-                onChanged: (v) => setSheet(() => caseSensitive = v),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: Text(L.t.cancel)),
-            FilledButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                child: Text(L.t.save)),
-          ],
-        ),
-      ),
-    );
-    if (saved != true) return;
-    rule.field = field;
-    rule.mode = mode;
-    rule.caseSensitive = caseSensitive;
-    rule.value = valueCtrl.text;
-    if (existing == null) _rules.add(rule);
-    _saveRules();
   }
 
   Future<void> _pickSeedSource(BuildContext context) async {
@@ -801,69 +522,6 @@ class _SettingsPageState extends State<SettingsPage> {
           const Divider(),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Row(
-              children: [
-                Expanded(
-                    child: Text(L.t.filterRules,
-                        style: theme.textTheme.titleSmall)),
-                TextButton.icon(
-                  icon: Icon(Icons.data_object, size: 18),
-                  label: Text(L.t.filterScript),
-                  onPressed: () async {
-                    final changed = await Navigator.push<bool>(
-                      context,
-                      MaterialPageRoute(
-                          builder: (_) => const FilterScriptPage()),
-                    );
-                    if (changed == true) _reload();
-                  },
-                ),
-                TextButton.icon(
-                  icon: Icon(Icons.add, size: 18),
-                  label: Text(L.t.add),
-                  onPressed: () => _editRule(null),
-                ),
-              ],
-            ),
-          ),
-          if (_rules.isEmpty)
-            Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16),
-              child: Text(L.t.noRules + L.t.noRules2),
-            ),
-          for (final r in _rules)
-            ListTile(
-              dense: true,
-              leading: Switch(
-                value: r.enabled,
-                onChanged: (v) {
-                  r.enabled = v;
-                  _saveRules();
-                },
-              ),
-              title: Text(r.describe()),
-              subtitle: Text(
-                  '#${r.id}${r.caseSensitive ? L.t.caseSensitiveMark : ''}'),
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  IconButton(
-                    icon: Icon(Icons.edit_outlined, size: 18),
-                    onPressed: () => _editRule(r),
-                  ),
-                  IconButton(
-                    icon: Icon(Icons.delete_outline, size: 18),
-                    onPressed: () {
-                      _rules.remove(r);
-                      _saveRules();
-                    },
-                  ),
-                ],
-              ),
-            ),
-          const Divider(),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Text(L.t.appearance, style: theme.textTheme.titleSmall),
           ),
           Padding(
@@ -1050,33 +708,6 @@ class _SettingsPageState extends State<SettingsPage> {
             onTap: () => _pickVolumeMode(context),
           ),
           const Divider(),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Text(L.t.storage, style: theme.textTheme.titleSmall),
-          ),
-          ListTile(
-            leading: Icon(Icons.drive_file_move_outlined),
-            title: Text(L.t.downloadDir),
-            subtitle: Text('${_dlDir['path'] ?? ''}',
-                style: theme.textTheme.bodySmall),
-            trailing: Icon(Icons.edit_outlined, size: 18),
-            onTap: _editDownloadDir,
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Text(L.t.downloadDirHint,
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: theme.colorScheme.outline)),
-          ),
-          ListTile(
-            key: const ValueKey('settings-tracker-list'),
-            leading: Icon(Icons.list),
-            title: Text(L.t.trkListTitle),
-            subtitle: Text(L.t.trkListHint, style: theme.textTheme.bodySmall),
-            trailing: Icon(Icons.chevron_right, size: 20),
-            onTap: _openTrackerListDialog,
-          ),
-          const Divider(),
           ListTile(
             leading: Icon(Icons.bug_report_outlined),
             title: Text(L.t.exportLogs),
@@ -1111,7 +742,7 @@ class _SettingsPageState extends State<SettingsPage> {
           AboutListTile(
             icon: Icon(Icons.favorite_outline),
             applicationName: 'BitteChat',
-            applicationVersion: '${_info['version'] ?? '0.5.16'}',
+            applicationVersion: '${_info['version'] ?? '?'}',
             aboutBoxChildren: [
               Text(
                 '${L.t.aboutDesc}${L.t.aboutDesc2}'

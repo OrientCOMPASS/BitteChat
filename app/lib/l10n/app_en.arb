@@ -730,6 +730,14 @@
  "trkListRefresh": "Refresh now",
  "trkListLast": "Last update: {t}",
  "trkListCount": "{n} trackers fetched",
+ "btSettingsTitle": "Torrent settings",
+ "rssSettingsTitle": "Feed settings",
+ "rssAutoRefresh": "Auto-refresh interval",
+ "rssIntervalOff": "Manual only",
+ "rssIntervalMins": "{n} minutes",
+ "btFileSearch": "Search files",
+ "btPeerSearch": "Search peers",
+ "btPeerHost": "Host",
  "@btDetailPieceTip": {
   "placeholders": {
    "i": {
