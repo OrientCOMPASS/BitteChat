@@ -9,8 +9,9 @@
 /// * desktop (Linux/Windows/macOS): the same FFI transport, loading a
 ///   differently named library — see `nativeLibraryName` in
 ///   `host_platform.dart`;
-/// * web: a network transport speaking JSON-RPC to a self-hosted gateway
-///   that runs the native core server-side, with server-pushed events
+/// * web: a network transport speaking JSON-RPC over WebSocket to the
+///   WebUI server EMBEDDED in the app itself (qBittorrent-style, LAN
+///   remote control, enabled from settings), with server-pushed events
 ///   replacing the `sys.drain_events` poll. Not implemented yet — this
 ///   milestone is groundwork only (see `docs/PLATFORMS.md`).
 abstract class CoreTransport {

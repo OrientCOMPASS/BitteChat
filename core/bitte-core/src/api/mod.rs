@@ -614,7 +614,11 @@ impl Api {
                 st.by_ih.insert(swarm_ih.clone(), gid_hex.clone());
             }
             let dag = crate::chat::sync::rebuild_dag(&st.store, &row.gid, &own_pk)?;
-            let own_seq = dag.author_seq(&own_pk);
+            let mut own_seq = dag.author_seq(&own_pk);
+            if row.manifest.is_dm() {
+                // seq floor survives history purges (nonce-reuse guard)
+                own_seq = own_seq.max(self.dm_seq_floor(&st.store, &gid_hex, &own_pk));
+            }
             let mut sync = GroupSync::new(row.gid, row.manifest.clone(), row.head_seq, swarm_ih);
             sync.dag = dag;
             st.groups.insert(
@@ -889,6 +893,10 @@ impl Api {
             let dm_peer = self.dm_peer_pk_hex(&rt.sync.manifest);
             let parents = rt.sync.dag.parent_set();
             let channel_key = self.dm_channel_key(&rt.sync.manifest);
+            if is_dm && channel_key.is_none() {
+                // identity mismatch: never store a DM message unencrypted
+                return;
+            }
             rt.own_seq += 1;
             let sm = match crate::chat::message::create_message_opts(
                 &gid,

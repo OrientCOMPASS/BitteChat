@@ -159,13 +159,36 @@ fn write_crash_dump(msg: &str) {
     }
 }
 
-/// v0.5.24: hard native crashes (SIGSEGV / SIGABRT / …, e.g. inside
+/// Hard native crashes (SIGSEGV / SIGABRT / …, e.g. inside
 /// libtorrent or mpv) bypass BOTH the Dart zone hook and the Rust panic
 /// hook — that is why some crashes left no dump at all. Pre-open the crash
 /// log fd and install a signal handler that writes one line (async-signal
-/// safe: `write(2)` on a pre-opened fd, no allocation) and then re-raises
-/// with the default handler so Android still produces a tombstone.
+/// safe: `write(2)` on a pre-opened fd, no allocation) and then restores the
+/// *previous* handler (chaining) before re-raising.
+///
+/// Chaining matters: host apps / crash reporters installed before us keep
+/// working. On Android SIGSEGV is deliberately NOT hooked: ART relies on
+/// SIGSEGV for implicit null checks and stack-probe recovery — intercepting
+/// and re-raising loses the original siginfo (fault address), turning
+/// recoverable faults into hard crashes. The remaining signals still give us
+/// a dump line, and Android tombstones are produced either way.
 static CRASH_FD: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(-1);
+
+/// Previous handlers per signal number, for chaining in the handler.
+static OLD_HANDLERS: [std::sync::atomic::AtomicIsize; 16] =
+    [const { std::sync::atomic::AtomicIsize::new(0) }; 16];
+
+/// Signals we install the crash-dump handler for.
+#[cfg(target_os = "android")]
+const CRASH_SIGNALS: [libc::c_int; 4] = [libc::SIGABRT, libc::SIGBUS, libc::SIGILL, libc::SIGFPE];
+#[cfg(not(target_os = "android"))]
+const CRASH_SIGNALS: [libc::c_int; 5] = [
+    libc::SIGSEGV,
+    libc::SIGABRT,
+    libc::SIGBUS,
+    libc::SIGILL,
+    libc::SIGFPE,
+];
 
 #[cfg(unix)]
 unsafe extern "C" fn native_crash_handler(sig: i32) {
@@ -211,7 +234,14 @@ unsafe extern "C" fn native_crash_handler(sig: i32) {
         }
         libc::write(fd, buf.as_ptr() as *const libc::c_void, pos);
     }
-    libc::signal(sig, libc::SIG_DFL);
+    // chain to the previous handler (or SIG_DFL if there was none) so ART /
+    // host crash reporters still see the signal with a chance to act
+    let old = if (sig as usize) < OLD_HANDLERS.len() {
+        OLD_HANDLERS[sig as usize].load(std::sync::atomic::Ordering::Relaxed)
+    } else {
+        libc::SIG_DFL as isize
+    };
+    libc::signal(sig, old as libc::sighandler_t);
     libc::raise(sig);
 }
 
@@ -285,14 +315,13 @@ pub unsafe extern "C" fn bc_init(
                 0o644,
             );
             CRASH_FD.store(fd, std::sync::atomic::Ordering::Relaxed);
-            for sig in [
-                libc::SIGSEGV,
-                libc::SIGABRT,
-                libc::SIGBUS,
-                libc::SIGILL,
-                libc::SIGFPE,
-            ] {
-                libc::signal(sig, native_crash_handler as *const () as libc::sighandler_t);
+            for sig in CRASH_SIGNALS {
+                let old =
+                    libc::signal(sig, native_crash_handler as *const () as libc::sighandler_t);
+                if (sig as usize) < OLD_HANDLERS.len() {
+                    OLD_HANDLERS[sig as usize]
+                        .store(old as isize, std::sync::atomic::Ordering::Relaxed);
+                }
             }
         }
     }

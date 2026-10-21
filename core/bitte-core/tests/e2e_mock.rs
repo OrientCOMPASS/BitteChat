@@ -1503,3 +1503,118 @@ fn e2e_list_mention_reply_marks() {
     let (m, r) = flags(&a);
     assert!(!m && !r);
 }
+
+#[test]
+fn e2e_dm_identity_guard_and_seq_floor() {
+    let bus = MockBus::new();
+    let (a, _ta) = spawn_node(&bus);
+    let (b, _tb) = spawn_node(&bus);
+
+    let (gid, magnet) = seed_room(&a, "dm-guard");
+    join_room(&b, &magnet);
+    call(
+        &b,
+        "chat.send",
+        json!({"group_id": gid, "text": "hi from b"}),
+    );
+    wait_until(&[&a, &b], T, || {
+        if texts(&a, &gid).contains(&"hi from b".to_string()) {
+            Some(())
+        } else {
+            None
+        }
+    });
+
+    let ident = call(&a, "sys.identity.get", json!({}));
+    let a_pk = ident["pk"].as_str().unwrap().to_string();
+    let msgs = call(&a, "chat.messages", json!({"group_id": gid}));
+    let b_pk = msgs["messages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| m["author_pk"].as_str() != Some(a_pk.as_str()))
+        .map(|m| m["author_pk"].as_str().unwrap().to_string())
+        .unwrap();
+
+    let dm = call(&a, "chat.start_dm", json!({"author_pk": b_pk}));
+    let dgid = dm["group_id"].as_str().unwrap().to_string();
+    wait_until(&[&b], T, || {
+        let r = call(&b, "chat.dm_requests", json!({}));
+        if !r["requests"].as_array().unwrap().is_empty() {
+            Some(())
+        } else {
+            None
+        }
+    });
+    call(
+        &b,
+        "chat.dm_respond",
+        json!({"group_id": dgid, "accept": true}),
+    );
+    call(
+        &a,
+        "chat.send",
+        json!({"group_id": dgid, "text": "dm hello"}),
+    );
+
+    // switch to a fresh identity: DM sends must be REFUSED, never stored or
+    // shipped as clear text under a mismatched identity
+    let created = call(&a, "sys.identity.create", json!({"name": "alt"}));
+    let id2 = created["id"].as_i64().unwrap();
+    call(&a, "sys.identity.switch", json!({"id": id2}));
+    let guarded = try_call(&a, "chat.send", json!({"group_id": dgid, "text": "leak?"}));
+    assert!(
+        guarded.is_err(),
+        "identity-mismatched DM send must be refused"
+    );
+
+    let ids = call(&a, "sys.identity.list", json!({}));
+    let id1 = ids["identities"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|i| i["active"] == json!(false))
+        .map(|i| i["id"].as_i64().unwrap())
+        .unwrap();
+    call(&a, "sys.identity.switch", json!({"id": id1}));
+    call(
+        &a,
+        "chat.send",
+        json!({"group_id": dgid, "text": "dm hello again"}),
+    );
+
+    // seq floor: purge DM history, rebuild the channel — author_seq must not
+    // restart (nonce reuse under the deterministic channel key)
+    let m1 = call(&a, "chat.messages", json!({"group_id": dgid}));
+    let max_seq = m1["messages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|m| m["own"] == json!(true))
+        .map(|m| m["author_seq"].as_i64().unwrap())
+        .max()
+        .unwrap();
+    call(
+        &a,
+        "chat.leave_group",
+        json!({"group_id": dgid, "delete_history": true}),
+    );
+    call(&a, "chat.start_dm", json!({"author_pk": b_pk}));
+    call(
+        &a,
+        "chat.send",
+        json!({"group_id": dgid, "text": "after purge"}),
+    );
+    let m2 = call(&a, "chat.messages", json!({"group_id": dgid}));
+    let new_seq = m2["messages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| m["payload"]["Text"]["text"] == json!("after purge"))
+        .map(|m| m["author_seq"].as_i64().unwrap())
+        .unwrap();
+    assert!(
+        new_seq > max_seq,
+        "author_seq restarted after purge: {new_seq} <= {max_seq} (nonce reuse)"
+    );
+}

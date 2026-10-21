@@ -563,7 +563,14 @@ impl Store {
                 })
                 .unwrap_or(0);
             let have_all = parts.len() as i64 == total && total > 0;
-            if have_all {
+            // all parts must come from ONE author: a chunk group is a single
+            // logical message signed by its creator; mixing authors would let
+            // a third party inject content displayed under someone else's name
+            let author = parts.values().next().map(|m| m.author_pk.clone());
+            let same_author = parts
+                .values()
+                .all(|m| author.as_deref() == Some(m.author_pk.as_str()));
+            if have_all && same_author {
                 let mut text = Vec::new();
                 for i in 1..=total {
                     if let Some(m) = parts.get(&i) {
@@ -659,6 +666,22 @@ impl Store {
     }
 
     /// ids of messages we authored in a group (reply-to-me detection).
+    /// High-water author_seq stored for an author in a group. Used as a
+    /// floor when a DM channel is rebuilt after a local history purge, so
+    /// ChaCha20Poly1305 nonces (derived from seq) can never repeat under the
+    /// same deterministic channel key.
+    pub fn message_max_author_seq(&self, gid: &Sha1Hash, author_pk_hex: &str) -> Result<i64> {
+        let pk = hex::decode(author_pk_hex).unwrap_or_default();
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT COALESCE(MAX(seq),0) FROM messages WHERE group_id=?1 AND author_pk=?2",
+                params![gid.to_vec(), pk],
+                |r| r.get(0),
+            )
+            .unwrap_or(0))
+    }
+
     pub fn own_message_ids(
         &self,
         gid: &Sha1Hash,
@@ -1124,6 +1147,60 @@ mod tests {
         assert_eq!(msgs[0].id, sm.id);
         assert!(msgs[0].msg.own);
         assert_eq!(s.last_message_ts(&gid).unwrap(), now);
+    }
+
+    #[test]
+    fn display_messages_rejects_mixed_author_chunk_groups() {
+        let a = Identity::generate();
+        let b = Identity::generate();
+        let gid = [6u8; 20];
+        let now = crate::now_ms();
+        let cid = "0011223344556677".to_string();
+        let mut msgs = Vec::new();
+        let sm1 = create_message(
+            &gid,
+            &[],
+            1,
+            now,
+            &a,
+            "alice",
+            MsgKind::Chunk,
+            &Payload::Chunk {
+                chunk: crate::chat::message::ChunkInfo {
+                    cid: cid.clone(),
+                    index: 1,
+                    total: 2,
+                },
+                data: b"real-".to_vec(),
+            },
+        )
+        .unwrap();
+        msgs.push(sm1.msg.clone());
+        let forged = create_message(
+            &gid,
+            &[],
+            1,
+            now + 1,
+            &b,
+            "mallory",
+            MsgKind::Chunk,
+            &Payload::Chunk {
+                chunk: crate::chat::message::ChunkInfo {
+                    cid: cid.clone(),
+                    index: 2,
+                    total: 2,
+                },
+                data: b"fake".to_vec(),
+            },
+        )
+        .unwrap();
+        msgs.push(forged.msg.clone());
+        let display = Store::display_messages(msgs);
+        // must NOT reassemble into a single "alice" Text message
+        assert_eq!(display.len(), 2);
+        assert!(display
+            .iter()
+            .all(|m| matches!(m.payload, Payload::Chunk { .. })));
     }
 
     #[test]

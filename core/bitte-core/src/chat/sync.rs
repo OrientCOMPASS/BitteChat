@@ -570,13 +570,27 @@ impl GroupSync {
 
     /// Handle a heads list learned from the DHT head item or an ext message.
     /// Returns true if new fetch work was queued.
+    ///
+    /// Rate-limited like the fetch pump: a malicious peer can announce
+    /// arbitrary head ids at will, so adoption must respect the inflight cap
+    /// and the failure backoff table instead of firing an unbounded burst of
+    /// DHT gets (self-DoS).
     pub fn adopt_heads(&mut self, heads: &[Sha1Hash], engine: &dyn BtEngine) -> bool {
+        let now = crate::now_ms();
         let mut new_work = false;
         for h in heads {
-            if !self.dag.contains(h)
-                && !self.fetching.contains(h)
-                && engine.dht_get_immutable(h).is_ok()
-            {
+            if self.fetching.len() >= MAX_FETCH_INFLIGHT {
+                break;
+            }
+            if self.dag.contains(h) || self.fetching.contains(h) {
+                continue;
+            }
+            if let Some(until) = self.fetch_backoff_ts.get(h) {
+                if *until > now {
+                    continue;
+                }
+            }
+            if engine.dht_get_immutable(h).is_ok() {
                 self.fetching.insert(*h);
                 new_work = true;
             }
@@ -929,5 +943,41 @@ mod dm_payload_tests {
             ExtPayload::decode(&p.encode()).unwrap(),
             ExtPayload::DmReject { gid: g } if g == gid
         ));
+    }
+}
+
+#[cfg(test)]
+mod adopt_tests {
+    use super::*;
+    use crate::chat::group::GroupManifest;
+    use crate::crypto::Identity;
+    use crate::mock::{MockBus, MockEngine};
+
+    #[test]
+    fn adopt_heads_is_capped_and_backoff_aware() {
+        let bus = MockBus::new();
+        let (engine, _rx) = MockEngine::new(bus);
+        let a = Identity::generate();
+        let head = Identity::generate();
+        let manifest = GroupManifest::new("room", "alice", &a, &head, vec![]).unwrap();
+        let mut sync = GroupSync::new(manifest.gid, manifest, 0, "aa".repeat(20));
+
+        // a flood of unknown heads must not queue more than the inflight cap
+        let heads: Vec<Sha1Hash> = (1..=20u8).map(|i| [i; 20]).collect();
+        assert!(sync.adopt_heads(&heads, &engine));
+        assert_eq!(sync.fetching.len(), MAX_FETCH_INFLIGHT);
+
+        // an id in its backoff window must not be re-adopted
+        let failed = heads[0];
+        sync.note_fetch_failure(&failed, crate::now_ms());
+        assert!(!sync.fetching.contains(&failed));
+        assert!(!sync.adopt_heads(&[failed], &engine));
+        assert!(!sync.fetching.contains(&failed));
+
+        // once the window clears and capacity exists, adoption resumes
+        sync.fetching.clear();
+        sync.clear_fetch_backoff(&failed);
+        assert!(sync.adopt_heads(&[failed], &engine));
+        assert!(sync.fetching.contains(&failed));
     }
 }

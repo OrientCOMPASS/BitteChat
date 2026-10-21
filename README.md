@@ -36,10 +36,10 @@ Flutter app (app/)  ──dart:ffi JSON──  libbitte_core.so (Rust)
 |---|---|
 | Android（arm64-v8a / x86_64） | **生产发布**：CI 签名 APK + 模拟器集成测试门禁 |
 | Linux / Windows / macOS 桌面 GUI | **已做准备，未实现**：核心纯 Rust 平台无关；FFI 库名解析、native 构建脚本（host）、`BtEngine` 抽象、Dart `CoreTransport` 接口均已就位 |
-| Web（WebUI） | **已做准备，未实现**：`CoreTransport` 预留 web 传输位；两条候选路线（自托管 WebSocket-JSON 网关 / wasm 核心）见 `docs/PLATFORMS.md` |
+| Web（WebUI） | **已做准备，未实现**：qBittorrent 式内嵌 Web 服务器（设置启用、局域网遥控），配置面骨架已落地；见 `docs/PLATFORMS.md` |
 
 准备工作清单与实施路线详见 [`docs/PLATFORMS.md`](docs/PLATFORMS.md)。
-版本策略：自 **v0.0.1** 起每轮步进 0.0.1（见 [`docs/ROADMAP.md`](docs/ROADMAP.md)）。
+版本策略：自 **v0.0.1** 起每轮步进 0.0.1。
 
 ## 获取与安装
 
@@ -60,7 +60,8 @@ cd app && flutter build apk --release --split-per-abi
 
 非 Android 平台运行进入 demo 模式（无 native 库）；桌面/Web 的准备状态见 `docs/PLATFORMS.md`。
 
-路线图与版本策略见 [`docs/ROADMAP.md`](docs/ROADMAP.md)。
+版本策略：自 v0.0.1 起每轮步进 0.0.1；多平台（桌面 GUI + 内嵌 WebUI）
+路线图见 [`docs/PLATFORMS.md`](docs/PLATFORMS.md)。
 
 ## 测试与 CI
 
@@ -82,7 +83,7 @@ cd app && flutter build apk --release --split-per-abi
 ```
 app/        Flutter 应用 + integration_test
 core/       bitte-core(Rust) / bitte-ffi(C ABI) / bitte-bt(C++ libtorrent 封装)
-docs/       ARCHITECTURE / PROTOCOL / TESTING / ROADMAP（路线图）/ PLATFORMS（多平台准备与路线）
+docs/       ARCHITECTURE / PROTOCOL / TESTING / PLATFORMS（多平台准备与路线）
 scripts/    native 构建、开发 keystore、模拟器截图拉取
 ```
 

@@ -51,6 +51,9 @@
 
 ### Rust 侧
 
+- `bitte-core/src/webui.rs`：内嵌 WebUI（qBittorrent 式）配置面骨架——
+  `WebUiConfig`（默认关/LAN 绑定/强制密码/哈希存储）+ kv 键 + `validate()`
+  单测；服务器实现留待实施轮（见 §四）
 - `bitte-bt/build.rs`：C++ 运行时/框架链接按 target 家族分支化
   （android/linux 行为不变；新增 windows-msvc 与 apple 分支骨架，
   含 Security/CoreFoundation 框架链接准备）。
@@ -88,27 +91,34 @@
 Windows/macOS 追加项：native 栈构建脚本（vcpkg / brew + 源码 OpenSSL）、
 `bitte-bt/build.rs` 已预留分支的实测修正、签名与打包（msix / dmg）。
 
-## 四、WebUI 实施路线
+## 四、WebUI 实施路线（qBittorrent 式内嵌 Web 服务器）
 
-**路线 A（首选，第一阶段）：自托管网关。**
-服务器（用户自己的机器/NAS）运行 native 核心 + 一个把
-`bc_call`/`sys.drain_events` 映射为 WebSocket JSON-RPC 的网关进程；
-Web 前端实现 `WebCoreTransport` 即接入，应用层零改动。
+产品形态定为 **qBittorrent 模式**：WebUI 不是独立部署的端，而是应用内可选
+开启的局域网远程控制面——用户在设置中启用后，核心在 LAN 起一个
+HTTP/WebSocket 服务，浏览器访问即得完整操作界面（与桌面客户端操作同一
+核心实例）。
 
-- 优点：核心零改造；全功能（DHT/libtorrent 都在服务器侧）；
-  符合"无中心服务器"边界（网关是自托管桥，不是云服务）。
-- 差距清单：网关二进制（可直接复用 `bitte-ffi` 的 dispatch 面，新增
-  crate 承载 WebSocket 服务）；`WebCoreTransport` 实装（连接管理、
-  事件推送、断线重连）；Flutter web 脚手架与媒体栈评估
-  （media_kit web 后端受限，视频可能降级为浏览器 `<video>` 直链）。
+**架构落点（准备已就位）**：
 
-**路线 B（长期评估）：纯客户端 wasm。**
-`bitte-core` 编译 wasm32-unknown-unknown 需要三处后端抽象：
-存储（rusqlite → sqlite-wasm/OPFS 或 IndexedDB KV）、HTTP（ureq →
-fetch/js-sys）、线程模型（std::thread/mpsc → 单线程 + async 或 worker）；
-且浏览器无 raw socket，DHT/BT 需经 WebRTC 数据通道或公共中继——生态
-（webtorrent 风格）尚不足以承载本项目的 BEP44 定制用法。故仅作为
-研究方向保留，`BtEngine` trait 是既定的接入点。
+- 服务内置于 Rust 核心（未来以 feature 门控的新模块承载），直接复用
+  `Api::dispatch` 的 JSON-RPC 面与事件串流（`sys.drain_events` 改为
+  socket 推送）——**零业务改造**，传输层替换而已；
+- 配置面已固定：`bitte-core::webui::WebUiConfig`（默认关闭、默认仅 LAN
+  绑定、启用前强制设密码、密码只存加盐哈希），持久化于 kv
+  `webui_config_v1`，校验规则 `validate()` 已单测；
+- Web 前端作为静态资源由同一服务器提供（Flutter web 构建或轻量原生
+  HTML/JS 前端二选一，实施时定）；浏览器侧经 `WebCoreTransport`
+  （WebSocket-JSON）接入，接口契约即 `CoreTransport`；
+- 设置页开关与二维码（局域网地址）走既有 `sys.*` RPC 扩展位。
+
+**差距清单**：HTTP/WS 服务器选型（axum/hyper 或手写最小实现）、静态资源
+打包进 so/apk 的构建链、会话认证（cookie/token，防 CSRF）、mDNS/SSDP
+可选发现、前端实现。
+
+**路线 B（长期研究，保留）**：纯客户端 wasm（浏览器直连 P2P）。需存储/
+网络后端抽象（rusqlite→OPFS/sqlite-wasm、ureq→fetch）与 WebRTC/中继替代
+DHT，生态尚不足以承载 BEP44 定制用法；`BtEngine` trait 是既定接入点。
+内嵌 WebUI 落地后，此路线仅服务于"无设备纯网页"场景，优先级低。
 
 ## 五、准备工作的验收标准
 

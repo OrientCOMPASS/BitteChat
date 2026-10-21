@@ -35,6 +35,7 @@ jobs:
             app/lib/core/platform/native_transport.dart \
             app/lib/core/platform/web_transport.dart \
             app/test/platform_test.dart \
+            core/bitte-core/src/webui.rs \
             docs/PLATFORMS.md; do
             test -f "$f" || { echo "::error::missing $f"; exit 1; }
           done

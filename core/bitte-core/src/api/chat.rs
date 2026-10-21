@@ -721,7 +721,10 @@ impl Api {
         if !st.groups.contains_key(&gid_hex) {
             let dag = crate::chat::sync::rebuild_dag(&st.store, &manifest.gid, &own_pk)
                 .unwrap_or_default();
-            let own_seq = dag.author_seq(&own_pk);
+            // honor the seq floor: a rebuilt channel must never reuse nonces
+            let own_seq = dag
+                .author_seq(&own_pk)
+                .max(self.dm_seq_floor(&st.store, &gid_hex, &own_pk));
             let mut sync = GroupSync::new(manifest.gid, manifest.clone(), 0, String::new());
             sync.dag = dag;
             st.groups.insert(
@@ -740,6 +743,51 @@ impl Api {
     }
 
     /// The DM counterparty's identity pubkey (hex) for a channel manifest.
+    /// KV key holding the author_seq high-water mark for a DM channel.
+    ///
+    /// The DM channel key is deterministic per (identity pair, gid) and the
+    /// ChaCha20Poly1305 nonce is the author seq; purging local DM history
+    /// (leave + delete) would restart seq at 1 and reuse nonces under an
+    /// unchanged key. The floor keeps seq monotonic across purges.
+    fn dm_seq_floor_key(gid_hex: &str, own_pk_hex: &str) -> String {
+        format!("dm_seq_floor:{gid_hex}:{own_pk_hex}")
+    }
+
+    pub(crate) fn dm_seq_floor(
+        &self,
+        store: &crate::store::Store,
+        gid_hex: &str,
+        own_pk_hex: &str,
+    ) -> i64 {
+        store
+            .kv_get(&Self::dm_seq_floor_key(gid_hex, own_pk_hex))
+            .ok()
+            .flatten()
+            .and_then(|b| {
+                if b.len() == 8 {
+                    Some(i64::from_le_bytes(b.as_slice().try_into().ok()?))
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(0)
+    }
+
+    pub(crate) fn record_dm_seq_floor(
+        &self,
+        store: &crate::store::Store,
+        gid_hex: &str,
+        own_pk_hex: &str,
+        current: i64,
+    ) {
+        let prev = self.dm_seq_floor(store, gid_hex, own_pk_hex);
+        let v = prev.max(current);
+        let _ = store.kv_set(
+            &Self::dm_seq_floor_key(gid_hex, own_pk_hex),
+            &v.to_le_bytes(),
+        );
+    }
+
     pub fn dm_peer_pk_hex(&self, manifest: &GroupManifest) -> Option<String> {
         let own_pk = self.inner.active.read().unwrap().identity.public_key();
         let (a, b) = manifest.dm.as_ref()?;
@@ -1436,6 +1484,14 @@ impl Api {
             // already gone from the session since restore stopped re-adding)
             let mut st = self.inner.state.lock().unwrap();
             if delete_history {
+                // floor our author_seq BEFORE purging: the DM channel key is
+                // deterministic per identity pair, and seq restarts at 1 with
+                // an empty DAG — without the floor a rebuilt channel would
+                // reuse ChaCha20Poly1305 nonces under the same key
+                let own_pk = self.own_pk_hex();
+                let rt_seq = st.groups.get(&gid_hex).map(|rt| rt.own_seq).unwrap_or(0);
+                let stored = st.store.message_max_author_seq(&gid, &own_pk).unwrap_or(0);
+                self.record_dm_seq_floor(&st.store, &gid_hex, &own_pk, rt_seq.max(stored));
                 st.store.group_purge(&gid)?;
             }
             st.store.group_set_left(&gid, true)?;
@@ -1604,6 +1660,13 @@ impl Api {
             is_dm = rt.sync.manifest.is_dm();
             dm_peer = self.dm_peer_pk_hex(&rt.sync.manifest);
             let channel_key = self.dm_channel_key(&rt.sync.manifest);
+            if is_dm && channel_key.is_none() {
+                // switched identity does not own this DM channel: refuse
+                // instead of silently storing/sending the message in CLEAR
+                return Err(CoreError::Invalid(
+                    "当前身份与该私聊频道不匹配：请切回建立私聊的身份后再发送".into(),
+                ));
+            }
             let mut parents = rt.sync.dag.parent_set();
             for (i, (kind, payload)) in parts.into_iter().enumerate() {
                 rt.own_seq += 1;
@@ -1848,6 +1911,11 @@ impl Api {
             let is_dm = rt.sync.manifest.is_dm();
             let dm_peer = self.dm_peer_pk_hex(&rt.sync.manifest);
             let swarm_ih = rt.sync.swarm_ih.clone();
+            if is_dm && channel_key.is_none() {
+                return Err(CoreError::Invalid(
+                    "当前身份与该私聊频道不匹配：请切回建立私聊的身份后再发送".into(),
+                ));
+            }
             rt.own_seq += 1;
             let sm = create_message_opts(
                 &gid,

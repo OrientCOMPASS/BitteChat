@@ -2,11 +2,13 @@ import 'core_transport.dart';
 
 /// Placeholder for the future WebUI transport (see `docs/PLATFORMS.md`).
 ///
-/// Planned shape: JSON-RPC over WebSocket to a self-hosted gateway that runs
-/// the native core server-side, with server-pushed events replacing the
-/// `sys.drain_events` poll used by the FFI transport. A pure-wasm core is
-/// the alternative long-term route; either way the app-facing contract is
-/// this [CoreTransport] interface, which is the reason it exists.
+/// Planned shape: JSON-RPC over WebSocket to the WebUI server embedded in
+/// the app itself (qBittorrent-style LAN remote control; the browser talks
+/// to a BitteChat instance on the local network), with server-pushed events
+/// replacing the `sys.drain_events` poll used by the FFI transport. A
+/// pure-wasm core is a long-term research route; either way the app-facing
+/// contract is this [CoreTransport] interface, which is the reason it
+/// exists.
 ///
 /// Deliberately NOT implemented — the current milestone is groundwork only,
 /// so [tryOpen] always reports "unavailable" and the demo-mode fallback

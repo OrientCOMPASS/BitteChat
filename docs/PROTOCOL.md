@@ -221,6 +221,9 @@ libtorrent 的 `close_redundant_connections`（做种端↔做种端连接不因
   外层 `y` 恒为 1，避免泄露消息类型；每条消息携带 `x`（作者 X25519 公钥）。
 - **成员校验**：非 dm 双方的消息在 ingest 层直接拒绝；DmReq/DmAccept/DmAck
   的签名必须能被声称的身份公钥验证，且信封 `bc_pk` 与载荷一致。
+- **nonce 单调**：密封 nonce = 作者 seq，信道密钥按身份对确定性派生，故
+  本地清空 DM 历史时会把作者 seq 高水位落盘为 floor（kv
+  `dm_seq_floor:*`），重建信道后 seq 续跑——杜绝同钥同 nonce。
 - **可靠性**：每条 DmMsg 由接收方回签名的 DmAck（m:8）作送达回执；发送方 outbox
   在收到回执前按退避重试。序号缺口（作者 seq 跳跃）触发 DmFetch（m:10）补发；
   peer 重新上线（握手事件）时也自动补发 + 冲刷 outbox。**对方离线时消息保存在

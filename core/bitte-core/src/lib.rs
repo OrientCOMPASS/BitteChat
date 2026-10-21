@@ -18,6 +18,7 @@ pub mod filelog;
 pub mod filter;
 pub mod rss;
 pub mod store;
+pub mod webui;
 
 #[cfg(feature = "native-bt")]
 pub mod lt;
