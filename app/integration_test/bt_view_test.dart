@@ -5,8 +5,17 @@
 // qBittorrent-style BT list UX. Screenshots of THIS round's features are
 // pulled concurrently by scripts/emu-run-and-pull.sh.
 //
+// The detail page is exercised on a REAL dual-instance swarm: the CI host
+// seeds the embedded torrent below with aria2 behind
+// scripts/swarm/mini_tracker.py, reachable from the emulator through
+// 10.0.2.2 (qemu's alias for the host loopback). The Peers tab therefore
+// shows a live second BitTorrent client (real peer connection, real piece
+// payload) instead of an empty swarm, and the Trackers tab shows a tracker
+// that really announced + scraped.
+//
 // Run: flutter test integration_test/bt_view_test.dart -d <device>
 
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:bittechat/core/api.dart';
@@ -17,6 +26,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 
 import 'shot_util.dart';
+import 'swarm_torrent.dart';
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
@@ -29,13 +39,36 @@ void main() {
       expect(api.available, isTrue,
           reason: 'libbitte_core.so failed to load on device');
 
-      // one finished (seeding) torrent to open the detail page on
-      final stamp = DateTime.now().millisecondsSinceEpoch;
-      final f = File('${api.dataDir}/BtView$stamp.bin');
-      await f.writeAsString('detail seed $stamp');
-      final seeded = api.call('bt.create_seed', {'path': f.path});
-      final name = seeded['name'] as String;
-      final ih = seeded['infohash'] as String;
+      // Real dual-instance swarm instead of a lone local seed: the CI host
+      // seeds this exact torrent (aria2) behind a mini BEP-3 tracker, so the
+      // emulator's libtorrent instance meets a REAL second client and the
+      // Peers tab below has a live row to show.
+      final added = api.btAddFile(base64Decode(kSwarmTorrentB64.join()),
+          name: kSwarmName);
+      final ih = (added['infohash'] as String?) ?? '';
+      expect(ih, kSwarmInfohash,
+          reason: 'embedded swarm torrent drifted from scripts/swarm');
+      api.btAddTracker(ih, kSwarmTracker);
+
+      // wait (<=150 s) for the host seeder to connect AND payload to flow;
+      // this is the regression guard the mock-only e2e could never give us
+      var peers = api.btPeers(ih);
+      var prog = 0.0;
+      for (var i = 0; i < 150 && (peers.isEmpty || prog <= 0); i++) {
+        peers = api.btPeers(ih);
+        for (final t in api.torrents()) {
+          if (t.infohash == ih) prog = t.progress;
+        }
+        if (peers.isEmpty || prog <= 0) {
+          await Future<void>.delayed(const Duration(seconds: 1));
+        }
+      }
+      expect(peers, isNotEmpty,
+          reason: 'dual-instance swarm: host seeder never connected '
+              '(tracker/aria2 down on CI host?)');
+      expect(prog, greaterThan(0),
+          reason: 'dual-instance swarm: connected but no payload flowed');
+      final name = kSwarmName;
 
       final prefs = UiPrefs(File('${api.dataDir}/ui_prefs_btview_it.json'));
       await tester
@@ -94,11 +127,18 @@ void main() {
       await tester.pumpAndSettle();
       await shotWidget(tester, 'shot-bt-detail-files');
 
-      // Peers tab: sortable table header + search (empty swarm on emulator)
+      // Peers tab: sortable table header + search, now on a LIVE swarm
       await tester.tap(find.descendant(
           of: find.byType(TabBar), matching: find.text('Peers')));
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('btpeers-search')), findsOneWidget);
+      // the host seeder's row must render (ip column shows 10.0.2.2:6881)
+      var live = false;
+      for (var i = 0; i < 40 && !live; i++) {
+        live = find.textContaining('10.0.2.2').evaluate().isNotEmpty;
+        if (!live) await tester.pump(const Duration(milliseconds: 500));
+      }
+      expect(live, isTrue, reason: 'Peers table shows no live host-seeder row');
       await shotWidget(tester, 'shot-bt-detail-peers');
 
       // Trackers tab: qBit-style add + reannounce + edit menu
@@ -114,6 +154,8 @@ void main() {
       await tester.tap(find.text('Add'));
       await tester.pumpAndSettle();
       expect(find.textContaining('opentrackr'), findsOneWidget);
+      expect(find.textContaining('6969'), findsOneWidget,
+          reason: 'swarm tracker row missing from Trackers tab');
       await tester.tap(find.byKey(const ValueKey('bttracker-menu-0')));
       await tester.pumpAndSettle();
       expect(find.text('Force reannounce'), findsOneWidget);
@@ -142,6 +184,6 @@ void main() {
       // hold the install alive until CI pulled the screenshots
       await waitForPullSentinel();
     },
-    timeout: const Timeout(Duration(minutes: 6)),
+    timeout: const Timeout(Duration(minutes: 9)),
   );
 }

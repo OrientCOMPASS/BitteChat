@@ -469,8 +469,34 @@ jobs:
             if ! command -v ffmpeg >/dev/null 2>&1; then sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg; fi
             ffmpeg -y -f lavfi -i testsrc2=size=640x360:rate=25 -f lavfi -i sine=frequency=441:sample_rate=44100 -t 6 -c:v libx264 -pix_fmt yuv420p -profile:v high -level 3.1 -c:a aac -b:a 64k -movflags +faststart /tmp/ci_video.mp4
             adb push /tmp/ci_video.mp4 /data/local/tmp/ci_video.mp4 && adb shell chmod 644 /data/local/tmp/ci_video.mp4
+            # ---- dual-instance swarm: host seeder + mini BEP-3 tracker -----
+            # The emulator's libtorrent reaches the host loopback through
+            # 10.0.2.2; aria2 seeds the deterministic torrent of
+            # scripts/swarm/gen_torrent.py so the Peers tab shows a REAL
+            # second client (see app/integration_test/swarm_torrent.dart).
+            python3 scripts/swarm/gen_torrent.py --out "$RUNNER_TEMP/swarm"
+            nohup python3 scripts/swarm/mini_tracker.py --port 6969 --seed-ip 10.0.2.2 --seed-port 6881 >"$RUNNER_TEMP/swarm/tracker.log" 2>&1 &
+            if ! command -v aria2c >/dev/null 2>&1; then sudo apt-get update -qq && sudo apt-get install -y -qq aria2; fi
+            aria2c --daemon=true -T "$RUNNER_TEMP/swarm/swarm.torrent" -d "$RUNNER_TEMP/swarm/data" --listen-port=6881 --bt-tracker=http://127.0.0.1:6969/announce --seed-time=120 --bt-stop-timeout=0 --disable-ipv6=true --enable-dht=false --bt-enable-lpd=false --enable-peer-exchange=false --allow-overwrite=true --file-allocation=none --max-overall-upload-limit=256K --log="$RUNNER_TEMP/swarm/aria2.log" --log-level=debug --console-log-level=warn
+            sleep 2
+            pgrep -x aria2c >/dev/null || echo "::warning::swarm: aria2 seeder is not running"
+            ss -ltn 2>/dev/null | grep -E ':(6969|6881)' || true
             bash scripts/emu-run-and-pull.sh "$GITHUB_WORKSPACE/shots"
             adb exec-out screencap -p > "$GITHUB_WORKSPACE/shots/after-attach-test.png" || true
+            echo '---- swarm tracker log ----'
+            tail -n 60 "$RUNNER_TEMP/swarm/tracker.log" || true
+            echo '---- swarm aria2 log ----'
+            tail -n 60 "$RUNNER_TEMP/swarm/aria2.log" || true
+      - name: Upload swarm logs (failure forensics)
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: swarm-logs-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/swarm/tracker.log
+            ${{ runner.temp }}/swarm/aria2.log
+          retention-days: 3
+          if-no-files-found: warn
       - name: Mark emulator verification green for this source hash
         if: steps.emu-ok.outputs.cache-hit != 'true' && success()
         run: echo "${{ github.sha }}" > emu-ok-marker.txt
