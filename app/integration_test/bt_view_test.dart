@@ -49,7 +49,11 @@ void main() {
 
       // VueTorrent-style tab bar
       for (final tab in ['Overview', 'Files', 'Peers', 'Trackers']) {
-        expect(find.text(tab), findsOneWidget, reason: 'tab $tab missing');
+        expect(
+          find.descendant(of: find.byType(TabBar), matching: find.text(tab)),
+          findsOneWidget,
+          reason: 'tab $tab missing',
+        );
       }
       // summary header shows the finished progress and speeds
       expect(find.textContaining('100.0%'), findsWidgets);
@@ -60,14 +64,20 @@ void main() {
       await shotWidget(tester, 'shot-bt-detail-overview');
 
       // Files tab: single-file content list with per-file progress
-      await tester.tap(find.text('Files'));
+      await tester.tap(find.descendant(
+          of: find.byType(TabBar), matching: find.text('Files')));
       await tester.pumpAndSettle();
-      expect(find.text(name), findsOneWidget);
+      // the AppBar title carries the same name; scope to the tab's list
+      expect(
+        find.descendant(of: find.byType(ListView), matching: find.text(name)),
+        findsOneWidget,
+      );
       expect(find.byType(LinearProgressIndicator), findsWidgets);
       await shotWidget(tester, 'shot-bt-detail-files');
 
       // Trackers tab renders (empty hint or rows) and add entry exists
-      await tester.tap(find.text('Trackers'));
+      await tester.tap(find.descendant(
+          of: find.byType(TabBar), matching: find.text('Trackers')));
       await tester.pumpAndSettle();
       expect(find.byIcon(Icons.add), findsOneWidget);
 
@@ -77,7 +87,8 @@ void main() {
       // engine state cache refreshes on its 2 s post_torrent_updates cycle
       await Future<void>.delayed(const Duration(seconds: 4));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Overview'));
+      await tester.tap(find.descendant(
+          of: find.byType(TabBar), matching: find.text('Overview')));
       await tester.pumpAndSettle();
       expect(find.text('Paused'), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('btdetail-pause-resume')));
