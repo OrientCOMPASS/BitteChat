@@ -1070,7 +1070,7 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
           ListTile(
             key: const ValueKey('settings-tracker-list'),
-            leading: Icon(Icons.lists_outlined),
+            leading: Icon(Icons.list),
             title: Text(L.t.trkListTitle),
             subtitle: Text(L.t.trkListHint, style: theme.textTheme.bodySmall),
             trailing: Icon(Icons.chevron_right, size: 20),
