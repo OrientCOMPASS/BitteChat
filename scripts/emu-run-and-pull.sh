@@ -47,7 +47,7 @@ pull_one() {
 }
 
 for f in shot-log.txt shot-chat-inline.png shot-jump-chip.png \
-         shot-bt-view-table.png shot-bt-view-grid.png; do
+         shot-bt-detail-overview.png shot-bt-detail-files.png; do
   got=""
   for _ in $(seq 1 400); do
     [ -n "$PKG" ] || PKG="$(detect_pkg)"

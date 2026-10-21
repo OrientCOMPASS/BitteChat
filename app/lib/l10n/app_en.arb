@@ -678,31 +678,21 @@
  "otherTasksScope": "Other tasks",
  "videoSoftwareDecodeNotice": "Using software decoding (hardware decoder lacks this codec)",
  "videoSpeed": "Playback speed",
- "btViewTitle": "Dashboard",
- "btViewSearch": "Search tasks",
- "btViewSort": "Sort",
- "btViewSortName": "Name",
- "btViewSortProgress": "Progress",
- "btViewSortSize": "Size",
- "btViewSortDown": "Download speed",
- "btViewSortUp": "Upload speed",
- "btViewSortPeers": "Peers",
- "btViewFilterAll": "All",
- "btViewFilterActive": "Active",
- "btViewFilterStalled": "Stalled",
- "btViewFilterPaused": "Paused",
- "btViewFilterFinished": "Done",
- "btViewFilterError": "Error",
- "btViewModeTable": "Table view",
- "btViewModeGrid": "Card view",
- "btViewSelected": "{n} selected",
- "@btViewSelected": {
-  "placeholders": {
-   "n": {
-    "type": "int"
-   }
-  }
- },
- "btViewSelectAll": "Select all",
- "btViewEmpty": "No matching tasks"
+ "btDetailOverview": "Overview",
+ "btDetailFiles": "Files",
+ "btDetailPeers": "Peers",
+ "btDetailTrackers": "Trackers",
+ "btDetailTransfer": "Transfer",
+ "btDetailSize": "Size",
+ "btDetailStorage": "Storage",
+ "btDetailAbout": "About",
+ "btDetailState": "State",
+ "btDetailProgress": "Progress",
+ "btDetailDown": "Download speed",
+ "btDetailUp": "Upload speed",
+ "btDetailTotal": "Total size",
+ "btDetailDone": "Done",
+ "btDetailSavePath": "Save path",
+ "btDetailType": "Type",
+ "btDetailCopied": "Copied to clipboard"
 }

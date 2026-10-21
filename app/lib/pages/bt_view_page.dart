@@ -1,471 +1,368 @@
-// VueTorrent-style torrent dashboard (see docs/PLATFORMS.md / README):
-//   * session stats header with a transfer sparkline (down/up history)
-//   * status filter chips (all / active / stalled / paused / finished / error)
-//   * search + sort menu + table/grid view modes
-//   * per-torrent property chips (size, speeds, peers/seeds, state) like
-//     VueTorrent's configurable card properties
-//   * long-press multi-select with a bulk action bar (pause/resume/delete)
-// Tapping a torrent still opens the existing TorrentDetailSheet.
+// Torrent detail page (opened by tapping a task in the BT tab), layout
+// after VueTorrent's TorrentDetail view:
+//   * summary header: state-colored overall progress + percent + speeds
+//   * tab bar: Overview | Files | Peers | Trackers
+//       - Overview: grouped label/value property cards (transfer, size,
+//         peers, storage, about) like VueTorrent's Overview panel
+//       - Files: per-file progress list (VueTorrent "Content")
+//       - Peers: connected peer rows (VueTorrent "Peers")
+//       - Trackers: tracker rows with add/remove (VueTorrent "Trackers")
+//   * AppBar actions: pause/resume, delete
+// (VueTorrent's piece map and tags/categories have no counterpart in this
+// core and are deliberately omitted.)
 
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../core/api.dart';
 import '../core/l10n.dart';
 import '../models.dart';
-import 'bt_tab.dart';
 import 'home.dart';
 
-enum BtViewFilter { all, active, stalled, paused, finished, error }
-
-enum BtViewSort { name, progress, size, down, up, peers }
-
-enum BtViewMode { table, grid }
-
 class BtViewPage extends StatefulWidget {
-  const BtViewPage({super.key});
+  const BtViewPage({
+    super.key,
+    required this.infohash,
+    required this.name,
+    this.savePath = '',
+    this.magnet = '',
+  });
+
+  final String infohash;
+  final String name;
+  final String savePath;
+  final String magnet;
 
   @override
   State<BtViewPage> createState() => _BtViewPageState();
 }
 
-class _BtViewPageState extends State<BtViewPage> {
+class _BtViewPageState extends State<BtViewPage>
+    with SingleTickerProviderStateMixin {
   late final BitteApi _api = BitteApi.instance;
-  List<TorrentInfo> _all = [];
-  SessionStats _stats = SessionStats(
-      dhtNodes: -1, uploadRate: 0, downloadRate: 0, numTorrents: 0);
-  final List<double> _dlHist = [];
-  final List<double> _ulHist = [];
-  static const int _histMax = 48;
-
-  BtViewFilter _filter = BtViewFilter.all;
-  BtViewSort _sort = BtViewSort.down;
-  BtViewMode _mode = BtViewMode.table;
-  bool _searchOpen = false;
-  String _query = '';
-  final Set<String> _selected = {};
-  StreamSubscription<CoreEvent>? _sub;
+  late final TabController _tabs = TabController(length: 4, vsync: this);
+  TorrentInfo? _torrent;
+  List<Map<String, dynamic>> _files = [];
+  List<PeerInfo> _peers = [];
+  List<TrackerInfo> _trackers = [];
   Timer? _timer;
+  StreamSubscription<CoreEvent>? _sub;
 
   @override
   void initState() {
     super.initState();
-    _reload();
+    _load();
     _sub = _api.events.listen((e) {
-      if (e.isBtUpdated) _reload();
+      if (e.isBtUpdated) _load();
     });
-    _timer = Timer.periodic(const Duration(seconds: 3), (_) => _reload());
+    _timer = Timer.periodic(const Duration(seconds: 3), (_) => _load());
   }
 
   @override
   void dispose() {
-    _sub?.cancel();
     _timer?.cancel();
+    _sub?.cancel();
+    _tabs.dispose();
     super.dispose();
   }
 
-  void _reload() {
+  void _load() {
     if (!mounted) return;
     try {
+      final f = _api.call('bt.files', {'infohash': widget.infohash});
       setState(() {
-        _all = _api.torrents(includeChat: true);
-        _stats = _api.btStats();
-        _dlHist.add(_stats.downloadRate.toDouble());
-        _ulHist.add(_stats.uploadRate.toDouble());
-        if (_dlHist.length > _histMax) _dlHist.removeAt(0);
-        if (_ulHist.length > _histMax) _ulHist.removeAt(0);
-        _selected.removeWhere((ih) => !_all.any((t) => t.infohash == ih));
+        final match = _api
+            .torrents(includeChat: true)
+            .where((t) => t.infohash == widget.infohash)
+            .toList();
+        _torrent = match.isEmpty ? null : match.first;
+        _files = ((f['files'] as List?) ?? [])
+            .map((e) => Map<String, dynamic>.from(e as Map))
+            .toList();
+        _peers = _api.btPeers(widget.infohash);
+        _trackers = _api.btTrackers(widget.infohash);
       });
     } catch (_) {}
   }
 
-  bool _matches(TorrentInfo t, BtViewFilter f) {
-    switch (f) {
-      case BtViewFilter.all:
-        return true;
-      case BtViewFilter.active:
-        return !t.paused && (t.downloadRate > 0 || t.uploadRate > 0);
-      case BtViewFilter.stalled:
-        return !t.paused &&
-            !t.finished &&
-            t.downloadRate == 0 &&
-            t.uploadRate == 0;
-      case BtViewFilter.paused:
-        return t.paused;
-      case BtViewFilter.finished:
-        return t.finished;
-      case BtViewFilter.error:
-        return t.error.isNotEmpty;
+  Color _stateColor(TorrentInfo t, ColorScheme cs) {
+    if (t.error.isNotEmpty) return cs.error;
+    if (t.paused) return cs.outline;
+    if (t.finished) return cs.tertiary;
+    if (t.downloadRate > 0) return cs.primary;
+    if (t.uploadRate > 0) return cs.tertiary;
+    return cs.outline;
+  }
+
+  String _stateLabel(TorrentInfo t) {
+    if (t.paused) return L.t.statePaused;
+    switch (t.state) {
+      case 'seeding':
+        return L.t.stateSeeding;
+      case 'downloading':
+        return L.t.stateDownloading;
+      case 'metadata':
+        return L.t.stateMetadata;
+      case 'checking':
+        return L.t.stateChecking;
+      case 'finished':
+        return L.t.stateFinished;
+      case 'queued':
+        return L.t.stateQueued;
+      default:
+        return t.state;
     }
   }
 
-  List<TorrentInfo> _visible() {
-    final q = _query.trim().toLowerCase();
-    final out = _all
-        .where((t) => _matches(t, _filter))
-        .where((t) => q.isEmpty || t.name.toLowerCase().contains(q))
-        .toList();
-    int cmp(TorrentInfo a, TorrentInfo b) {
-      switch (_sort) {
-        case BtViewSort.name:
-          return a.name.toLowerCase().compareTo(b.name.toLowerCase());
-        case BtViewSort.progress:
-          return a.progress.compareTo(b.progress);
-        case BtViewSort.size:
-          return a.totalBytes.compareTo(b.totalBytes);
-        case BtViewSort.down:
-          return a.downloadRate.compareTo(b.downloadRate);
-        case BtViewSort.up:
-          return a.uploadRate.compareTo(b.uploadRate);
-        case BtViewSort.peers:
-          return (a.numPeers + a.numSeeds).compareTo(b.numPeers + b.numSeeds);
-      }
-    }
-
-    out.sort((a, b) {
-      final c = cmp(a, b);
-      return c != 0 ? c : a.infohash.compareTo(b.infohash);
-    });
-    return out;
-  }
-
-  String _filterLabel(BtViewFilter f) {
-    switch (f) {
-      case BtViewFilter.all:
-        return L.t.btViewFilterAll;
-      case BtViewFilter.active:
-        return L.t.btViewFilterActive;
-      case BtViewFilter.stalled:
-        return L.t.btViewFilterStalled;
-      case BtViewFilter.paused:
-        return L.t.btViewFilterPaused;
-      case BtViewFilter.finished:
-        return L.t.btViewFilterFinished;
-      case BtViewFilter.error:
-        return L.t.btViewFilterError;
+  /// Short technical tags (kind taxonomy), intentionally not localized.
+  String _kindLabel(TorrentInfo t) {
+    switch (t.kind) {
+      case 1:
+        return 'DM';
+      case 2:
+        return 'ATT';
+      case 3:
+        return 'RSS';
+      case 4:
+        return 'SEED';
+      default:
+        return t.groupId.isNotEmpty ? 'ROOM' : 'BT';
     }
   }
 
-  String _sortLabel(BtViewSort s) {
-    switch (s) {
-      case BtViewSort.name:
-        return L.t.btViewSortName;
-      case BtViewSort.progress:
-        return L.t.btViewSortProgress;
-      case BtViewSort.size:
-        return L.t.btViewSortSize;
-      case BtViewSort.down:
-        return L.t.btViewSortDown;
-      case BtViewSort.up:
-        return L.t.btViewSortUp;
-      case BtViewSort.peers:
-        return L.t.btViewSortPeers;
+  void _control(String op, {bool deleteFiles = false}) {
+    try {
+      _api.btControl(widget.infohash, op, deleteFiles: deleteFiles);
+      _load();
+    } catch (e) {
+      if (mounted) showError(context, e);
     }
   }
 
-  void _toggleSelect(String ih) {
-    setState(() {
-      if (!_selected.remove(ih)) {
-        _selected.add(ih);
-      }
-    });
-  }
-
-  Future<void> _openDetail(TorrentInfo t) async {
-    await showModalBottomSheet<void>(
+  Future<void> _confirmDelete() async {
+    final result = await showDialog<String>(
       context: context,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: (ctx) => TorrentDetailSheet(
-        infohash: t.infohash,
-        name: t.name,
-        savePath: t.savePath,
-        magnet: t.magnet,
+      builder: (ctx) => AlertDialog(
+        title: Text(L.t.deleteTaskQ(widget.name)),
+        content: Text(L.t.deleteTaskHint),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(L.t.cancel),
+          ),
+          OutlinedButton(
+            onPressed: () => Navigator.pop(ctx, 'keep'),
+            child: Text(L.t.deleteTaskOnly),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(ctx).colorScheme.error),
+            onPressed: () => Navigator.pop(ctx, 'delete'),
+            child: Text(L.t.deleteTaskFiles),
+          ),
+        ],
       ),
     );
-    _reload();
+    if (result == 'keep') _control('remove');
+    if (result == 'delete') _control('remove', deleteFiles: true);
+    if (result != null && mounted) Navigator.of(context).pop();
   }
 
-  Future<void> _bulk(String op) async {
-    final ids = _selected.toList();
-    if (op == 'delete') {
-      final ok = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: Text(L.t.delete),
-          content: Text(L.t.btViewSelected(ids.length)),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: Text(L.t.cancel)),
-            FilledButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                child: Text(L.t.delete)),
-          ],
+  Future<void> _copy(String value, String message) async {
+    await Clipboard.setData(ClipboardData(text: value));
+    if (mounted) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(message)));
+    }
+  }
+
+  Future<void> _addTrackerDialog() async {
+    final controller = TextEditingController();
+    final url = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(L.t.addTracker),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: InputDecoration(
+            labelText: L.t.trackerUrl,
+            hintText: 'udp://tracker.example.org:1337/announce',
+            border: OutlineInputBorder(),
+          ),
         ),
-      );
-      if (ok != true) return;
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx), child: Text(L.t.cancel)),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+              child: Text(L.t.add)),
+        ],
+      ),
+    );
+    if (url == null || url.isEmpty) return;
+    try {
+      _api.btAddTracker(widget.infohash, url);
+      _load();
+    } catch (e) {
+      if (mounted) showError(context, e);
     }
-    for (final ih in ids) {
-      try {
-        if (op == 'delete') {
-          _api.btControl(ih, 'remove');
-        } else {
-          _api.btControl(ih, op);
-        }
-      } catch (e) {
-        if (mounted) showError(context, e);
-      }
-    }
-    setState(() => _selected.clear());
-    _reload();
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final visible = _visible();
+    final t = _torrent;
     return Scaffold(
       appBar: AppBar(
-        title: Text(L.t.btViewTitle),
+        title: Text(widget.name, maxLines: 1, overflow: TextOverflow.ellipsis),
         actions: [
+          if (t != null)
+            IconButton(
+              key: const ValueKey('btdetail-pause-resume'),
+              icon: Icon(t.paused ? Icons.play_arrow : Icons.pause),
+              tooltip: t.paused ? L.t.resume : L.t.pause,
+              onPressed: () => _control(t.paused ? 'resume' : 'pause'),
+            ),
           IconButton(
-            key: const ValueKey('btview-search'),
-            icon: Icon(_searchOpen ? Icons.close : Icons.search),
-            tooltip: L.t.btViewSearch,
-            onPressed: () => setState(() {
-              _searchOpen = !_searchOpen;
-              if (!_searchOpen) _query = '';
-            }),
-          ),
-          PopupMenuButton<BtViewSort>(
-            icon: const Icon(Icons.sort),
-            tooltip: L.t.btViewSort,
-            onSelected: (s) => setState(() => _sort = s),
-            itemBuilder: (ctx) => [
-              for (final s in BtViewSort.values)
-                PopupMenuItem(
-                  value: s,
-                  child: Row(
-                    children: [
-                      if (_sort == s)
-                        Icon(Icons.check,
-                            size: 18, color: theme.colorScheme.primary)
-                      else
-                        const SizedBox(width: 18),
-                      const SizedBox(width: 8),
-                      Text(_sortLabel(s)),
-                    ],
-                  ),
-                ),
-            ],
-          ),
-          IconButton(
-            key: const ValueKey('btview-mode'),
-            icon: Icon(_mode == BtViewMode.table
-                ? Icons.grid_view_rounded
-                : Icons.table_rows),
-            tooltip: _mode == BtViewMode.table
-                ? L.t.btViewModeGrid
-                : L.t.btViewModeTable,
-            onPressed: () => setState(() => _mode =
-                _mode == BtViewMode.table ? BtViewMode.grid : BtViewMode.table),
+            key: const ValueKey('btdetail-delete'),
+            icon: const Icon(Icons.delete_outline),
+            tooltip: L.t.delete,
+            onPressed: _confirmDelete,
           ),
         ],
+        bottom: TabBar(
+          controller: _tabs,
+          tabs: [
+            Tab(text: L.t.btDetailOverview),
+            Tab(text: L.t.btDetailFiles),
+            Tab(text: L.t.btDetailPeers),
+            Tab(text: L.t.btDetailTrackers),
+          ],
+        ),
       ),
       body: Column(
         children: [
-          _Header(stats: _stats, dl: _dlHist, ul: _ulHist),
-          if (_searchOpen)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
-              child: TextField(
-                key: const ValueKey('btview-search-field'),
-                decoration: InputDecoration(
-                  isDense: true,
-                  hintText: L.t.btViewSearch,
-                  prefixIcon: const Icon(Icons.search, size: 20),
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                ),
-                onChanged: (v) => setState(() => _query = v),
-              ),
-            ),
-          SizedBox(
-            height: 44,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 12),
+          _SummaryHeader(torrent: t),
+          Expanded(
+            child: TabBarView(
+              controller: _tabs,
               children: [
-                for (final f in BtViewFilter.values)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: FilterChip(
-                      label: Text(
-                          '${_filterLabel(f)} (${_all.where((t) => _matches(t, f)).length})'),
-                      selected: _filter == f,
-                      onSelected: (_) => setState(() => _filter = f),
-                    ),
-                  ),
+                _OverviewTab(
+                  torrent: t,
+                  infohash: widget.infohash,
+                  savePath: widget.savePath,
+                  magnet: widget.magnet,
+                  stateLabel: t == null ? '' : _stateLabel(t),
+                  kindLabel: t == null ? '' : _kindLabel(t),
+                  stateColor: t == null
+                      ? theme.colorScheme.outline
+                      : _stateColor(t, theme.colorScheme),
+                  onCopy: _copy,
+                ),
+                _FilesTab(files: _files),
+                _PeersTab(peers: _peers),
+                _TrackersTab(
+                  trackers: _trackers,
+                  onAdd: _addTrackerDialog,
+                  onRemove: (tr) {
+                    try {
+                      _api.btRemoveTracker(widget.infohash, tr.url);
+                      _load();
+                    } catch (e) {
+                      if (mounted) showError(context, e);
+                    }
+                  },
+                ),
               ],
             ),
           ),
-          Expanded(
-            child: visible.isEmpty
-                ? Center(
-                    child: Text(L.t.btViewEmpty,
-                        style: theme.textTheme.bodyMedium
-                            ?.copyWith(color: theme.colorScheme.outline)))
-                : _mode == BtViewMode.table
-                    ? ListView.builder(
-                        itemCount: visible.length,
-                        itemBuilder: (ctx, i) => _TableRow(
-                          t: visible[i],
-                          selected: _selected.contains(visible[i].infohash),
-                          selecting: _selected.isNotEmpty,
-                          onTap: () => _selected.isNotEmpty
-                              ? _toggleSelect(visible[i].infohash)
-                              : _openDetail(visible[i]),
-                          onLongPress: () => _toggleSelect(visible[i].infohash),
-                        ),
-                      )
-                    : GridView.builder(
-                        padding: const EdgeInsets.all(12),
-                        gridDelegate:
-                            const SliverGridDelegateWithMaxCrossAxisExtent(
-                          maxCrossAxisExtent: 340,
-                          childAspectRatio: 1.35,
-                          crossAxisSpacing: 10,
-                          mainAxisSpacing: 10,
-                        ),
-                        itemCount: visible.length,
-                        itemBuilder: (ctx, i) => _GridCard(
-                          t: visible[i],
-                          selected: _selected.contains(visible[i].infohash),
-                          selecting: _selected.isNotEmpty,
-                          onTap: () => _selected.isNotEmpty
-                              ? _toggleSelect(visible[i].infohash)
-                              : _openDetail(visible[i]),
-                          onLongPress: () => _toggleSelect(visible[i].infohash),
-                        ),
-                      ),
-          ),
         ],
       ),
-      bottomNavigationBar: _selected.isEmpty
-          ? null
-          : Container(
-              color: theme.colorScheme.surfaceContainerHigh,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              child: SafeArea(
-                top: false,
-                child: Row(
-                  children: [
-                    Expanded(child: Text(L.t.btViewSelected(_selected.length))),
-                    IconButton(
-                      key: const ValueKey('btview-select-all'),
-                      icon: const Icon(Icons.select_all),
-                      tooltip: L.t.btViewSelectAll,
-                      onPressed: () => setState(() {
-                        _selected
-                          ..clear()
-                          ..addAll(visible.map((t) => t.infohash));
-                      }),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.pause),
-                      tooltip: L.t.pause,
-                      onPressed: () => _bulk('pause'),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.play_arrow),
-                      tooltip: L.t.resume,
-                      onPressed: () => _bulk('resume'),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.delete_outline),
-                      tooltip: L.t.delete,
-                      onPressed: () => _bulk('delete'),
-                    ),
-                    IconButton(
-                      key: const ValueKey('btview-clear-sel'),
-                      icon: const Icon(Icons.close),
-                      onPressed: () => setState(() => _selected.clear()),
-                    ),
-                  ],
-                ),
-              ),
-            ),
     );
   }
 }
 
-/// Session stats + transfer sparkline (VueTorrent's top bar / graphs).
-class _Header extends StatelessWidget {
-  const _Header({
-    required this.stats,
-    required this.dl,
-    required this.ul,
-  });
+/// State-colored overall progress + percent + live speeds, like the top of
+/// VueTorrent's detail view.
+class _SummaryHeader extends StatelessWidget {
+  const _SummaryHeader({required this.torrent});
 
-  final SessionStats stats;
-  final List<double> dl;
-  final List<double> ul;
+  final TorrentInfo? torrent;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final t = torrent;
+    final color = t == null
+        ? cs.outline
+        : (t.error.isNotEmpty
+            ? cs.error
+            : t.paused
+                ? cs.outline
+                : t.finished
+                    ? cs.tertiary
+                    : t.downloadRate > 0
+                        ? cs.primary
+                        : cs.tertiary);
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
       color: cs.surfaceContainerLow,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(Icons.arrow_downward, size: 16, color: cs.primary),
-              const SizedBox(width: 4),
-              Text(formatSpeed(stats.downloadRate),
-                  style: Theme.of(context)
-                      .textTheme
-                      .titleMedium
-                      ?.copyWith(color: cs.primary)),
-              const SizedBox(width: 16),
-              Icon(Icons.arrow_upward, size: 16, color: cs.tertiary),
-              const SizedBox(width: 4),
-              Text(formatSpeed(stats.uploadRate),
-                  style: Theme.of(context)
-                      .textTheme
-                      .titleMedium
-                      ?.copyWith(color: cs.tertiary)),
-              const Spacer(),
-              Text(
-                stats.dhtNodes >= 0 ? 'DHT ${stats.dhtNodes}' : 'DHT …',
-                style: Theme.of(context)
-                    .textTheme
-                    .labelSmall
-                    ?.copyWith(color: cs.outline),
+              Expanded(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(3),
+                  child: LinearProgressIndicator(
+                    value: t?.progress ?? 0,
+                    minHeight: 8,
+                    color: color,
+                    backgroundColor: cs.surfaceContainerHighest,
+                  ),
+                ),
               ),
               const SizedBox(width: 10),
               Text(
-                L.t.tasksCount(stats.numTorrents),
+                '${((t?.progress ?? 0) * 100).toStringAsFixed(1)}%',
                 style: Theme.of(context)
                     .textTheme
-                    .labelSmall
-                    ?.copyWith(color: cs.outline),
+                    .labelLarge
+                    ?.copyWith(color: color),
               ),
             ],
           ),
-          SizedBox(
-            height: 34,
-            child: CustomPaint(
-              painter: _SparkPainter(
-                  dl: dl, ul: ul, dlColor: cs.primary, ulColor: cs.tertiary),
-              size: const Size(double.infinity, 34),
-            ),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              Icon(Icons.arrow_downward, size: 14, color: cs.primary),
+              const SizedBox(width: 3),
+              Text(formatSpeed(t?.downloadRate ?? 0),
+                  style: Theme.of(context)
+                      .textTheme
+                      .labelMedium
+                      ?.copyWith(color: cs.primary)),
+              const SizedBox(width: 14),
+              Icon(Icons.arrow_upward, size: 14, color: cs.tertiary),
+              const SizedBox(width: 3),
+              Text(formatSpeed(t?.uploadRate ?? 0),
+                  style: Theme.of(context)
+                      .textTheme
+                      .labelMedium
+                      ?.copyWith(color: cs.tertiary)),
+              const Spacer(),
+              if (t != null)
+                Text('${t.numPeers}P / ${t.numSeeds}S',
+                    style: Theme.of(context)
+                        .textTheme
+                        .labelSmall
+                        ?.copyWith(color: cs.outline)),
+            ],
           ),
         ],
       ),
@@ -473,143 +370,115 @@ class _Header extends StatelessWidget {
   }
 }
 
-class _SparkPainter extends CustomPainter {
-  _SparkPainter({
-    required this.dl,
-    required this.ul,
-    required this.dlColor,
-    required this.ulColor,
+/// Grouped label/value property cards (VueTorrent Overview panel).
+class _OverviewTab extends StatelessWidget {
+  const _OverviewTab({
+    required this.torrent,
+    required this.infohash,
+    required this.savePath,
+    required this.magnet,
+    required this.stateLabel,
+    required this.kindLabel,
+    required this.stateColor,
+    required this.onCopy,
   });
 
-  final List<double> dl;
-  final List<double> ul;
-  final Color dlColor;
-  final Color ulColor;
-
-  void _paintSeries(Canvas c, Size s, List<double> v, double max, Color color) {
-    if (v.length < 2) return;
-    final p = Path();
-    for (var i = 0; i < v.length; i++) {
-      final x = s.width * i / (v.length - 1);
-      final y = s.height - (v[i] / max) * (s.height - 4) - 2;
-      if (i == 0) {
-        p.moveTo(x, y);
-      } else {
-        p.lineTo(x, y);
-      }
-    }
-    c.drawPath(
-        p,
-        Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.6
-          ..color = color);
-  }
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final max = [...dl, ...ul, 1.0].reduce(math.max);
-    _paintSeries(canvas, size, dl, max, dlColor);
-    _paintSeries(canvas, size, ul, max, ulColor);
-  }
-
-  @override
-  bool shouldRepaint(_SparkPainter old) => true;
-}
-
-/// Table row: state icon | name+progress | speed column (VueTorrent table).
-class _TableRow extends StatelessWidget {
-  const _TableRow({
-    required this.t,
-    required this.selected,
-    required this.selecting,
-    required this.onTap,
-    required this.onLongPress,
-  });
-
-  final TorrentInfo t;
-  final bool selected;
-  final bool selecting;
-  final VoidCallback onTap;
-  final VoidCallback onLongPress;
+  final TorrentInfo? torrent;
+  final String infohash;
+  final String savePath;
+  final String magnet;
+  final String stateLabel;
+  final String kindLabel;
+  final Color stateColor;
+  final Future<void> Function(String value, String message) onCopy;
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final color = _stateColorOf(t, cs);
-    return InkWell(
-      onTap: onTap,
-      onLongPress: onLongPress,
-      child: Container(
-        color: selected ? cs.primaryContainer.withValues(alpha: 0.35) : null,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        child: Row(
+    final t = torrent;
+    final done = ((t?.totalBytes ?? 0) * (t?.progress ?? 0)).round();
+    return ListView(
+      padding: const EdgeInsets.all(12),
+      children: [
+        _Group(
+          title: L.t.btDetailTransfer,
+          rows: [
+            _Row(
+                label: L.t.btDetailState,
+                value: stateLabel,
+                valueColor: stateColor),
+            _Row(
+                label: L.t.btDetailProgress,
+                value: '${((t?.progress ?? 0) * 100).toStringAsFixed(1)}%'),
+            _Row(
+                label: L.t.btDetailDown,
+                value: formatSpeed(t?.downloadRate ?? 0)),
+            _Row(label: L.t.btDetailUp, value: formatSpeed(t?.uploadRate ?? 0)),
+          ],
+        ),
+        _Group(
+          title: L.t.btDetailSize,
+          rows: [
+            _Row(
+                label: L.t.btDetailTotal,
+                value: formatBytes(t?.totalBytes ?? 0)),
+            _Row(label: L.t.btDetailDone, value: formatBytes(done)),
+            _Row(
+                label: L.t.btDetailPeers,
+                value: '${t?.numPeers ?? 0} / ${t?.numSeeds ?? 0}'),
+          ],
+        ),
+        _Group(
+          title: L.t.btDetailStorage,
+          rows: [
+            if (savePath.isNotEmpty)
+              _Row(label: L.t.btDetailSavePath, value: savePath),
+            _Row(
+              label: 'infohash',
+              value: infohash,
+              mono: true,
+              onTap: () => onCopy(infohash, L.t.btDetailCopied),
+            ),
+            if (magnet.isNotEmpty)
+              _Row(
+                label: 'magnet',
+                value: magnet,
+                mono: true,
+                onTap: () => onCopy(magnet, L.t.magnetCopied),
+              ),
+          ],
+        ),
+        _Group(
+          title: L.t.btDetailAbout,
+          rows: [
+            _Row(label: L.t.btDetailType, value: kindLabel),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _Group extends StatelessWidget {
+  const _Group({required this.title, required this.rows});
+
+  final String title;
+  final List<Widget> rows;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 10, 14, 6),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (selecting)
-              Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: Icon(
-                    selected
-                        ? Icons.check_circle
-                        : Icons.radio_button_unchecked,
-                    size: 20,
-                    color: cs.primary),
-              ),
-            Icon(_stateIconOf(t), size: 18, color: color),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(t.name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.bodyMedium),
-                      ),
-                      _KindChip(label: kindLabelOf(t)),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(3),
-                    child: LinearProgressIndicator(
-                      value: t.progress,
-                      minHeight: 5,
-                      color: color,
-                      backgroundColor: cs.surfaceContainerHighest,
-                    ),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    '${formatBytes(t.totalBytes)} · ${(t.progress * 100).toStringAsFixed(1)}% · '
-                    '${t.numPeers}P/${t.numSeeds}S',
-                    style: Theme.of(context)
-                        .textTheme
-                        .labelSmall
-                        ?.copyWith(color: cs.outline),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 10),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(formatSpeed(t.downloadRate),
-                    style: Theme.of(context)
-                        .textTheme
-                        .labelMedium
-                        ?.copyWith(color: cs.primary)),
-                Text(formatSpeed(t.uploadRate),
-                    style: Theme.of(context)
-                        .textTheme
-                        .labelMedium
-                        ?.copyWith(color: cs.tertiary)),
-              ],
-            ),
+            Text(title,
+                style: theme.textTheme.titleSmall
+                    ?.copyWith(color: theme.colorScheme.primary)),
+            const SizedBox(height: 4),
+            ...rows,
           ],
         ),
       ),
@@ -617,182 +486,221 @@ class _TableRow extends StatelessWidget {
   }
 }
 
-/// Card with property chips (VueTorrent's configurable card properties).
-class _GridCard extends StatelessWidget {
-  const _GridCard({
-    required this.t,
-    required this.selected,
-    required this.selecting,
-    required this.onTap,
-    required this.onLongPress,
+class _Row extends StatelessWidget {
+  const _Row({
+    required this.label,
+    required this.value,
+    this.mono = false,
+    this.valueColor,
+    this.onTap,
   });
 
-  final TorrentInfo t;
-  final bool selected;
-  final bool selecting;
-  final VoidCallback onTap;
-  final VoidCallback onLongPress;
+  final String label;
+  final String value;
+  final bool mono;
+  final Color? valueColor;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final color = _stateColorOf(t, cs);
-    return Card(
-      color: selected ? cs.primaryContainer.withValues(alpha: 0.45) : null,
-      margin: EdgeInsets.zero,
-      child: InkWell(
-        onTap: onTap,
-        onLongPress: onLongPress,
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(10),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(_stateIconOf(t), size: 16, color: color),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(t.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.bodyMedium),
-                  ),
-                  if (selecting)
-                    Icon(
-                        selected
-                            ? Icons.check_circle
-                            : Icons.radio_button_unchecked,
-                        size: 18,
-                        color: cs.primary),
-                ],
+    final theme = Theme.of(context);
+    final valueWidget = Text(
+      value,
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+      textAlign: TextAlign.end,
+      style: (mono
+              ? theme.textTheme.bodySmall?.copyWith(fontFamily: 'monospace')
+              : theme.textTheme.bodySmall)
+          ?.copyWith(color: valueColor ?? theme.colorScheme.onSurface),
+    );
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 5),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              flex: 2,
+              child: Text(label,
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: theme.colorScheme.outline)),
+            ),
+            Expanded(flex: 3, child: valueWidget),
+            if (onTap != null)
+              Padding(
+                padding: const EdgeInsets.only(left: 4),
+                child: Icon(Icons.content_copy,
+                    size: 13, color: theme.colorScheme.outline),
               ),
-              const SizedBox(height: 6),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(3),
-                child: LinearProgressIndicator(
-                  value: t.progress,
-                  minHeight: 6,
-                  color: color,
-                  backgroundColor: cs.surfaceContainerHighest,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text('${(t.progress * 100).toStringAsFixed(1)}%',
-                  style: Theme.of(context)
-                      .textTheme
-                      .labelSmall
-                      ?.copyWith(color: color)),
-              const Spacer(),
-              Wrap(
-                spacing: 6,
-                runSpacing: 4,
-                children: [
-                  _PropChip(icon: Icons.save, text: formatBytes(t.totalBytes)),
-                  _PropChip(
-                      icon: Icons.arrow_downward,
-                      text: formatSpeed(t.downloadRate)),
-                  _PropChip(
-                      icon: Icons.arrow_upward,
-                      text: formatSpeed(t.uploadRate)),
-                  _PropChip(
-                      icon: Icons.people_outline,
-                      text: '${t.numPeers}P/${t.numSeeds}S'),
-                  _KindChip(label: kindLabelOf(t)),
-                ],
-              ),
-            ],
-          ),
+          ],
         ),
       ),
     );
   }
 }
 
-class _PropChip extends StatelessWidget {
-  const _PropChip({required this.icon, required this.text});
+class _FilesTab extends StatelessWidget {
+  const _FilesTab({required this.files});
 
-  final IconData icon;
-  final String text;
+  final List<Map<String, dynamic>> files;
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerHigh,
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 12, color: cs.outline),
-          const SizedBox(width: 3),
-          Text(text,
-              style: Theme.of(context)
-                  .textTheme
-                  .labelSmall
-                  ?.copyWith(color: cs.onSurfaceVariant)),
-        ],
-      ),
+    final theme = Theme.of(context);
+    if (files.isEmpty) {
+      return Center(
+        child: Text(L.t.noMetadata,
+            style: theme.textTheme.bodySmall
+                ?.copyWith(color: theme.colorScheme.outline)),
+      );
+    }
+    return ListView(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      children: [
+        Text(L.t.filesCount(files.length), style: theme.textTheme.titleSmall),
+        ...files.map((f) {
+          final prog = (f['progress'] as num?)?.toDouble() ?? 0;
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(f['path'] as String? ?? '',
+                          maxLines: 1, overflow: TextOverflow.ellipsis),
+                    ),
+                    Text(formatBytes((f['size'] as num?)?.toInt() ?? 0),
+                        style: theme.textTheme.bodySmall),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(3),
+                  child: LinearProgressIndicator(value: prog, minHeight: 4),
+                ),
+              ],
+            ),
+          );
+        }),
+      ],
     );
   }
 }
 
-class _KindChip extends StatelessWidget {
-  const _KindChip({required this.label});
+class _PeersTab extends StatelessWidget {
+  const _PeersTab({required this.peers});
 
-  final String label;
+  final List<PeerInfo> peers;
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-      decoration: BoxDecoration(
-        color: cs.secondaryContainer,
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Text(label,
-          style: Theme.of(context)
-              .textTheme
-              .labelSmall
-              ?.copyWith(color: cs.onSecondaryContainer)),
+    final theme = Theme.of(context);
+    if (peers.isEmpty) {
+      return Center(
+        child: Text(L.t.noPeers,
+            style: theme.textTheme.bodySmall
+                ?.copyWith(color: theme.colorScheme.outline)),
+      );
+    }
+    return ListView(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          child: Text(L.t.peersCount(peers.length),
+              style: theme.textTheme.titleSmall),
+        ),
+        ...peers.map((p) => ListTile(
+              dense: true,
+              leading: Icon(
+                p.chatCapable ? Icons.chat : Icons.cloud_outlined,
+                size: 18,
+                color: theme.colorScheme.primary,
+              ),
+              title:
+                  Text('${p.ip}:${p.port}', style: theme.textTheme.bodySmall),
+              subtitle: Text(
+                '${p.client} · ${(p.progress * 100).toStringAsFixed(0)}%'
+                '${p.chatCapable ? L.t.chatCapableMark : ''}',
+                style: theme.textTheme.bodySmall
+                    ?.copyWith(color: theme.colorScheme.outline),
+              ),
+            )),
+      ],
     );
   }
 }
 
-Color _stateColorOf(TorrentInfo t, ColorScheme cs) {
-  if (t.error.isNotEmpty) return cs.error;
-  if (t.paused) return cs.outline;
-  if (t.finished) return cs.tertiary;
-  if (t.downloadRate > 0) return cs.primary;
-  if (t.uploadRate > 0) return cs.tertiary;
-  return cs.outline;
-}
+class _TrackersTab extends StatelessWidget {
+  const _TrackersTab({
+    required this.trackers,
+    required this.onAdd,
+    required this.onRemove,
+  });
 
-IconData _stateIconOf(TorrentInfo t) {
-  if (t.error.isNotEmpty) return Icons.error_outline;
-  if (t.paused) return Icons.pause_circle_outline;
-  if (t.finished) return Icons.check_circle_outline;
-  if (t.downloadRate > 0) return Icons.arrow_downward;
-  if (t.uploadRate > 0) return Icons.arrow_upward;
-  return Icons.hourglass_empty;
-}
+  final List<TrackerInfo> trackers;
+  final VoidCallback onAdd;
+  final void Function(TrackerInfo) onRemove;
 
-String kindLabelOf(TorrentInfo t) {
-  switch (t.kind) {
-    case 1:
-      return 'DM';
-    case 2:
-      return 'ATT';
-    case 3:
-      return 'RSS';
-    case 4:
-      return 'SEED';
-    default:
-      return t.groupId.isNotEmpty ? 'ROOM' : 'BT';
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return ListView(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: Text(L.t.trackers(trackers.length),
+                    style: theme.textTheme.titleSmall),
+              ),
+            ),
+            TextButton.icon(
+              icon: const Icon(Icons.add, size: 18),
+              label: Text(L.t.addTracker),
+              onPressed: onAdd,
+            ),
+          ],
+        ),
+        if (trackers.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            child: Text(L.t.noTrackersHint,
+                style: theme.textTheme.bodySmall
+                    ?.copyWith(color: theme.colorScheme.outline)),
+          ),
+        ...trackers.map((tr) => ListTile(
+              dense: true,
+              leading: Icon(
+                tr.verified ? Icons.verified_outlined : Icons.hub_outlined,
+                size: 18,
+                color: tr.message.isNotEmpty
+                    ? theme.colorScheme.error
+                    : theme.colorScheme.primary,
+              ),
+              title: Text(tr.url,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall),
+              subtitle: Text(
+                'tier ${tr.tier}'
+                '${tr.fails > 0 ? ' · ${L.t.trackerFails(tr.fails)}' : ''}'
+                '${tr.message.isNotEmpty ? ' · ${tr.message}' : ''}',
+                style: theme.textTheme.bodySmall
+                    ?.copyWith(color: theme.colorScheme.outline),
+              ),
+              trailing: IconButton(
+                icon: const Icon(Icons.delete_outline, size: 18),
+                onPressed: () => onRemove(tr),
+              ),
+            )),
+      ],
+    );
   }
 }

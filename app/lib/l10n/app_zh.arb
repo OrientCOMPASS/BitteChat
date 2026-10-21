@@ -678,32 +678,21 @@
  "otherTasksScope": "其他任务",
  "videoSoftwareDecodeNotice": "正在使用软件解码（硬件解码器不支持此编码）",
  "videoSpeed": "倍速",
- "btViewTitle": "仪表盘",
- "btViewSearch": "搜索任务",
- "btViewSort": "排序",
- "btViewSortName": "名称",
- "btViewSortProgress": "进度",
- "btViewSortSize": "大小",
- "btViewSortDown": "下载速度",
- "btViewSortUp": "上传速度",
- "btViewSortPeers": "peer 数",
- "btViewFilterAll": "全部",
- "btViewFilterActive": "活动",
- "btViewFilterStalled": "停滞",
- "btViewFilterPaused": "已暂停",
- "btViewFilterFinished": "完成",
- "btViewFilterError": "错误",
- "btViewModeTable": "表格视图",
- "btViewModeGrid": "卡片视图",
- "btViewSelected": "已选 {n} 项",
- "@btViewSelected": {
-  "placeholders": {
-   "n": {
-    "type": "int"
-   }
-  }
- },
- "btViewSelectAll": "全选",
- "btViewEmpty": "没有匹配的任务"
+ "btDetailOverview": "概览",
+ "btDetailFiles": "文件",
+ "btDetailPeers": "节点",
+ "btDetailTrackers": "Tracker",
+ "btDetailTransfer": "传输",
+ "btDetailSize": "大小",
+ "btDetailStorage": "存储",
+ "btDetailAbout": "关于",
+ "btDetailState": "状态",
+ "btDetailProgress": "进度",
+ "btDetailDown": "下载速度",
+ "btDetailUp": "上传速度",
+ "btDetailTotal": "总大小",
+ "btDetailDone": "已完成",
+ "btDetailSavePath": "保存路径",
+ "btDetailType": "类型",
+ "btDetailCopied": "已复制"
 }
-

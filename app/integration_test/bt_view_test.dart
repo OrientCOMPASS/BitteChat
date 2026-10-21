@@ -1,7 +1,7 @@
-// On-device (emulator) verification of the VueTorrent-style dashboard
-// (BtViewPage) against the REAL core: session stats header + sparkline,
-// table/grid view modes, status filter chips and the multi-select bulk bar.
-// Screenshots of THIS round's feature are captured in both view modes and
+// On-device (emulator) verification of the VueTorrent-style torrent detail
+// page (BtViewPage, opened by tapping a task in the BT tab): summary header,
+// Overview property groups, Files/Peers/Trackers tabs and the pause/resume
+// action. Screenshots of THIS round's feature (overview + files tab) are
 // pulled concurrently by scripts/emu-run-and-pull.sh.
 //
 // Run: flutter test integration_test/bt_view_test.dart -d <device>
@@ -21,67 +21,67 @@ void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
   testWidgets(
-    'bt dashboard: stats header, table/grid, filters, bulk bar',
+    'bt detail page: overview groups, files/peers/trackers tabs, pause',
     (tester) async {
       await BitteApi.init();
       final api = BitteApi.instance;
       expect(api.available, isTrue,
           reason: 'libbitte_core.so failed to load on device');
 
-      // one finished (seeding) torrent so the dashboard has content
+      // one finished (seeding) torrent to open the detail page on
       final stamp = DateTime.now().millisecondsSinceEpoch;
       final f = File('${api.dataDir}/BtView$stamp.bin');
-      await f.writeAsString('dashboard seed $stamp');
+      await f.writeAsString('detail seed $stamp');
       final seeded = api.call('bt.create_seed', {'path': f.path});
       final name = seeded['name'] as String;
+      final ih = seeded['infohash'] as String;
 
       final prefs = UiPrefs(File('${api.dataDir}/ui_prefs_btview_it.json'));
       await tester
           .pumpWidget(RepaintBoundary(child: BitteChatApp(prefs: prefs)));
       await tester.pumpAndSettle();
 
-      // BT tab -> dashboard entry in the AppBar
+      // BT tab -> tap the task row -> detail page
       await tester.tap(find.byIcon(Icons.cloud_download_outlined));
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('bt-open-dashboard')));
+      await tester.tap(find.text(name));
       await tester.pumpAndSettle();
 
-      // VueTorrent-style header: session speeds + sparkline + counts
-      expect(find.text('Dashboard'), findsOneWidget);
-      expect(find.byIcon(Icons.arrow_downward), findsWidgets);
-      expect(find.byIcon(Icons.arrow_upward), findsWidgets);
-      // the seeded torrent shows up in table mode
-      expect(find.text(name), findsOneWidget);
-      // status filter chips are present with counts
-      expect(find.textContaining('All ('), findsOneWidget);
-      await shotWidget(tester, 'shot-bt-view-table');
+      // VueTorrent-style tab bar
+      for (final tab in ['Overview', 'Files', 'Peers', 'Trackers']) {
+        expect(find.text(tab), findsOneWidget, reason: 'tab $tab missing');
+      }
+      // summary header shows the finished progress and speeds
+      expect(find.textContaining('100.0%'), findsWidgets);
+      // overview property groups: infohash row (tap-to-copy) and type tag
+      expect(find.text(ih), findsOneWidget);
+      expect(find.text('SEED'), findsOneWidget);
+      expect(find.textContaining('Transfer'), findsOneWidget);
+      await shotWidget(tester, 'shot-bt-detail-overview');
 
-      // switch to the card (grid) mode: property chips appear
-      await tester.tap(find.byKey(const ValueKey('btview-mode')));
-      await tester.pumpAndSettle();
-      expect(find.byIcon(Icons.table_rows), findsOneWidget);
-      expect(find.textContaining('P/'), findsWidgets);
-      await shotWidget(tester, 'shot-bt-view-grid');
-
-      // back to table, then filter: paused must hide the seeding torrent
-      await tester.tap(find.byKey(const ValueKey('btview-mode')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.textContaining('Paused ('));
-      await tester.pumpAndSettle();
-      expect(find.text(name), findsNothing);
-      expect(find.textContaining('No matching tasks'), findsOneWidget);
-      await tester.tap(find.textContaining('All ('));
+      // Files tab: single-file content list with per-file progress
+      await tester.tap(find.text('Files'));
       await tester.pumpAndSettle();
       expect(find.text(name), findsOneWidget);
+      expect(find.byType(LinearProgressIndicator), findsWidgets);
+      await shotWidget(tester, 'shot-bt-detail-files');
 
-      // long-press enters multi-select with the bulk action bar
-      await tester.longPress(find.text(name));
+      // Trackers tab renders (empty hint or rows) and add entry exists
+      await tester.tap(find.text('Trackers'));
       await tester.pumpAndSettle();
-      expect(find.text('1 selected'), findsOneWidget);
-      expect(find.byKey(const ValueKey('btview-clear-sel')), findsOneWidget);
-      await tester.tap(find.byKey(const ValueKey('btview-clear-sel')));
+      expect(find.byIcon(Icons.add), findsOneWidget);
+
+      // pause/resume action round-trip
+      await tester.tap(find.byKey(const ValueKey('btdetail-pause-resume')));
       await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('btview-clear-sel')), findsNothing);
+      // engine state cache refreshes on its 2 s post_torrent_updates cycle
+      await Future<void>.delayed(const Duration(seconds: 4));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Overview'));
+      await tester.pumpAndSettle();
+      expect(find.text('Paused'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('btdetail-pause-resume')));
+      await tester.pumpAndSettle();
 
       // hold the install alive until CI pulled the screenshots
       await waitForPullSentinel();

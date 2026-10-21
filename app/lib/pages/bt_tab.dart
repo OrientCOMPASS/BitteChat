@@ -188,14 +188,6 @@ class _BtTabState extends State<BtTab> {
         title: Text(L.t.btTab),
         actions: [
           IconButton(
-            key: const ValueKey('bt-open-dashboard'),
-            tooltip: L.t.btViewTitle,
-            icon: const Icon(Icons.space_dashboard_outlined),
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const BtViewPage()),
-            ),
-          ),
-          IconButton(
             tooltip: _includeChat ? L.t.hideChatTorrents : L.t.showChatTorrents,
             icon: Icon(_includeChat
                 ? Icons.visibility
@@ -293,15 +285,14 @@ class _BtTabState extends State<BtTab> {
   }
 
   Future<void> _openDetail(TorrentInfo t) async {
-    await showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: (ctx) => TorrentDetailSheet(
-        infohash: t.infohash,
-        name: t.name,
-        savePath: t.savePath,
-        magnet: t.magnet,
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => BtViewPage(
+          infohash: t.infohash,
+          name: t.name,
+          savePath: t.savePath,
+          magnet: t.magnet,
+        ),
       ),
     );
     _reload();
@@ -643,241 +634,6 @@ class _TorrentTile extends StatelessWidget {
     );
     if (result == 'keep') onControl('remove', deleteFiles: false);
     if (result == 'delete') onControl('remove', deleteFiles: true);
-  }
-}
-
-/// 任务详情：文件进度 + 连接节点 + 元信息
-class TorrentDetailSheet extends StatefulWidget {
-  const TorrentDetailSheet({
-    super.key,
-    required this.infohash,
-    required this.name,
-    this.savePath = '',
-    this.magnet = '',
-  });
-
-  final String infohash;
-  final String name;
-  final String savePath;
-  final String magnet;
-
-  @override
-  State<TorrentDetailSheet> createState() => _TorrentDetailSheetState();
-}
-
-class _TorrentDetailSheetState extends State<TorrentDetailSheet> {
-  late final BitteApi _api = BitteApi.instance;
-  List<Map<String, dynamic>> _files = [];
-  List<PeerInfo> _peers = [];
-  List<TrackerInfo> _trackers = [];
-  Timer? _timer;
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-    _timer = Timer.periodic(const Duration(seconds: 3), (_) => _load());
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
-  }
-
-  void _load() {
-    if (!mounted) return;
-    try {
-      final f = _api.call('bt.files', {'infohash': widget.infohash});
-      final peers = _api.btPeers(widget.infohash);
-      final trackers = _api.btTrackers(widget.infohash);
-      setState(() {
-        _files = ((f['files'] as List?) ?? [])
-            .map((e) => Map<String, dynamic>.from(e as Map))
-            .toList();
-        _peers = peers;
-        _trackers = trackers;
-      });
-    } catch (_) {}
-  }
-
-  Future<void> _addTrackerDialog() async {
-    final controller = TextEditingController();
-    final url = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(L.t.addTracker),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: InputDecoration(
-            labelText: L.t.trackerUrl,
-            hintText: 'udp://tracker.example.org:1337/announce',
-            border: OutlineInputBorder(),
-          ),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx), child: Text(L.t.cancel)),
-          FilledButton(
-              onPressed: () => Navigator.pop(ctx, controller.text.trim()),
-              child: Text(L.t.add)),
-        ],
-      ),
-    );
-    if (url == null || url.isEmpty) return;
-    try {
-      _api.btAddTracker(widget.infohash, url);
-      _load();
-    } catch (e) {
-      if (mounted) showError(context, e);
-    }
-  }
-
-  Future<void> _removeTracker(TrackerInfo tr) async {
-    try {
-      _api.btRemoveTracker(widget.infohash, tr.url);
-      _load();
-    } catch (e) {
-      if (mounted) showError(context, e);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return DraggableScrollableSheet(
-      expand: false,
-      initialChildSize: 0.6,
-      maxChildSize: 0.9,
-      builder: (context, scrollController) => ListView(
-        controller: scrollController,
-        padding: const EdgeInsets.symmetric(horizontal: 20),
-        children: [
-          Text(widget.name, style: theme.textTheme.titleMedium),
-          SizedBox(height: 4),
-          Text('infohash: ${widget.infohash}',
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: theme.colorScheme.outline)),
-          if (widget.savePath.isNotEmpty) ...[
-            SizedBox(height: 4),
-            Text(L.t.savePath(widget.savePath),
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: theme.colorScheme.outline)),
-          ],
-          SizedBox(height: 16),
-          Text(L.t.filesCount(_files.length),
-              style: theme.textTheme.titleSmall),
-          if (_files.isEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Text(L.t.noMetadata,
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: theme.colorScheme.outline)),
-            ),
-          ..._files.map((f) {
-            final prog = (f['progress'] as num?)?.toDouble() ?? 0;
-            return Padding(
-              padding: const EdgeInsets.symmetric(vertical: 6),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(f['path'] as String? ?? '',
-                            maxLines: 1, overflow: TextOverflow.ellipsis),
-                      ),
-                      Text(formatBytes((f['size'] as num?)?.toInt() ?? 0),
-                          style: theme.textTheme.bodySmall),
-                    ],
-                  ),
-                  SizedBox(height: 4),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(3),
-                    child: LinearProgressIndicator(value: prog, minHeight: 4),
-                  ),
-                ],
-              ),
-            );
-          }),
-          SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                  child: Text(L.t.trackers(_trackers.length),
-                      style: theme.textTheme.titleSmall)),
-              TextButton.icon(
-                icon: Icon(Icons.add, size: 18),
-                label: Text(L.t.addTracker),
-                onPressed: _addTrackerDialog,
-              ),
-            ],
-          ),
-          if (_trackers.isEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Text(L.t.noTrackersHint,
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: theme.colorScheme.outline)),
-            ),
-          ..._trackers.map((tr) => ListTile(
-                dense: true,
-                contentPadding: EdgeInsets.zero,
-                leading: Icon(
-                  tr.verified ? Icons.verified_outlined : Icons.hub_outlined,
-                  size: 18,
-                  color: tr.message.isNotEmpty
-                      ? theme.colorScheme.error
-                      : theme.colorScheme.primary,
-                ),
-                title: Text(tr.url,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodySmall),
-                subtitle: Text(
-                  'tier ${tr.tier}'
-                  '${tr.fails > 0 ? ' · ${L.t.trackerFails(tr.fails)}' : ''}'
-                  '${tr.message.isNotEmpty ? ' · ${tr.message}' : ''}',
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: theme.colorScheme.outline),
-                ),
-                trailing: IconButton(
-                  icon: Icon(Icons.delete_outline, size: 18),
-                  onPressed: () => _removeTracker(tr),
-                ),
-              )),
-          SizedBox(height: 12),
-          Text(L.t.peersCount(_peers.length),
-              style: theme.textTheme.titleSmall),
-          if (_peers.isEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Text(L.t.noPeers,
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: theme.colorScheme.outline)),
-            ),
-          ..._peers.map((p) => ListTile(
-                dense: true,
-                contentPadding: EdgeInsets.zero,
-                leading: Icon(
-                  p.chatCapable ? Icons.chat : Icons.cloud_outlined,
-                  size: 18,
-                  color: theme.colorScheme.primary,
-                ),
-                title:
-                    Text('${p.ip}:${p.port}', style: theme.textTheme.bodySmall),
-                subtitle: Text(
-                  '${p.client} · ${(p.progress * 100).toStringAsFixed(0)}%'
-                  '${p.chatCapable ? L.t.chatCapableMark : ""}',
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: theme.colorScheme.outline),
-                ),
-              )),
-          SizedBox(height: 24),
-        ],
-      ),
-    );
   }
 }
 
