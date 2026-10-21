@@ -81,14 +81,14 @@ void main() {
       // live=false means the engine has no handle for ih yet (the
       // remove+re-add inside bt.add_file races the removed alert); retry
       // briefly so a slow alert loop cannot fail the round
-      var live = false;
-      for (var i = 0; i < 20 && !live; i++) {
+      var trLive = false;
+      for (var i = 0; i < 20 && !trLive; i++) {
         final addRes = api.call('bt.add_tracker',
             {'infohash': ih, 'url': kSwarmTracker, 'tier': 0});
-        live = (addRes['live'] as bool?) ?? false;
-        if (!live) await Future<void>.delayed(const Duration(seconds: 1));
+        trLive = (addRes['live'] as bool?) ?? false;
+        if (!trLive) await Future<void>.delayed(const Duration(seconds: 1));
       }
-      debugPrint('swarm: add_tracker live=$live');
+      debugPrint('swarm: add_tracker live=$trLive');
       debugPrint('swarm: rows=${api.torrents().map((t) => '${t.infohash}/'
           '${t.state}/err=${t.error}').toList()}');
 
