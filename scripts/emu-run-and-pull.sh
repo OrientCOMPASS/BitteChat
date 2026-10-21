@@ -62,13 +62,23 @@ for f in shot-log.txt shot-chat-inline.png shot-jump-chip.png \
     echo "::warning::screenshot harness: $f never appeared (package='${PKG:-<none>}')"
   fi
 done
-# re-pull the forensic log last so it carries every test file's notes
-# (the loop above grabs it early, when only the first shots exist)
+# re-pull the forensic log last: the loop above grabs it early (when only
+# the first test file's notes exist) and the device-side log resets between
+# test files (the runner clears the app data per file), so merge the early
+# pull and this tail pull line-wise, order-preserving and de-duplicated
 if [ -n "$PKG" ]; then
+  tmp="$OUT/shot-log.tail"
+  : > "$tmp"
   for base in "/data/data/$PKG/files" "/storage/emulated/0/Android/data/$PKG/files"; do
-    adb shell cat "$base/shot-log.txt" > "$OUT/shot-log.txt" 2>/dev/null || true
-    [ -s "$OUT/shot-log.txt" ] && break
+    adb shell cat "$base/shot-log.txt" > "$tmp" 2>/dev/null || true
+    [ -s "$tmp" ] && break
   done
+  if [ -s "$tmp" ]; then
+    cat "$OUT/shot-log.txt" "$tmp" 2>/dev/null | awk '!seen[$0]++' \
+      > "$OUT/shot-log.merged" || true
+    [ -s "$OUT/shot-log.merged" ] && mv "$OUT/shot-log.merged" "$OUT/shot-log.txt"
+  fi
+  rm -f "$tmp"
 fi
 echo "app package: ${PKG:-<none>}"
 # release the test process (it holds the install alive for us)
