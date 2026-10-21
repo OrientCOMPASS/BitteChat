@@ -67,9 +67,30 @@ void main() {
         return sb.toString();
       }
 
-      final addRes = api.call(
-          'bt.add_tracker', {'infohash': ih, 'url': kSwarmTracker, 'tier': 0});
-      print('swarm: add_tracker live=${addRes['live']}');
+      String coreLogTail() {
+        try {
+          final lines = File('${api.dataDir}/logs/core.log').readAsLinesSync();
+          return lines
+              .skip(lines.length > 60 ? lines.length - 60 : 0)
+              .join(' | ');
+        } catch (e) {
+          return '<core.log unreadable: $e>';
+        }
+      }
+
+      // live=false means the engine has no handle for ih yet (the
+      // remove+re-add inside bt.add_file races the removed alert); retry
+      // briefly so a slow alert loop cannot fail the round
+      var live = false;
+      for (var i = 0; i < 20 && !live; i++) {
+        final addRes = api.call('bt.add_tracker',
+            {'infohash': ih, 'url': kSwarmTracker, 'tier': 0});
+        live = (addRes['live'] as bool?) ?? false;
+        if (!live) await Future<void>.delayed(const Duration(seconds: 1));
+      }
+      debugPrint('swarm: add_tracker live=$live');
+      debugPrint('swarm: rows=${api.torrents().map((t) => '${t.infohash}/'
+          '${t.state}/err=${t.error}').toList()}');
 
       // guest->host reachability probe through the core's ureq stack
       // (independent of libtorrent): the mini tracker logs GET /ping
@@ -77,16 +98,20 @@ void main() {
         api.setTrackerList(enabled: true, url: 'http://10.0.2.2:6969/ping');
         api.refreshTrackerList();
         final gl = api.call('bt.get_tracker_list');
-        print('swarm: ureq probe last_fetch=${gl['last_fetch']} '
+        debugPrint('swarm: ureq probe last_fetch=${gl['last_fetch']} '
             'err="${gl['error']}"');
       } catch (e) {
-        print('swarm: ureq probe threw $e');
+        debugPrint('swarm: ureq probe threw $e');
       }
       try {
         api.setTrackerList(enabled: false, url: '');
       } catch (_) {}
-      api.btReannounce(ih);
-      print('swarm: t0 ${diag()}');
+      try {
+        api.btReannounce(ih);
+      } catch (e) {
+        debugPrint('swarm: reannounce threw $e');
+      }
+      debugPrint('swarm: t0 ${diag()}');
 
       // wait (<=150 s) for the host seeder to connect AND payload to flow;
       // this is the regression guard the mock-only e2e could never give us
@@ -98,8 +123,12 @@ void main() {
           if (t.infohash == ih) prog = t.progress;
         }
         if (i % 15 == 14) {
-          print('swarm: t${i + 1} ${diag()}');
-          api.btReannounce(ih);
+          debugPrint('swarm: t${i + 1} ${diag()}');
+          try {
+            api.btReannounce(ih);
+          } catch (e) {
+            debugPrint('swarm: reannounce threw $e');
+          }
         }
         if (peers.isEmpty || prog <= 0) {
           await Future<void>.delayed(const Duration(seconds: 1));
@@ -107,10 +136,11 @@ void main() {
       }
       expect(peers, isNotEmpty,
           reason: 'dual-instance swarm: host seeder never connected '
-              '(tracker/aria2 down on CI host?) diag: ${diag()}');
+              '(tracker/aria2 down on CI host?) diag: ${diag()} '
+              'core: ${coreLogTail()}');
       expect(prog, greaterThan(0),
           reason: 'dual-instance swarm: connected but no payload flowed '
-              'diag: ${diag()}');
+              'diag: ${diag()} core: ${coreLogTail()}');
       final name = kSwarmName;
 
       final prefs = UiPrefs(File('${api.dataDir}/ui_prefs_btview_it.json'));

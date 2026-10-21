@@ -852,7 +852,16 @@ static void alert_loop(bc_session* s)
                 {
                     std::lock_guard<std::mutex> l(s->st_mx);
                     s->statuses.erase(key);
-                    s->handles.erase(key);
+                    // Only drop the map entry when it still refers to the
+                    // handle that was removed. A remove+re-add of the same
+                    // infohash (bt.add_file re-stages into the canonical
+                    // save dir) registers the NEW handle before the removed
+                    // alert of the OLD one is processed; a blind erase
+                    // orphaned the live torrent there ("unknown torrent"
+                    // for every later per-torrent call).
+                    auto const hit = s->handles.find(key);
+                    if (hit != s->handles.end() && hit->second == ra->handle)
+                        s->handles.erase(hit);
                 }
                 json::object data;
                 data["infohash"] = key;
