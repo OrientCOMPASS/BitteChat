@@ -1399,8 +1399,8 @@ static json::value cmd_remove_tracker(bc_session* s, json::object const& o)
         aes.erase(it, aes.end());
         th.replace_trackers(std::move(aes));
         // qBittorrent re-announces after tracker removal so the swarm
-        // forgets the dropped tracker promptly
-        if (!th.status().paused) th.force_reannounce();
+        // forgets the dropped tracker promptly (LT 2.x: paused lives in flags)
+        if (!(th.status().flags & torrent_flags::paused)) th.force_reannounce();
     }
     catch (std::exception const& e)
     {

@@ -388,6 +388,8 @@ class PeerInfo {
     required this.client,
     required this.progress,
     required this.chatCapable,
+    required this.upSpeed,
+    required this.downSpeed,
   });
 
   final String ip;

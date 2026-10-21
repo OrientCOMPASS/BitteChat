@@ -633,7 +633,7 @@ class _PiecePainter extends CustomPainter {
       if (!pieces.has(i)) continue;
       final x = i * colW;
       canvas.drawRect(
-        Rect.fromLTW(x, 0, colW + 0.5, size.height),
+        Rect.fromLTWH(x, 0, colW + 0.5, size.height),
         fg,
       );
     }
