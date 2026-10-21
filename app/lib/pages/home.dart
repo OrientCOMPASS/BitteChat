@@ -21,11 +21,16 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
+class _HomePageState extends State<HomePage>
+    with WidgetsBindingObserver, SingleTickerProviderStateMixin {
   int _index = 0;
   int _chatUnread = 0;
   StreamSubscription<CoreEvent>? _sub;
   Timer? _timer;
+  late final AnimationController _tabAnim = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 180),
+  )..value = 1;
 
   StreamSubscription<CoreEvent>? _errSub;
 
@@ -68,6 +73,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     _errSub?.cancel();
     _sub?.cancel();
     _timer?.cancel();
+    _tabAnim.dispose();
     super.dispose();
   }
 
@@ -84,17 +90,23 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: IndexedStack(
-        index: _index,
-        children: [
-          ChatTab(onOpenSettings: _openSettings, prefs: widget.prefs),
-          BtTab(prefs: widget.prefs),
-          const RssTab(),
-        ],
-      ),
+      body: FadeTransition(
+          opacity: CurvedAnimation(parent: _tabAnim, curve: Curves.easeOut),
+          child: IndexedStack(
+            index: _index,
+            children: [
+              ChatTab(onOpenSettings: _openSettings, prefs: widget.prefs),
+              BtTab(prefs: widget.prefs),
+              const RssTab(),
+            ],
+          )),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
-        onDestinationSelected: (i) => setState(() => _index = i),
+        onDestinationSelected: (i) {
+          if (i == _index) return;
+          setState(() => _index = i);
+          _tabAnim.forward(from: 0);
+        },
         destinations: [
           NavigationDestination(
             icon: _chatBadgeIcon(false),

@@ -303,6 +303,8 @@ impl Api {
             "bt.set_limits" => self.bt_set_limits(p),
             "bt.get_limits" => self.bt_get_limits(),
             "bt.trackers" => self.bt_trackers(p),
+            "bt.pieces" => self.bt_pieces(p),
+            "bt.reannounce" => self.bt_reannounce(p),
             "bt.add_tracker" => self.bt_add_tracker(p),
             "bt.remove_tracker" => self.bt_remove_tracker(p),
             "bt.get_default_trackers" => self.bt_get_default_trackers(),

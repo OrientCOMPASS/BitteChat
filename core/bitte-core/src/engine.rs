@@ -52,6 +52,43 @@ pub struct TrackerInfo {
     pub verified: bool,
     pub fails: i32,
     pub message: String,
+    /// announce currently in flight (qBittorrent "updating" state)
+    #[serde(default)]
+    pub updating: bool,
+    /// scrape stats reported by the tracker; -1 = unknown/not scraped
+    #[serde(default = "unknown_scrape")]
+    pub seeds: i64,
+    #[serde(default = "unknown_scrape")]
+    pub leeches: i64,
+    #[serde(default = "unknown_scrape")]
+    pub downloaded: i64,
+}
+
+fn unknown_scrape() -> i64 {
+    -1
+}
+
+/// Piece-level download map of one torrent (VueTorrent/qBittorrent PBS).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct PieceMap {
+    /// packed bitfield, bit i (LSB-first per byte) = piece i downloaded
+    pub bits: Vec<u8>,
+    pub num_pieces: usize,
+    pub piece_length: i64,
+}
+
+impl PieceMap {
+    pub fn has(&self, piece: usize) -> bool {
+        if piece >= self.num_pieces {
+            return false;
+        }
+        let b = self.bits.get(piece / 8).copied().unwrap_or(0);
+        b & (1 << (piece % 8)) != 0
+    }
+
+    pub fn done_count(&self) -> usize {
+        (0..self.num_pieces).filter(|&i| self.has(i)).count()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -157,6 +194,8 @@ pub trait BtEngine: Send + Sync {
 
     /// Tracker management. `add_tracker` is idempotent per URL.
     fn add_tracker(&self, infohash: &str, url: &str, tier: i32) -> Result<()>;
+    fn force_reannounce(&self, infohash: &str, tracker_index: i32) -> Result<()>;
+    fn pieces(&self, infohash: &str) -> Result<PieceMap>;
     fn remove_tracker(&self, infohash: &str, url: &str) -> Result<()>;
     fn trackers(&self, infohash: &str) -> Result<Vec<TrackerInfo>>;
 

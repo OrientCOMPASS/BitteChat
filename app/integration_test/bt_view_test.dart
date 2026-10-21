@@ -1,8 +1,9 @@
 // On-device (emulator) verification of the VueTorrent-style torrent detail
-// page (BtViewPage, opened by tapping a task in the BT tab): summary header,
-// Overview property groups, Files/Peers/Trackers tabs and the pause/resume
-// action. Screenshots of THIS round's feature (overview + files tab) are
-// pulled concurrently by scripts/emu-run-and-pull.sh.
+// page (BtViewPage, opened by tapping a task in the BT tab): piece-level
+// progress bar with probe tooltip, Overview property groups, Files tab with
+// sort + per-file priority actions, qBittorrent-style Trackers tab (add +
+// force reannounce). Screenshots of THIS round's feature (overview / files /
+// trackers) are pulled concurrently by scripts/emu-run-and-pull.sh.
 //
 // Run: flutter test integration_test/bt_view_test.dart -d <device>
 
@@ -21,7 +22,7 @@ void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
   testWidgets(
-    'bt detail page: overview groups, files/peers/trackers tabs, pause',
+    'bt detail page: piece bar probe, files sort/priority, trackers mgmt',
     (tester) async {
       await BitteApi.init();
       final api = BitteApi.instance;
@@ -41,7 +42,7 @@ void main() {
           .pumpWidget(RepaintBoundary(child: BitteChatApp(prefs: prefs)));
       await tester.pumpAndSettle();
 
-      // BT tab -> tap the task row -> detail page
+      // BT tab -> tap the task row -> animated detail route
       await tester.tap(find.byIcon(Icons.cloud_download_outlined));
       await tester.pumpAndSettle();
       await tester.tap(find.text(name));
@@ -55,45 +56,52 @@ void main() {
           reason: 'tab $tab missing',
         );
       }
-      // summary header shows the finished progress and speeds
-      expect(find.textContaining('100.0%'), findsWidgets);
-      // overview property groups: infohash row (tap-to-copy) and type tag
+      // piece-level progress bar + probe tooltip (finished seed => all done)
+      expect(find.byKey(const ValueKey('btdetail-pieces')), findsOneWidget);
+      final bar = tester.getRect(find.byKey(const ValueKey('btdetail-pieces')));
+      await tester.tapAt(bar.center);
+      await tester.pumpAndSettle();
+      expect(find.textContaining('downloaded'), findsWidgets);
       expect(find.text(ih), findsOneWidget);
-      // bt.create_seed stores kind 0 (kind 4 is reserved for chat attachments)
       expect(find.text('BT'), findsOneWidget);
-      expect(find.textContaining('Transfer'), findsOneWidget);
       await shotWidget(tester, 'shot-bt-detail-overview');
 
-      // Files tab: single-file content list with per-file progress
+      // Files tab: sort controls + per-file priority action
       await tester.tap(find.descendant(
           of: find.byType(TabBar), matching: find.text('Files')));
       await tester.pumpAndSettle();
-      // the AppBar title carries the same name; scope to the tab's list
+      expect(find.byKey(const ValueKey('btfiles-sort')), findsOneWidget);
+      expect(find.byKey(const ValueKey('btfiles-asc')), findsOneWidget);
       expect(
         find.descendant(of: find.byType(ListView), matching: find.text(name)),
         findsOneWidget,
       );
-      expect(find.byType(LinearProgressIndicator), findsWidgets);
+      await tester.tap(find.byKey(const ValueKey('btfile-prio-0')));
+      await tester.pumpAndSettle();
+      expect(find.text('High priority'), findsOneWidget);
+      await tester.tap(find.text('High priority'));
+      await tester.pumpAndSettle();
       await shotWidget(tester, 'shot-bt-detail-files');
 
-      // Trackers tab renders (empty hint or rows) and add entry exists
+      // Trackers tab (qBittorrent-style): add, then force reannounce
       await tester.tap(find.descendant(
           of: find.byType(TabBar), matching: find.text('Trackers')));
       await tester.pumpAndSettle();
-      expect(find.byIcon(Icons.add), findsOneWidget);
-
-      // pause/resume action round-trip
-      await tester.tap(find.byKey(const ValueKey('btdetail-pause-resume')));
+      await tester.tap(find.byKey(const ValueKey('bttracker-add')));
       await tester.pumpAndSettle();
-      // engine state cache refreshes on its 2 s post_torrent_updates cycle
-      await Future<void>.delayed(const Duration(seconds: 4));
+      await tester.enterText(
+        find.byType(TextField),
+        'udp://tracker.opentrackr.org:1337/announce',
+      );
+      await tester.tap(find.text('Add'));
       await tester.pumpAndSettle();
-      await tester.tap(find.descendant(
-          of: find.byType(TabBar), matching: find.text('Overview')));
+      expect(find.textContaining('opentrackr'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('bttracker-menu-0')));
       await tester.pumpAndSettle();
-      expect(find.text('Paused'), findsOneWidget);
-      await tester.tap(find.byKey(const ValueKey('btdetail-pause-resume')));
+      expect(find.text('Force reannounce'), findsOneWidget);
+      await tester.tap(find.text('Force reannounce'));
       await tester.pumpAndSettle();
+      await shotWidget(tester, 'shot-bt-detail-trackers');
 
       // hold the install alive until CI pulled the screenshots
       await waitForPullSentinel();

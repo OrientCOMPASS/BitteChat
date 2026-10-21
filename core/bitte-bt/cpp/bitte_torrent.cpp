@@ -1250,10 +1250,29 @@ static json::value cmd_trackers(bc_session* s, json::object const& o)
             to["url"] = ae.url;
             to["tier"] = static_cast<int>(ae.tier);
             to["verified"] = ae.verified;
-            // libtorrent 2.x moved per-announce state (fails/last_error)
-            // into per-endpoint structs; keep the JSON schema stable
-            to["fails"] = 0;
-            to["message"] = std::string();
+            // libtorrent 2.x keeps per-announce state in
+            // endpoint -> announce_infohash; aggregate like qBittorrent does
+            int fails = 0;
+            bool updating = false;
+            int sc = -1, si = -1, sd = -1;
+            std::string msg;
+            for (auto const& ep : ae.endpoints)
+            {
+                auto const& ai = ep.info_hashes[protocol_version::V1];
+                fails += ai.fails;
+                updating = updating || ai.updating;
+                sc = std::max(sc, ai.scrape_complete);
+                si = std::max(si, ai.scrape_incomplete);
+                sd = std::max(sd, ai.scrape_downloaded);
+                if (msg.empty() && !ai.message.empty()) msg = ai.message;
+                if (msg.empty() && ai.last_error) msg = ai.last_error.message();
+            }
+            to["fails"] = fails;
+            to["updating"] = updating;
+            to["seeds"] = sc;
+            to["leeches"] = si;
+            to["downloaded"] = sd;
+            to["message"] = msg;
             arr.push_back(std::move(to));
         }
     }
@@ -1442,6 +1461,44 @@ static json::value cmd_dht_put_mutable(bc_session* s, json::object const& o)
             },
             salt);
     });
+    return json_ok();
+}
+
+static json::value cmd_pieces(bc_session* s, json::object const& o)
+{
+    torrent_handle const th = find_handle(s, jstr(o, "infohash"));
+    if (!th.is_valid()) return json_err("unknown torrent");
+    try
+    {
+        torrent_status const st = th.status(torrent_handle::query_pieces);
+        int const n = st.pieces.size();
+        std::string bits(static_cast<std::size_t>((n + 7) / 8), '\0');
+        for (int i = 0; i < n; ++i)
+        {
+            if (st.pieces[piece_index_t{i}])
+                bits[static_cast<std::size_t>(i) / 8] |=
+                    static_cast<char>(1 << (i % 8));
+        }
+        auto const tf = th.torrent_file();
+        json::object r;
+        r["ok"] = true;
+        r["num_pieces"] = n;
+        r["pieces_b64"] = b64_encode(bits.data(), bits.size());
+        r["piece_length"] = tf ? static_cast<std::int64_t>(tf->piece_length()) : 0;
+        return r;
+    }
+    catch (std::exception const& e)
+    {
+        return json_err(e.what());
+    }
+}
+
+static json::value cmd_reannounce(bc_session* s, json::object const& o)
+{
+    torrent_handle const th = find_handle(s, jstr(o, "infohash"));
+    if (!th.is_valid()) return json_err("unknown torrent");
+    int const idx = static_cast<int>(jint(o, "tracker_index", -1));
+    th.force_reannounce(seconds32(0), idx);
     return json_ok();
 }
 
@@ -1693,6 +1750,8 @@ extern "C" char* bct_call(bc_session* s, const char* method, const char* params_
         if (m == "dht_put_immutable") return json_to_cstr(cmd_dht_put_immutable(s, obj));
         if (m == "dht_get_mutable") return json_to_cstr(cmd_dht_get_mutable(s, obj));
         if (m == "dht_put_mutable") return json_to_cstr(cmd_dht_put_mutable(s, obj));
+        if (m == "pieces") return json_to_cstr(cmd_pieces(s, obj));
+        if (m == "reannounce") return json_to_cstr(cmd_reannounce(s, obj));
         if (m == "ext_send") return json_to_cstr(cmd_ext_send(s, obj));
         if (m == "ext_send_to") return json_to_cstr(cmd_ext_send_to(s, obj));
         if (m == "ext_peers") return json_to_cstr(cmd_ext_peers(s, obj));

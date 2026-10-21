@@ -694,5 +694,36 @@
  "btDetailDone": "Done",
  "btDetailSavePath": "Save path",
  "btDetailType": "Type",
- "btDetailCopied": "Copied to clipboard"
+ "btDetailCopied": "Copied to clipboard",
+ "btDetailSort": "Sort",
+ "btDetailSortName": "Name",
+ "btDetailSortSize": "Size",
+ "btDetailSortProgress": "Progress",
+ "btDetailSortAddress": "Address",
+ "btDetailSortDown": "Download speed",
+ "btDetailSortAsc": "Ascending",
+ "btDetailSortDesc": "Descending",
+ "btDetailPriority": "Download priority",
+ "btDetailPrioSkip": "Do not download",
+ "btDetailPrioNormal": "Normal priority",
+ "btDetailPrioHigh": "High priority",
+ "btDetailCopyAddress": "Copy address",
+ "btDetailCopyUrl": "Copy tracker URL",
+ "btDetailReannounce": "Force reannounce",
+ "btDetailPieceTip": "Piece {i}/{n} · {state}",
+ "btDetailPieceDone": "downloaded",
+ "btDetailPieceMissing": "not downloaded",
+ "@btDetailPieceTip": {
+  "placeholders": {
+   "i": {
+    "type": "int"
+   },
+   "n": {
+    "type": "int"
+   },
+   "state": {
+    "type": "String"
+   }
+  }
+ }
 }

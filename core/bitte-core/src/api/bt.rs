@@ -569,6 +569,23 @@ impl Api {
         Ok(json!({"ok": true, "count": urls.len(), "applied_to": touched}))
     }
 
+    pub fn bt_pieces(&self, p: Json) -> Result<Json> {
+        let ih = jstr(&p, "infohash")?;
+        let pm = self.inner.engine.pieces(ih)?;
+        Ok(json!({
+            "num_pieces": pm.num_pieces,
+            "piece_length": pm.piece_length,
+            "pieces_b64": base64::engine::general_purpose::STANDARD.encode(&pm.bits),
+        }))
+    }
+
+    pub fn bt_reannounce(&self, p: Json) -> Result<Json> {
+        let ih = jstr(&p, "infohash")?;
+        let idx = ji64(&p, "tracker_index", -1) as i32;
+        self.inner.engine.force_reannounce(ih, idx)?;
+        Ok(json!({"ok": true}))
+    }
+
     pub fn bt_peers(&self, p: Json) -> Result<Json> {
         let ih = jstr(&p, "infohash")?;
         let peers = self.inner.engine.torrent_peers(ih)?;

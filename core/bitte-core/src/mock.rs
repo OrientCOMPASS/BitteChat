@@ -783,10 +783,44 @@ impl BtEngine for MockEngine {
                         verified: false,
                         fails: 0,
                         message: String::new(),
+                        updating: false,
+                        seeds: -1,
+                        leeches: -1,
+                        downloaded: -1,
                     })
                     .collect()
             })
             .unwrap_or_default())
+    }
+
+    fn force_reannounce(&self, infohash: &str, _tracker_index: i32) -> Result<()> {
+        if !self.mine.lock().unwrap().contains_key(infohash) {
+            return Err(CoreError::NotFound(infohash.into()));
+        }
+        Ok(())
+    }
+
+    fn pieces(&self, infohash: &str) -> Result<PieceMap> {
+        let finished = {
+            let mine = self.mine.lock().unwrap();
+            let t = mine
+                .get(infohash)
+                .ok_or_else(|| CoreError::NotFound(infohash.into()))?;
+            t.finished
+        };
+        // deterministic synthetic map: 64 pieces, all-or-nothing like the
+        // mock's instant materialization semantics
+        let n = 64usize;
+        let done = if finished { n } else { 0 };
+        let mut bits = vec![0u8; n.div_ceil(8)];
+        for i in 0..done {
+            bits[i / 8] |= 1 << (i % 8);
+        }
+        Ok(PieceMap {
+            bits,
+            num_pieces: n,
+            piece_length: 16 * 1024,
+        })
     }
 
     fn set_limits(&self, _upload: i64, _download: i64) -> Result<()> {

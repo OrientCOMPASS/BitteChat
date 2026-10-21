@@ -302,6 +302,24 @@ impl BtEngine for LibtorrentEngine {
         Ok(out)
     }
 
+    fn force_reannounce(&self, infohash: &str, tracker_index: i32) -> Result<()> {
+        self.call(
+            "reannounce",
+            json!({"infohash": infohash, "tracker_index": tracker_index}),
+        )?;
+        Ok(())
+    }
+
+    fn pieces(&self, infohash: &str) -> Result<PieceMap> {
+        let v = self.call("pieces", json!({"infohash": infohash}))?;
+        let bits = b64_decode(&self.jstr(&v, "pieces_b64")?);
+        Ok(PieceMap {
+            bits,
+            num_pieces: v.get("num_pieces").and_then(|n| n.as_i64()).unwrap_or(0) as usize,
+            piece_length: v.get("piece_length").and_then(|n| n.as_i64()).unwrap_or(0),
+        })
+    }
+
     fn add_tracker(&self, infohash: &str, url: &str, tier: i32) -> Result<()> {
         self.call(
             "add_tracker",
@@ -326,6 +344,10 @@ impl BtEngine for LibtorrentEngine {
                     verified: t["verified"].as_bool().unwrap_or(false),
                     fails: t["fails"].as_i64().unwrap_or(0) as i32,
                     message: t["message"].as_str().unwrap_or("").to_string(),
+                    updating: t["updating"].as_bool().unwrap_or(false),
+                    seeds: t["seeds"].as_i64().unwrap_or(-1),
+                    leeches: t["leeches"].as_i64().unwrap_or(-1),
+                    downloaded: t["downloaded"].as_i64().unwrap_or(-1),
                 });
             }
         }

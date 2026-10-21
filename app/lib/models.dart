@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'core/l10n.dart';
 // Data models mirroring the Rust core's JSON schemas. Parsing is defensive:
 // unknown/missing fields fall back to safe defaults so a core upgrade never
@@ -393,6 +395,8 @@ class PeerInfo {
   final String client;
   final double progress;
   final bool chatCapable;
+  final int upSpeed;
+  final int downSpeed;
 
   factory PeerInfo.fromJson(Map<String, dynamic> j) => PeerInfo(
         ip: _s(j, 'ip'),
@@ -400,6 +404,8 @@ class PeerInfo {
         client: _s(j, 'client'),
         progress: _d(j, 'progress'),
         chatCapable: _b(j, 'chat_capable'),
+        upSpeed: _i(j, 'up_speed'),
+        downSpeed: _i(j, 'down_speed'),
       );
 }
 
@@ -417,6 +423,10 @@ class TrackerInfo {
   final bool verified;
   final int fails;
   final String message;
+  final bool updating;
+  final int seeds;
+  final int leeches;
+  final int downloaded;
 
   factory TrackerInfo.fromJson(Map<String, dynamic> j) => TrackerInfo(
         url: _s(j, 'url'),
@@ -424,7 +434,36 @@ class TrackerInfo {
         verified: _b(j, 'verified'),
         fails: _i(j, 'fails'),
         message: _s(j, 'message'),
+        updating: _b(j, 'updating'),
+        seeds: _i(j, 'seeds', -1),
+        leeches: _i(j, 'leeches', -1),
+        downloaded: _i(j, 'downloaded', -1),
       );
+}
+
+/// Piece-level download map (qBittorrent/VueTorrent PBS style).
+class PieceMap {
+  PieceMap(
+      {required this.bits, required this.numPieces, required this.pieceLength});
+
+  final Uint8List bits;
+  final int numPieces;
+  final int pieceLength;
+
+  bool has(int piece) {
+    if (piece < 0 || piece >= numPieces) return false;
+    final b = piece ~/ 8;
+    if (b >= bits.length) return false;
+    return bits[b] & (1 << (piece % 8)) != 0;
+  }
+
+  int get doneCount {
+    var n = 0;
+    for (var i = 0; i < numPieces; i++) {
+      if (has(i)) n++;
+    }
+    return n;
+  }
 }
 
 class FeedInfo {

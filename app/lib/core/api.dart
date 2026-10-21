@@ -347,6 +347,25 @@ class BitteApi extends ChangeNotifier {
   Map<String, dynamic> setDefaultTrackers(List<String> urls) =>
       call('bt.set_default_trackers', {'trackers': urls});
 
+  PieceMap? btPieces(String infohash) {
+    if (!available) return null;
+    try {
+      final r = call('bt.pieces', {'infohash': infohash});
+      final n = (r['num_pieces'] as int?) ?? 0;
+      if (n <= 0) return null;
+      return PieceMap(
+        bits: base64Decode((r['pieces_b64'] as String?) ?? ''),
+        numPieces: n,
+        pieceLength: (r['piece_length'] as int?) ?? 0,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  void btReannounce(String infohash, [int trackerIndex = -1]) => call(
+      'bt.reannounce', {'infohash': infohash, 'tracker_index': trackerIndex});
+
   List<TrackerInfo> btTrackers(String infohash) {
     if (!available) return [];
     try {

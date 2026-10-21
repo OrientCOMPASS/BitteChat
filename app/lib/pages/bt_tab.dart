@@ -286,14 +286,12 @@ class _BtTabState extends State<BtTab> {
 
   Future<void> _openDetail(TorrentInfo t) async {
     await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => BtViewPage(
-          infohash: t.infohash,
-          name: t.name,
-          savePath: t.savePath,
-          magnet: t.magnet,
-        ),
-      ),
+      btViewRoute(BtViewPage(
+        infohash: t.infohash,
+        name: t.name,
+        savePath: t.savePath,
+        magnet: t.magnet,
+      )),
     );
     _reload();
   }
