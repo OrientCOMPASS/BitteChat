@@ -1668,3 +1668,43 @@ fn e2e_tracker_list_config_and_refresh_failure() {
     let g = call(&a, "bt.get_tracker_list", json!({}));
     assert_eq!(g["enabled"], json!(false));
 }
+
+#[test]
+fn e2e_two_instances_same_hash_see_peers_and_pieces() {
+    let bus = MockBus::new();
+    let (a, _ta) = spawn_node(&bus);
+    let (b, _tb) = spawn_node(&bus);
+
+    // two instances, SAME hash: each must see the other as a peer (the data
+    // path the detail page's Peers table renders)
+    let (gid, magnet) = seed_room(&a, "peers");
+    join_room(&b, &magnet);
+
+    wait_until(&[&a, &b], T, || {
+        let pa = call(&a, "bt.peers", json!({"infohash": gid}));
+        let pb = call(&b, "bt.peers", json!({"infohash": gid}));
+        let na = pa["peers"].as_array().map(|v| v.len()).unwrap_or(0);
+        let nb = pb["peers"].as_array().map(|v| v.len()).unwrap_or(0);
+        if na >= 1 && nb >= 1 {
+            Some(())
+        } else {
+            None
+        }
+    });
+    let pa = call(&a, "bt.peers", json!({"infohash": gid}));
+    let p0 = &pa["peers"][0];
+    assert_eq!(p0["chat_capable"], json!(true));
+    assert!(p0["client"].as_str().unwrap().starts_with("MockEngine/"));
+    assert!(p0["ip"].as_str().unwrap().starts_with("10.0.0."));
+
+    // piece map (detail page piece bar) is served on both instances
+    for n in [&a, &b] {
+        let pc = call(n, "bt.pieces", json!({"infohash": gid}));
+        assert!(pc["num_pieces"].as_i64().unwrap_or(0) > 0);
+        assert!(!pc["pieces_b64"].as_str().unwrap_or("").is_empty());
+    }
+
+    // and the chat-side member list agrees (ext peers)
+    let ea = call(&a, "chat.group_detail", json!({"group_id": gid}));
+    assert!(ea["members"].as_array().unwrap().len() >= 1);
+}

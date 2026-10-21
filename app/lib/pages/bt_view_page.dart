@@ -1259,13 +1259,6 @@ class _PeersTabState extends State<_PeersTab> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    if (widget.peers.isEmpty) {
-      return Center(
-        child: Text(L.t.noPeers,
-            style: theme.textTheme.bodySmall
-                ?.copyWith(color: theme.colorScheme.outline)),
-      );
-    }
     final rows = widget.peers
         .where((p) =>
             _query.isEmpty ||
@@ -1351,12 +1344,18 @@ class _PeersTabState extends State<_PeersTab> {
         ),
         const Divider(height: 1),
         Expanded(
-          child: ListView(
-            children: [
-              for (final p in rows)
-                _PeerRow(peer: p, onCopyAddress: widget.onCopyAddress),
-            ],
-          ),
+          child: rows.isEmpty
+              ? Center(
+                  child: Text(L.t.noPeers,
+                      style: theme.textTheme.bodySmall
+                          ?.copyWith(color: theme.colorScheme.outline)),
+                )
+              : ListView(
+                  children: [
+                    for (final p in rows)
+                      _PeerRow(peer: p, onCopyAddress: widget.onCopyAddress),
+                  ],
+                ),
         ),
       ],
     );
