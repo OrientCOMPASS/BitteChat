@@ -26,7 +26,7 @@
    `bitte-ffi` 的 android logcat 分支（已有 `#[cfg(target_os="android")]`
    守护）；`bitte-bt` 的平台链接脚本。
 
-## 二、本轮已落地的准备点（v0.0.1）
+## 二、本轮已落地的准备点（v0.0.1 起）
 
 ### Dart 侧（app/lib/core/platform/）
 

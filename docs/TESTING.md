@@ -1,4 +1,4 @@
-# 测试策略与 CI 矩阵（v0.5.28 起生效）
+# 测试策略与 CI 矩阵
 
 ## 仓库策略（强制）
 **每一轮功能/修复修改，必须附带覆盖该修改的模拟器集成测试**
@@ -34,11 +34,11 @@ tag run 仅跑 release（验证 job 在同 commit 的 main push 已绿，避免�
   gradle kts, versions.env, emu-run-and-pull.sh, ci.yml)>` marker 缓存；
   命中即跳过真机轮（~1.2min），未命中跑全套并在成功后 save。
 - 缓存预算：仓库上限 10GB；当前 ~8.4GB（AVD 3.4 + gradle 1.9 + flutter 1.7 + 其余）。
-  新增缓存前必须核算预算（v0.5.27 曾超配额导致小缓存被驱逐、门禁失效）。
+  新增缓存前必须核算预算（曾超配额导致小缓存被驱逐、门禁失效）。
 
-## 历史
-- v0.5.13–v0.5.27：模拟器集成测试下线（emulator-smoke 停止），仅宿主机测试门禁；
-  期间真机专属故障（Android FFI 事件回调不送达）无法在 CI 发现 —— 本策略的直接教训。
-- v0.5.28：emulator-verify 重建（缓存+门禁+截图），并升级为阻断门禁。
+## 历史教训
+- 模拟器集成测试曾一度下线、仅剩宿主机测试门禁，期间真机专属故障
+  （Android FFI 事件回调不送达）无法在 CI 发现——本策略的直接教训；此后
+  emulator-verify 重建（缓存+门禁+截图）并升级为阻断门禁。
 - 交付清单（DELIVERY-*.md）不入库，随每轮交付单独提供；docs/ 仅保留
-  ARCHITECTURE / PROTOCOL / TESTING。
+  ARCHITECTURE / PROTOCOL / TESTING / ROADMAP / PLATFORMS。

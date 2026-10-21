@@ -6,7 +6,7 @@
 > 测试策略见 `docs/TESTING.md`（每轮修改必附对应模拟器集成测试）。
 > 多平台（桌面 GUI + WebUI）路线与已落地的准备工作见 `docs/PLATFORMS.md`。
 
-## 一、现状快照（v0.0.1）
+## 一、现状快照（v0.0.2）
 
 - 发布平台：Android（arm64-v8a / x86_64），CI 产出签名 APK 并经模拟器
   集成测试门禁（真 libtorrent 引擎）。
