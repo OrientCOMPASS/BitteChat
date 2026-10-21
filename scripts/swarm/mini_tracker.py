@@ -66,7 +66,13 @@ class Handler(BaseHTTPRequestHandler):
             self._announce(qs, ua)
         elif url.path == "/scrape":
             self._scrape(qs)
+        elif url.path == "/ping":
+            sys.stderr.write("%.0f ping ua=%r\n" % (time.time(), ua))
+            sys.stderr.flush()
+            self._send(b"pong")
         else:
+            sys.stderr.write("%.0f get %s ua=%r\n" % (time.time(), url.path, ua))
+            sys.stderr.flush()
             self.send_error(404)
 
     def _announce(self, qs, ua):

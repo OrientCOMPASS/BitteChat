@@ -48,7 +48,45 @@ void main() {
       final ih = (added['infohash'] as String?) ?? '';
       expect(ih, kSwarmInfohash,
           reason: 'embedded swarm torrent drifted from scripts/swarm');
-      api.btAddTracker(ih, kSwarmTracker);
+      // swarm diagnostics for the CI log: per-tracker fail counters and
+      // the torrent state distinguish "announce never went out"
+      // (status=1, fails=0) from "announce failed" (fails>0 + message)
+      // from "announced fine but the seeder stayed away".
+      String diag() {
+        final sb = StringBuffer();
+        for (final t in api.torrents()) {
+          if (t.infohash != ih) continue;
+          sb.write('torrent state=${t.state} err="${t.error}" '
+              'paused=${t.paused} prog=${t.progress.toStringAsFixed(3)} '
+              'peers=${t.numPeers} seeds=${t.numSeeds}; ');
+        }
+        for (final tr in api.btTrackers(ih)) {
+          sb.write('tracker ${tr.url} status=${tr.status} '
+              'fails=${tr.fails} msg="${tr.message}"; ');
+        }
+        return sb.toString();
+      }
+
+      final addRes = api.call(
+          'bt.add_tracker', {'infohash': ih, 'url': kSwarmTracker, 'tier': 0});
+      print('swarm: add_tracker live=${addRes['live']}');
+
+      // guest->host reachability probe through the core's ureq stack
+      // (independent of libtorrent): the mini tracker logs GET /ping
+      try {
+        api.setTrackerList(enabled: true, url: 'http://10.0.2.2:6969/ping');
+        api.refreshTrackerList();
+        final gl = api.call('bt.get_tracker_list');
+        print('swarm: ureq probe last_fetch=${gl['last_fetch']} '
+            'err="${gl['error']}"');
+      } catch (e) {
+        print('swarm: ureq probe threw $e');
+      }
+      try {
+        api.setTrackerList(enabled: false, url: '');
+      } catch (_) {}
+      api.btReannounce(ih);
+      print('swarm: t0 ${diag()}');
 
       // wait (<=150 s) for the host seeder to connect AND payload to flow;
       // this is the regression guard the mock-only e2e could never give us
@@ -59,15 +97,20 @@ void main() {
         for (final t in api.torrents()) {
           if (t.infohash == ih) prog = t.progress;
         }
+        if (i % 15 == 14) {
+          print('swarm: t${i + 1} ${diag()}');
+          api.btReannounce(ih);
+        }
         if (peers.isEmpty || prog <= 0) {
           await Future<void>.delayed(const Duration(seconds: 1));
         }
       }
       expect(peers, isNotEmpty,
           reason: 'dual-instance swarm: host seeder never connected '
-              '(tracker/aria2 down on CI host?)');
+              '(tracker/aria2 down on CI host?) diag: ${diag()}');
       expect(prog, greaterThan(0),
-          reason: 'dual-instance swarm: connected but no payload flowed');
+          reason: 'dual-instance swarm: connected but no payload flowed '
+              'diag: ${diag()}');
       final name = kSwarmName;
 
       final prefs = UiPrefs(File('${api.dataDir}/ui_prefs_btview_it.json'));
