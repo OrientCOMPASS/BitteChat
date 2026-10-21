@@ -541,17 +541,29 @@ impl Api {
             )?;
         }
         // apply to live torrents and persist into their stored magnets
+        // apply to the union of live engine states AND store-known torrents:
+        // the engine status cache only refreshes every ~2 s, so a torrent
+        // created moments ago would otherwise be missed (flaky registration)
         let states = self.inner.engine.torrent_states().unwrap_or_default();
+        let mut ihs: Vec<String> = states.iter().map(|s| s.infohash.clone()).collect();
+        {
+            let st = self.inner.state.lock().unwrap();
+            for row in st.store.torrents_all().unwrap_or_default() {
+                if !ihs.contains(&row.infohash) {
+                    ihs.push(row.infohash);
+                }
+            }
+        }
         let mut touched = 0i64;
-        for s in &states {
+        for ih in &ihs {
             for (tier, u) in urls.iter().enumerate() {
-                let _ = self.inner.engine.add_tracker(&s.infohash, u, tier as i32);
+                let _ = self.inner.engine.add_tracker(ih, u, tier as i32);
             }
             touched += 1;
             let st = self.inner.state.lock().unwrap();
-            if let Ok(Some(row)) = st.store.torrent_get(&s.infohash) {
+            if let Ok(Some(row)) = st.store.torrent_get(ih) {
                 let m = magnet_with_trackers(&row.magnet, &urls);
-                let _ = st.store.torrent_set_magnet(&s.infohash, &m);
+                let _ = st.store.torrent_set_magnet(ih, &m);
             }
         }
         Ok(json!({"ok": true, "count": urls.len(), "applied_to": touched}))

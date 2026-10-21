@@ -50,13 +50,17 @@ void main() {
 
       // default trackers apply to the live torrent through the C++ ABI
       api.setDefaultTrackers(['udp://tracker.opentrackr.org:1337/announce']);
-      final tr = api.call('bt.trackers', {'infohash': ih});
-      expect(
-        ((tr['trackers'] as List?) ?? [])
-            .any((t) => '${t['url']}'.contains('opentrackr')),
-        isTrue,
-        reason: 'default tracker must be registered on the live session',
-      );
+      var registered = false;
+      for (var i = 0; i < 10 && !registered; i++) {
+        final tr = api.call('bt.trackers', {'infohash': ih});
+        registered = ((tr['trackers'] as List?) ?? [])
+            .any((t) => '${t['url']}'.contains('opentrackr'));
+        if (!registered) {
+          await Future<void>.delayed(const Duration(seconds: 1));
+        }
+      }
+      expect(registered, isTrue,
+          reason: 'default tracker must be registered on the live session');
 
       api.sendText(gid, 'integration hello');
 
