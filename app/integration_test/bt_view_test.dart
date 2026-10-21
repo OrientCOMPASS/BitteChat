@@ -59,7 +59,8 @@ void main() {
       expect(find.textContaining('100.0%'), findsWidgets);
       // overview property groups: infohash row (tap-to-copy) and type tag
       expect(find.text(ih), findsOneWidget);
-      expect(find.text('SEED'), findsOneWidget);
+      // bt.create_seed stores kind 0 (kind 4 is reserved for chat attachments)
+      expect(find.text('BT'), findsOneWidget);
       expect(find.textContaining('Transfer'), findsOneWidget);
       await shotWidget(tester, 'shot-bt-detail-overview');
 
