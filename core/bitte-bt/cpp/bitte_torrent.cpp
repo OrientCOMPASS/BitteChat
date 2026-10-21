@@ -711,7 +711,9 @@ static json::value status_to_json(torrent_status const& st)
     o["num_seeds"] = st.num_seeds;
     o["paused"] = bool(st.flags & torrent_flags::paused);
     o["finished"] = st.is_finished;
-    o["error"] = st.errc.message();
+    // a default-constructed boost error_code message() is "Success", not
+    // an empty string - only report an error when there actually is one
+    o["error"] = st.errc ? st.errc.message() : std::string();
     o["state"] = state_name(st.state);
     return o;
 }

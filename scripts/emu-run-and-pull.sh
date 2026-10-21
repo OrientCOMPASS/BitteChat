@@ -62,6 +62,14 @@ for f in shot-log.txt shot-chat-inline.png shot-jump-chip.png \
     echo "::warning::screenshot harness: $f never appeared (package='${PKG:-<none>}')"
   fi
 done
+# re-pull the forensic log last so it carries every test file's notes
+# (the loop above grabs it early, when only the first shots exist)
+if [ -n "$PKG" ]; then
+  for base in "/data/data/$PKG/files" "/storage/emulated/0/Android/data/$PKG/files"; do
+    adb shell cat "$base/shot-log.txt" > "$OUT/shot-log.txt" 2>/dev/null || true
+    [ -s "$OUT/shot-log.txt" ] && break
+  done
+fi
 echo "app package: ${PKG:-<none>}"
 # release the test process (it holds the install alive for us)
 if [ -n "$PKG" ]; then
