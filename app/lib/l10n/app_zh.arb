@@ -1,0 +1,681 @@
+{
+ "@@locale": "zh",
+ "chatTab": "聊天",
+ "btTab": "种子",
+ "rssTab": "订阅",
+ "settings": "设置",
+ "identitySettings": "身份设置",
+ "demoMode": "演示模式",
+ "demoHint": "未加载 libbitte_core.so。\n请安装 CI 构建的 Android APK 以启用完整功能。",
+ "coreUnavailable": "原生核心不可用（当前为演示模式）",
+ "coreUnavailableShort": "原生核心不可用（演示模式）",
+ "installApkHint": "原生核心不可用：请安装 CI 构建的 APK",
+ "noGroups": "还没有种子群聊",
+ "noGroupsHint": "一个种子就是一个群聊。\n添加任意 BT 种子（磁力链接 / info hash / 种子文件），即可进入它的聊天室，与同一 swarm 里的其他 BitTorrent 用户交流。",
+ "joinGroup": "加入群聊",
+ "groupName": "备注名称",
+ "create": "创建",
+ "join": "加入",
+ "cancel": "取消",
+ "confirm": "确定",
+ "save": "保存",
+ "delete": "删除",
+ "refresh": "刷新",
+ "refreshAll": "全部刷新",
+ "paste": "粘贴",
+ "done": "完成",
+ "inviteMagnet": "邀请磁力链接",
+ "online": "在线",
+ "noMessages": "暂无消息",
+ "syncingMissing": "同步中：缺 {n} 条历史消息",
+ "historySynced": "历史已同步 · {n} 节点在线",
+ "resync": "重新同步",
+ "resyncStarted": "已向 DHT 与相邻节点发起同步",
+ "groupDetail": "群详情",
+ "genesisTitle": "「{name}」的哈希链从这里开始",
+ "genesisSub": "每条消息都经作者签名并链接前序消息，任何篡改都会被网络拒绝",
+ "emptyGroupHint": "还没有消息\n说点什么吧 👇",
+ "inputHint": "说点什么……（消息将签名并写入哈希链）",
+ "sendFileTip": "发送文件（做种）",
+ "sending": "正在做种并发送……",
+ "sentSeeding": "已发送，正在做种：{h}",
+ "downloadViaBt": "通过 BT 下载",
+ "downloadStarted": "已开始下载「{name}」（聊天内传输，不占用种子页）",
+ "anonymous": "匿名",
+ "copied": "已复制",
+ "copiedId": "已复制消息 ID",
+ "copiedInvite": "已复制：对方添加这个种子即可进入同一群聊",
+ "sigDetail": "作者公钥 {pk}\n状态 {state}",
+ "sigConfirmed": "已确认（DHT 已存储）",
+ "sigPending": "待确认",
+ "blockAuthor": "屏蔽该作者",
+ "blockedAuthor": "已屏蔽 {name}",
+ "blockedCount": "{n} 条被屏蔽的消息",
+ "startDm": "发起私聊",
+ "startDmHint": "与 {name} 的端到端加密频道",
+ "sysCreate": "🎉 {name} 创建了群聊「{detail}」",
+ "sysJoin": "👋 {name} 加入了群聊",
+ "sysLeave": "{name} 退出了群聊",
+ "sysRename": "📛 {name} 将群名改为「{detail}」",
+ "sysGeneric": "[系统] {code} {detail}",
+ "sysMsg": "系统消息",
+ "renameGroup": "修改备注",
+ "leaveGroup": "退出群聊",
+ "leaveGroupQ": "退出群聊？",
+ "leaveGroupHint": "将停止私聊会话（本地记录默认保留）。",
+ "leave": "退出",
+ "members": "在线成员",
+ "msgCount": "消息总数",
+ "headsCount": "链头 (heads)",
+ "missingCount": "缺失历史",
+ "headSeq": "头指针版本 (seq)",
+ "p2pPeers": "P2P 节点",
+ "chatCapable": "支持聊天",
+ "plainBtClient": "普通 BT 客户端",
+ "createdBy": "创建于 {date} · 创建者 {name}",
+ "noBtTasks": "暂无任务",
+ "noBtTasksHint": "点击右下角按钮添加磁力链接或种子文件",
+ "addMagnet": "添加种子",
+ "importTorrent": "导入种子文件 (.torrent)",
+ "added": "已添加",
+ "addedTorrentFile": "已添加种子文件",
+ "magnetCopied": "磁力链接已复制",
+ "copyMagnet": "复制磁力链接",
+ "pause": "暂停",
+ "resume": "继续",
+ "recheck": "重新校验",
+ "deleteTaskQ": "删除「{name}」？",
+ "deleteTaskHint": "选择是否同时删除已下载的文件。",
+ "deleteTaskOnly": "仅删除任务",
+ "deleteTaskFiles": "删除任务+文件",
+ "stateSeeding": "做种中",
+ "stateDownloading": "下载中",
+ "stateMetadata": "获取元数据…",
+ "stateChecking": "校验中",
+ "stateFinished": "已完成",
+ "stateQueued": "排队中",
+ "statePaused": "已暂停",
+ "showChatTorrents": "显示聊天内部种子",
+ "hideChatTorrents": "隐藏聊天内部种子",
+ "rateLimits": "传输限速",
+ "rateLimitsHint": "传输限速（KB/s，留空或 0 为不限速）",
+ "upload": "上传",
+ "download": "下载",
+ "limitsApplied": "限速已应用",
+ "filesCount": "文件（{n}）",
+ "peersCount": "连接节点（{n}）",
+ "noPeers": "暂无连接",
+ "noMetadata": "元数据尚未获取",
+ "savePath": "保存目录: {p}",
+ "noFeeds": "还没有订阅",
+ "noFeedsHint": "支持 RSS 2.0 与 Atom；含磁力/种子的条目可一键转 BT 下载",
+ "addFeed": "添加订阅",
+ "feedAdded": "已添加，正在后台抓取……",
+ "refreshingAll": "正在刷新全部订阅",
+ "markAllRead": "全部标记已读",
+ "unreadOnly": "只看未读",
+ "showAll": "显示全部",
+ "noItems": "暂无条目（可能仍在抓取）",
+ "noUnread": "没有未读条目",
+ "untitled": "(无标题)",
+ "downloadToBt": "转 BT 下载",
+ "queuedBt": "已开始后台处理，稍后见种子页",
+ "addedQueue": "已加入下载队列",
+ "article": "正文",
+ "openBrowser": "浏览器打开",
+ "hasBtResource": "此条目附带 BT 资源",
+ "noContent": "（无正文）",
+ "lastFetch": "上次更新 {t}",
+ "notFetched": "尚未抓取",
+ "deleteFeedQ": "删除「{name}」？",
+ "deleteFeedHint": "将同时删除该源的全部已缓存条目。",
+ "coreVersion": "核心版本",
+ "dataDir": "数据目录",
+ "msgSecurity": "消息安全",
+ "msgSecurityDesc": "每条消息使用你的 Ed25519 密钥签名并链接父消息（git 式哈希链）。",
+ "privKeyLocal": "私钥仅保存在本机，永不外传。",
+ "aboutDesc": "去中心化 BitTorrent 群聊：一个种子就是一个群，",
+ "aboutDesc2": "消息以哈希链方式在 BT/DHT 网络中保存与传播，无法被单点篡改。\n\n",
+ "appearance": "外观",
+ "themeSystem": "跟随系统",
+ "themeLight": "浅色",
+ "themeDark": "深色",
+ "seedSource": "主题色来源",
+ "seedBrand": "品牌蓝",
+ "seedWallpaper": "壁纸自动取色",
+ "seedCustom": "自定义颜色",
+ "pickColor": "选择主题色",
+ "wallpaper": "背景图",
+ "wallpaperNone": "未设置",
+ "wallpaperBlur": "背景模糊",
+ "opacity": "不透明度",
+ "pickWallpaper": "选择聊天背景图",
+ "wallpaperApplied": "背景已应用；若主题色来源为\"壁纸取色\"将同时更新",
+ "filterRules": "消息过滤规则",
+ "addRule": "添加过滤规则",
+ "editRule": "编辑过滤规则",
+ "add": "添加",
+ "noRules": "无规则。可按昵称/公钥/内容屏蔽恶意消息；",
+ "noRules2": "被屏蔽消息在聊天中折叠显示。",
+ "fieldText": "消息内容",
+ "fieldName": "作者昵称",
+ "fieldPk": "作者公钥",
+ "modeContains": "包含",
+ "modeEquals": "等于",
+ "modeRegex": "正则表达式",
+ "matchValue": "匹配值",
+ "caseSensitive": "区分大小写",
+ "caseSensitiveMark": " · 区分大小写",
+ "clear": "清除",
+ "today": "今天",
+ "yesterday": "昨天",
+ "mon": "星期一",
+ "tue": "星期二",
+ "wed": "星期三",
+ "thu": "星期四",
+ "fri": "星期五",
+ "sat": "星期六",
+ "sun": "星期日",
+ "videoFail": "无法播放该视频",
+ "tapPlayVideo": "点击播放视频",
+ "previewText": "预览文本",
+ "openWith": "用其他应用打开",
+ "noAppForFile": "没有可打开该文件的应用",
+ "fileTooBig": "文件超过 2MB，请使用“其他应用打开”",
+ "notPlainText": "该文件不是纯文本",
+ "kindImage": "图片",
+ "kindAudio": "音频",
+ "kindVideo": "视频",
+ "kindText": "文本",
+ "kindFile": "文件",
+ "pickFileToSend": "选择要发送的文件",
+ "pausedMark": " · 已暂停",
+ "blurredMark": " · 已模糊",
+ "tasksCount": "{n} 任务",
+ "pubkeyLabel": "公钥 {pk}",
+ "identity": "身份",
+ "@syncingMissing": {
+  "placeholders": {
+   "n": {
+    "type": "Object"
+   }
+  }
+ },
+ "@historySynced": {
+  "placeholders": {
+   "n": {
+    "type": "Object"
+   }
+  }
+ },
+ "@genesisTitle": {
+  "placeholders": {
+   "name": {
+    "type": "Object"
+   }
+  }
+ },
+ "@sentSeeding": {
+  "placeholders": {
+   "h": {
+    "type": "Object"
+   }
+  }
+ },
+ "@downloadStarted": {
+  "placeholders": {
+   "name": {
+    "type": "Object"
+   }
+  }
+ },
+ "@sigDetail": {
+  "placeholders": {
+   "pk": {
+    "type": "Object"
+   },
+   "state": {
+    "type": "Object"
+   }
+  }
+ },
+ "@blockedAuthor": {
+  "placeholders": {
+   "name": {
+    "type": "Object"
+   }
+  }
+ },
+ "@blockedCount": {
+  "placeholders": {
+   "n": {
+    "type": "Object"
+   }
+  }
+ },
+ "@startDmHint": {
+  "placeholders": {
+   "name": {
+    "type": "Object"
+   }
+  }
+ },
+ "@sysCreate": {
+  "placeholders": {
+   "name": {
+    "type": "Object"
+   },
+   "detail": {
+    "type": "Object"
+   }
+  }
+ },
+ "@sysJoin": {
+  "placeholders": {
+   "name": {
+    "type": "Object"
+   }
+  }
+ },
+ "@sysLeave": {
+  "placeholders": {
+   "name": {
+    "type": "Object"
+   }
+  }
+ },
+ "@sysRename": {
+  "placeholders": {
+   "name": {
+    "type": "Object"
+   },
+   "detail": {
+    "type": "Object"
+   }
+  }
+ },
+ "@sysGeneric": {
+  "placeholders": {
+   "code": {
+    "type": "Object"
+   },
+   "detail": {
+    "type": "Object"
+   }
+  }
+ },
+ "@createdBy": {
+  "placeholders": {
+   "date": {
+    "type": "Object"
+   },
+   "name": {
+    "type": "Object"
+   }
+  }
+ },
+ "@deleteTaskQ": {
+  "placeholders": {
+   "name": {
+    "type": "Object"
+   }
+  }
+ },
+ "@filesCount": {
+  "placeholders": {
+   "n": {
+    "type": "Object"
+   }
+  }
+ },
+ "@peersCount": {
+  "placeholders": {
+   "n": {
+    "type": "Object"
+   }
+  }
+ },
+ "@savePath": {
+  "placeholders": {
+   "p": {
+    "type": "Object"
+   }
+  }
+ },
+ "@lastFetch": {
+  "placeholders": {
+   "t": {
+    "type": "Object"
+   }
+  }
+ },
+ "@deleteFeedQ": {
+  "placeholders": {
+   "name": {
+    "type": "Object"
+   }
+  }
+ },
+ "@tasksCount": {
+  "placeholders": {
+   "n": {
+    "type": "Object"
+   }
+  }
+ },
+ "@pubkeyLabel": {
+  "placeholders": {
+   "pk": {
+    "type": "Object"
+   }
+  }
+ },
+ "onlinePeers": "{n} 在线",
+ "@onlinePeers": {
+  "placeholders": {
+   "n": {
+    "type": "Object"
+   }
+  }
+ },
+ "chatCapableMark": " · 支持聊天",
+ "coreVersionValue": "{v} · 引擎: {e}",
+ "@coreVersionValue": {
+  "placeholders": {
+   "v": {
+    "type": "Object"
+   },
+   "e": {
+    "type": "Object"
+   }
+  }
+ },
+ "torrentError": "种子出错：{e}",
+ "@torrentError": {
+  "placeholders": {
+   "e": {
+    "type": "Object"
+   }
+  }
+ },
+ "rssError": "订阅失败：{e}",
+ "@rssError": {
+  "placeholders": {
+   "e": {
+    "type": "Object"
+   }
+  }
+ },
+ "downloaded": "已下载",
+ "attMeta": "{size} · {tail}",
+ "@attMeta": {
+  "placeholders": {
+   "size": {
+    "type": "Object"
+   },
+   "tail": {
+    "type": "Object"
+   }
+  }
+ },
+ "dlProgress": "{pct}% · {rate} · {peers} peers",
+ "@dlProgress": {
+  "placeholders": {
+   "pct": {
+    "type": "Object"
+   },
+   "rate": {
+    "type": "Object"
+   },
+   "peers": {
+    "type": "Object"
+   }
+  }
+ },
+ "sigState": "状态 {s}",
+ "@sigState": {
+  "placeholders": {
+   "s": {
+    "type": "Object"
+   }
+  }
+ },
+ "filterRuleDesc": "{field} {mode} “{value}”",
+ "@filterRuleDesc": {
+  "placeholders": {
+   "field": {
+    "type": "Object"
+   },
+   "mode": {
+    "type": "Object"
+   },
+   "value": {
+    "type": "Object"
+   }
+  }
+ },
+ "fabGroup": "种子群聊",
+ "copyInviteLink": "复制磁力邀请链接",
+ "groupChat": "群聊",
+ "identities": "身份档案",
+ "identitiesHint": "每个昵称绑定一把私钥：改名=新身份。删除后私钥不可恢复。",
+ "createIdentity": "新建身份",
+ "newIdentityName": "新身份昵称",
+ "switchIdentity": "切换身份",
+ "switchIdentityQ": "切换到「{name}」？",
+ "@switchIdentityQ": {
+  "placeholders": {
+   "name": {
+    "type": "Object"
+   }
+  }
+ },
+ "switchIdentityHint": "切换后，新消息将以该身份的私钥署名（相当于以另一个昵称发言）。",
+ "switched": "已切换为「{name}」",
+ "@switched": {
+  "placeholders": {
+   "name": {
+    "type": "Object"
+   }
+  }
+ },
+ "deleteIdentity": "删除身份",
+ "deleteIdentityQ": "永久删除身份「{name}」？",
+ "@deleteIdentityQ": {
+  "placeholders": {
+   "name": {
+    "type": "Object"
+   }
+  }
+ },
+ "deleteIdentityWarn": "私钥将被销毁且不可恢复；该身份的历史消息仍在链上但无法再以它发言。",
+ "identityCreated": "身份「{name}」已创建（未启用）",
+ "@identityCreated": {
+  "placeholders": {
+   "name": {
+    "type": "Object"
+   }
+  }
+ },
+ "identityCreatedSwitch": "身份「{name}」已创建并启用",
+ "@identityCreatedSwitch": {
+  "placeholders": {
+   "name": {
+    "type": "Object"
+   }
+  }
+ },
+ "identityDeleted": "身份已删除",
+ "activeMark": "使用中",
+ "setAvatar": "更换头像",
+ "enterRoomTitle": "进入种子群聊",
+ "roomInputLabel": "磁力链接 / info hash",
+ "magnetHashHint": "magnet:?xt=urn:btih:… 或 40 位 info hash",
+ "enterRoom": "进入群聊",
+ "enterRoomNew": "进入该种子的群聊",
+ "addTorrentRoom": "添加种子进入群聊",
+ "addTorrentRoomDesc": "粘贴磁力链接或 info hash：添加种子并进入它的聊天室",
+ "importTorrentRoomDesc": "选择 .torrent 文件：添加任务并进入它的群聊",
+ "roomEntered": "已进入群聊「{name}」",
+ "@roomEntered": {
+  "placeholders": {
+   "name": {
+    "type": "Object"
+   }
+  }
+ },
+ "torrentRoomKind": "种子群聊 · 该种子的所有 BitTorrent 用户共享",
+ "dmChannelKind": "端到端加密私聊频道",
+ "infohashLabel": "种子 infohash",
+ "roomInviteTitle": "邀请 = 分享这个种子",
+ "roomInviteHint": "把磁力链接或 info hash 发给别人，对方添加该种子后即可进入同一群聊",
+ "leaveRoomHint": "只解除群聊绑定，种子任务保留在种子页；可同时删除本地聊天记录（重置哈希链）。",
+ "defaultTrackers": "默认 Tracker 列表",
+ "defaultTrackersSet": "已设置 {n} 个 · 自动附加到新任务",
+ "@defaultTrackersSet": {
+  "placeholders": {
+   "n": {
+    "type": "Object"
+   }
+  }
+ },
+ "defaultTrackersHint": "每行一个 announce 地址（http/https/udp）。会自动附加到每个新种子（含聊天附件）并立即应用到现有任务；在 DHT 不畅的网络里能显著提升连通性。",
+ "trackersApplied": "已保存并应用到 {n} 个任务",
+ "@trackersApplied": {
+  "placeholders": {
+   "n": {
+    "type": "Object"
+   }
+  }
+ },
+ "trackers": "Tracker（{n}）",
+ "@trackers": {
+  "placeholders": {
+   "n": {
+    "type": "Object"
+   }
+  }
+ },
+ "addTracker": "添加 Tracker",
+ "trackerUrl": "Tracker 地址",
+ "noTrackersHint": "无 tracker：依赖 DHT/PEX 发现节点。可在设置 → 网络 中配置默认 Tracker 列表",
+ "trackerFails": "失败 {n} 次",
+ "@trackerFails": {
+  "placeholders": {
+   "n": {
+    "type": "Object"
+   }
+  }
+ },
+ "accept": "接受",
+ "decline": "拒绝",
+ "wallpaperEdit": "调整壁纸",
+ "wallpaperEditHint": "双指缩放与拖动调整构图；下方滑杆实时预览最终效果",
+ "exportLogs": "导出日志",
+ "exportLogsHint": "将核心与界面日志导出到「下载」目录，用于问题反馈",
+ "logsExported": "日志已导出：{dest}",
+ "@logsExported": {
+  "placeholders": {
+   "dest": {
+    "type": "Object"
+   }
+  }
+ },
+ "exportLogsFail": "导出失败：",
+ "videoDecoderTip": "无法播放？可点「外部打开」，并到 设置 → 导出日志 反馈",
+ "avatarLocalOnly": "头像与昵称仅保存在本机，不会广播给其他用户",
+ "renameLocalNote": "备注仅自己可见，不会广播",
+ "dmRequestBody": "{name} 请求与你建立端到端加密私聊",
+ "@dmRequestBody": {
+  "placeholders": {
+   "name": {
+    "type": "Object"
+   }
+  }
+ },
+ "dmRejectedByPeer": "对方婉拒了私聊请求",
+ "dmAwaitingAccept": "等待对方接受",
+ "dmRequestSent": "私聊请求已发送",
+ "dmRequestQueued": "对方当前不在线，请求将在 TA 上线后自动送达",
+ "dmAlreadyExists": "私聊已存在",
+ "dmOnline": "在线",
+ "dmOffline": "离线",
+ "dmLocalOnlyHint": "私聊消息在两台设备之间直连传输、仅本地存储：不写入 DHT，也不新建种子",
+ "membersIdentified": "可私聊的成员",
+ "attPhaseHash": "正在计算文件哈希…",
+ "attPhaseCopy": "正在复制到做种目录…",
+ "attPhaseSeed": "正在做种并发送…",
+ "attachFailed": "附件发送失败",
+ "attJobTimeout": "附件发送状态超时未更新，已停止等待（文件可能仍在后台处理）",
+ "dmRequestSubtitle": "请求与你私聊",
+ "block": "屏蔽",
+ "dmBlocked": "已屏蔽该用户",
+ "storage": "存储",
+ "downloadDir": "下载目录",
+ "downloadDirHint": "新任务与接收的附件保存到该目录；已有任务保持在原位置",
+ "downloadDirPick": "选择目录",
+ "downloadDirReset": "恢复默认",
+ "downloadDirSaved": "下载目录已更新",
+ "filterScript": "过滤脚本",
+ "filterScriptHint": "直接编辑、导入或导出过滤规则脚本（JSON）。规则在本地按 内容/昵称/公钥 × 包含/等于/正则 匹配",
+ "filterScriptApply": "应用",
+ "filterScriptApplied": "过滤脚本已应用（{n} 条规则）",
+ "@filterScriptApplied": {
+  "placeholders": {
+   "n": {
+    "type": "Object"
+   }
+  }
+ },
+ "filterScriptInvalid": "脚本格式无效",
+ "importFile": "导入",
+ "exportFile": "导出",
+ "rotate": "旋转 90°",
+ "wallpaperBlurOff": "关",
+ "wallpaperPadding": "留白填充",
+ "wallpaperPaddingTransparent": "透明",
+ "wallpaperPaddingBlack": "纯黑",
+ "wallpaperPaddingWhite": "纯白",
+ "wallpaperEditGestureHint": "单指拖动 · 双指缩放/旋转 · 双击复位",
+ "wallpaperCropHint": "取景框比屏幕宽一圈，保存后按屏幕比例裁掉两侧；虚线框内为最终显示范围",
+ "deleteLocalHistory": "同时删除本地聊天记录",
+ "deleteLocalHistoryHint": "清空本机的消息与哈希链头指针（进错哈希链后可用它重置）。重新进入同一种子会从 DHT/在线成员重新同步。",
+ "markAsRead": "标记为已读",
+ "playbackSection": "播放",
+ "dblTapSideSeek": "双击左右快进/快退",
+ "dblTapSideSeekHint": "双击画面左/右侧快退或快进 10 秒；默认关闭",
+ "longPressSpeed": "长按倍速",
+ "longPressSpeedHint": "长按画面时的临时播放倍率",
+ "defaultPlaySpeed": "默认播放倍速",
+ "subtitle": "字幕",
+ "subtitleOff": "关闭字幕",
+ "subtitleExternal": "加载外部字幕…",
+ "subtitleNoTracks": "无内嵌字幕轨",
+ "lockControls": "锁定控制",
+ "unlockControls": "解锁控制",
+ "fitContain": "适应画面",
+ "fitCover": "铺满裁剪",
+ "fitFill": "拉伸填充",
+ "speedActive": "倍速中",
+ "language": "语言",
+ "langSystem": "跟随系统",
+ "langZh": "简体中文",
+ "langEn": "English",
+ "actCopy": "复制",
+ "actReply": "回复",
+ "quoteMissing": "被引用的消息未同步或不在本地",
+ "kindAttachment": "附件",
+ "mentionUnread": "有人@我",
+ "replyUnread": "有新回复",
+ "actDm": "私聊",
+ "actBlock": "屏蔽",
+ "actId": "ID",
+ "actSig": "验签",
+ "volumeMode": "音量控制",
+ "volumeModeSystem": "系统音量（默认）",
+ "volumeModePlayer": "播放器音量",
+ "mySeedsScope": "我发布的做种（文件原地）",
+ "otherTasksScope": "其他任务",
+ "videoSoftwareDecodeNotice": "正在使用软件解码（硬件解码器不支持此编码）",
+ "videoSpeed": "倍速"
+}

@@ -1,0 +1,32 @@
+# Rust
+core/target/
+**/*.rs.bk
+
+# Native build artifacts
+build/
+*.so
+*.a
+*.o
+
+# Flutter / Dart
+app/.dart_tool/
+app/build/
+app/.flutter-plugins
+app/.flutter-plugins-dependencies
+app/android/.gradle/
+app/android/local.properties
+app/android/app/src/main/jniLibs/
+app/android/key.properties
+app/ios/Pods/
+app/ios/.symlinks/
+app/pubspec.lock.bak
+*.iml
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+
+# CI watch logs (workspace local)
+ci_logs/
+*.log

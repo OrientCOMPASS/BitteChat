@@ -1,0 +1,201 @@
+// 纯 Dart 单元测试：模型解析、格式化、颜色稳定性（无需原生库）
+
+import 'package:bittechat/models.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+void main() {
+  group('ChatMessage.fromJson', () {
+    test('text payload', () {
+      final m = ChatMessage.fromJson({
+        'id': 'aa' * 20,
+        'group': 'bb' * 20,
+        'author_pk': 'cc' * 32,
+        'author_name': 'alice',
+        'ts': 1700000000000,
+        'kind': 1,
+        'own': false,
+        'state': 1,
+        'payload': {
+          'Text': {'text': '你好'}
+        },
+      });
+      expect(m.payloadKind, MsgPayloadKind.text);
+      expect(m.text, '你好');
+      expect(m.authorName, 'alice');
+      expect(m.state, 1);
+    });
+
+    test('attachment payload', () {
+      final m = ChatMessage.fromJson({
+        'id': 'aa',
+        'kind': 2,
+        'payload': {
+          'Attachment': {
+            'infohash': 'dd' * 20,
+            'name': 'ubuntu.iso',
+            'size': 1234567,
+            'mime': 'application/x-iso',
+          }
+        },
+      });
+      expect(m.payloadKind, MsgPayloadKind.attachment);
+      expect(m.attachment?.name, 'ubuntu.iso');
+      expect(m.attachment?.size, 1234567);
+    });
+
+    test('system payload', () {
+      final m = ChatMessage.fromJson({
+        'kind': 3,
+        'payload': {
+          'System': {'code': 'create', 'detail': '开发群'}
+        },
+      });
+      expect(m.payloadKind, MsgPayloadKind.system);
+      expect(m.systemCode, 'create');
+      expect(m.systemDetail, '开发群');
+    });
+
+    test('reply quote (v0.5.17)', () {
+      final m = ChatMessage.fromJson({
+        'id': 'aa',
+        'kind': 1,
+        'reply_to': 'bb' * 20,
+        'reply_quote': {
+          'id': 'bb' * 20,
+          'author_name': 'bob',
+          'author_pk': 'cc' * 32,
+          'ts': 1700000000000,
+          'kind': 2,
+          'text': '',
+          'attachment': {
+            'name': 'log.jpg',
+            'size': 42,
+            'mime': 'image/jpeg',
+            'infohash': 'dd' * 20,
+            'local_path': '/sdcard/x/log.jpg',
+            'have_file': true,
+          },
+        },
+        'payload': {
+          'Text': {'text': 'see above'}
+        },
+      });
+      expect(m.replyTo, 'bb' * 20);
+      expect(m.replyQuote?.authorName, 'bob');
+      expect(m.replyQuote?.kind, 2);
+      expect(m.replyQuote?.attachment?.name, 'log.jpg');
+      expect(m.replyQuote?.haveFile, isTrue);
+      expect(m.replyQuote?.localPath, '/sdcard/x/log.jpg');
+      // serde nulls must not fabricate a quote
+      final plain = ChatMessage.fromJson({
+        'kind': 1,
+        'reply_to': null,
+        'payload': {
+          'Text': {'text': 'x'}
+        },
+      });
+      expect(plain.replyTo, isNull);
+      expect(plain.replyQuote, isNull);
+    });
+
+    test('missing fields do not crash', () {
+      final m = ChatMessage.fromJson({});
+      expect(m.payloadKind, MsgPayloadKind.unknown);
+      expect(m.ts, 0);
+      expect(m.id, '');
+    });
+  });
+
+  group('GroupSummary.fromJson', () {
+    test('with preview', () {
+      final g = GroupSummary.fromJson({
+        'group_id': 'ee' * 20,
+        'name': '测试群',
+        'unread': 3,
+        'online': 2,
+        'preview': {
+          'author_name': 'bob',
+          'text': '晚上好',
+          'ts': 1700000000000,
+          'own': false,
+          'kind': 1,
+        },
+      });
+      expect(g.name, '测试群');
+      expect(g.unread, 3);
+      expect(g.previewText, '晚上好');
+      expect(g.syncing, false);
+      expect(g.dm, false);
+      final d = GroupSummary.fromJson({'group_id': 'x', 'dm': true});
+      expect(d.dm, true);
+    });
+  });
+
+  group('TorrentInfo.fromJson', () {
+    test('defaults', () {
+      final t = TorrentInfo.fromJson({'infohash': 'ff', 'name': 'x'});
+      expect(t.progress, 0.0);
+      expect(t.kind, 0);
+      expect(t.isChatInternal, false);
+    });
+    test('manifest kind', () {
+      final t = TorrentInfo.fromJson({'kind': 1});
+      expect(t.isChatInternal, true);
+    });
+  });
+
+  group('RssItem.fromJson', () {
+    test('IdentityInfo parses', () {
+      final i = IdentityInfo.fromJson({
+        'id': 3,
+        'name': 'neo',
+        'pk': 'aa' * 32,
+        'avatar_b64': 'eA==',
+        'created': 1,
+        'active': true,
+      });
+      expect(i.id, 3);
+      expect(i.name, 'neo');
+      expect(i.active, true);
+      expect(i.avatarB64, 'eA==');
+    });
+  });
+
+  group('RssItem.fromJson', () {
+    test('parses flags', () {
+      final i = RssItem.fromJson({
+        'id': 5,
+        'title': '新闻',
+        'has_torrent': true,
+        'has_download': true,
+        'read': false,
+        'ts': 1700000000000,
+      });
+      expect(i.hasTorrent, true);
+      expect(i.read, false);
+      expect(i.title, '新闻');
+    });
+  });
+
+  group('helpers', () {
+    test('formatBytes', () {
+      expect(formatBytes(0), '0 B');
+      expect(formatBytes(512), '512 B');
+      expect(formatBytes(2048), '2.0 KB');
+      expect(formatBytes(5 * 1024 * 1024), '5.0 MB');
+      expect(formatBytes(3 * 1024 * 1024 * 1024), '3.0 GB');
+    });
+
+    test('formatSpeed', () {
+      expect(formatSpeed(0), '0 B/s');
+      expect(formatSpeed(1024), '1.0 KB/s');
+    });
+
+    test('colorFromKey is stable and in hue range', () {
+      final c1 = colorFromKey('abcdef123456');
+      final c2 = colorFromKey('abcdef123456');
+      expect(c1, c2);
+      expect(c1 >= 0 && c1 < 360, true);
+    });
+  });
+}

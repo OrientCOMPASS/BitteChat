@@ -1,0 +1,681 @@
+{
+ "@@locale": "en",
+ "chatTab": "Chats",
+ "btTab": "Torrents",
+ "rssTab": "Feeds",
+ "settings": "Settings",
+ "identitySettings": "Identity",
+ "demoMode": "Demo mode",
+ "demoHint": "libbitte_core.so not loaded.\nInstall a CI-built Android APK for full functionality.",
+ "coreUnavailable": "Native core unavailable (demo mode)",
+ "coreUnavailableShort": "Native core unavailable (demo mode)",
+ "installApkHint": "Native core unavailable: install the CI-built APK",
+ "noGroups": "No torrent rooms yet",
+ "noGroupsHint": "Every torrent is a chat room.\nAdd any BT torrent (magnet link / info hash / .torrent file) to enter its room and talk with the other BitTorrent users in the same swarm.",
+ "joinGroup": "Join group",
+ "groupName": "Note name",
+ "create": "Create",
+ "join": "Join",
+ "cancel": "Cancel",
+ "confirm": "OK",
+ "save": "Save",
+ "delete": "Delete",
+ "refresh": "Refresh",
+ "refreshAll": "Refresh all",
+ "paste": "Paste",
+ "done": "Done",
+ "inviteMagnet": "Invite magnet link",
+ "online": "online",
+ "noMessages": "No messages",
+ "syncingMissing": "Syncing: {n} messages missing",
+ "historySynced": "History synced · {n} peers online",
+ "resync": "Resync",
+ "resyncStarted": "Sync requested from DHT and neighbours",
+ "groupDetail": "Group details",
+ "genesisTitle": "The hash chain of \"{name}\" starts here",
+ "genesisSub": "Every message is signed and links its parents; tampering is rejected by the network",
+ "emptyGroupHint": "No messages yet\nSay something 👇",
+ "inputHint": "Say something… (messages are signed into the hash chain)",
+ "sendFileTip": "Send file (seed)",
+ "sending": "Seeding and sending…",
+ "sentSeeding": "Sent, seeding: {h}",
+ "downloadViaBt": "Download via BT",
+ "downloadStarted": "Downloading \"{name}\" (chat transfer, hidden from the BT page)",
+ "anonymous": "anon",
+ "copied": "Copied",
+ "copiedId": "Message ID copied",
+ "copiedInvite": "Copied: anyone adding this torrent enters the same room",
+ "sigDetail": "Author key {pk}\nState {state}",
+ "sigConfirmed": "confirmed (stored in DHT)",
+ "sigPending": "pending",
+ "blockAuthor": "Block this author",
+ "blockedAuthor": "Blocked {name}",
+ "blockedCount": "{n} blocked messages",
+ "startDm": "Start private chat",
+ "startDmHint": "End-to-end encrypted channel with {name}",
+ "sysCreate": "🎉 {name} created group \"{detail}\"",
+ "sysJoin": "👋 {name} joined the group",
+ "sysLeave": "{name} left the group",
+ "sysRename": "📛 {name} renamed the group to \"{detail}\"",
+ "sysGeneric": "[system] {code} {detail}",
+ "sysMsg": "System message",
+ "renameGroup": "Rename note",
+ "leaveGroup": "Leave group",
+ "leaveGroupQ": "Leave group?",
+ "leaveGroupHint": "Ends the private conversation (local history is kept by default).",
+ "leave": "Leave",
+ "members": "Online members",
+ "msgCount": "Messages",
+ "headsCount": "Heads",
+ "missingCount": "Missing",
+ "headSeq": "Head seq",
+ "p2pPeers": "P2P peers",
+ "chatCapable": "chat-capable",
+ "plainBtClient": "plain BT client",
+ "createdBy": "Created {date} · by {name}",
+ "noBtTasks": "No tasks",
+ "noBtTasksHint": "Use the + button to add magnets or .torrent files",
+ "addMagnet": "Add torrent",
+ "importTorrent": "Import .torrent file",
+ "added": "Added",
+ "addedTorrentFile": "Torrent file added",
+ "magnetCopied": "Magnet link copied",
+ "copyMagnet": "Copy magnet link",
+ "pause": "Pause",
+ "resume": "Resume",
+ "recheck": "Recheck",
+ "deleteTaskQ": "Delete \"{name}\"?",
+ "deleteTaskHint": "Choose whether downloaded files are deleted too.",
+ "deleteTaskOnly": "Remove task only",
+ "deleteTaskFiles": "Remove task + files",
+ "stateSeeding": "Seeding",
+ "stateDownloading": "Downloading",
+ "stateMetadata": "Fetching metadata…",
+ "stateChecking": "Checking",
+ "stateFinished": "Finished",
+ "stateQueued": "Queued",
+ "statePaused": "Paused",
+ "showChatTorrents": "Show chat-internal torrents",
+ "hideChatTorrents": "Hide chat-internal torrents",
+ "rateLimits": "Rate limits",
+ "rateLimitsHint": "Rate limits (KB/s, empty or 0 = unlimited)",
+ "upload": "Upload",
+ "download": "Download",
+ "limitsApplied": "Limits applied",
+ "filesCount": "Files ({n})",
+ "peersCount": "Connected peers ({n})",
+ "noPeers": "No peers",
+ "noMetadata": "Metadata not available yet",
+ "savePath": "Save path: {p}",
+ "noFeeds": "No feeds yet",
+ "noFeedsHint": "RSS 2.0 & Atom supported; entries with magnets/torrents can go straight to BT",
+ "addFeed": "Add feed",
+ "feedAdded": "Added, fetching in background…",
+ "refreshingAll": "Refreshing all feeds",
+ "markAllRead": "Mark all read",
+ "unreadOnly": "Unread only",
+ "showAll": "Show all",
+ "noItems": "No items (fetch may still be running)",
+ "noUnread": "No unread items",
+ "untitled": "(untitled)",
+ "downloadToBt": "Send to BT",
+ "queuedBt": "Queued; see the Torrents tab shortly",
+ "addedQueue": "Added to download queue",
+ "article": "Article",
+ "openBrowser": "Open in browser",
+ "hasBtResource": "This entry ships a BT resource",
+ "noContent": "(no content)",
+ "lastFetch": "Last fetch {t}",
+ "notFetched": "Not fetched yet",
+ "deleteFeedQ": "Delete \"{name}\"?",
+ "deleteFeedHint": "All cached items of this feed are deleted too.",
+ "coreVersion": "Core version",
+ "dataDir": "Data directory",
+ "msgSecurity": "Message security",
+ "msgSecurityDesc": "Every message is signed with your Ed25519 key and links its parents (git-style hash chain).",
+ "privKeyLocal": "Private keys never leave this device.",
+ "aboutDesc": "Decentralized BitTorrent group chat: one torrent = one group;",
+ "aboutDesc2": "messages are stored and spread as hash chains over BT/DHT — no single point can tamper.\n\n",
+ "appearance": "Appearance",
+ "themeSystem": "System",
+ "themeLight": "Light",
+ "themeDark": "Dark",
+ "seedSource": "Theme seed source",
+ "seedBrand": "Brand blue",
+ "seedWallpaper": "Wallpaper auto-extract",
+ "seedCustom": "Custom color",
+ "pickColor": "Pick a theme color",
+ "wallpaper": "Background image",
+ "wallpaperNone": "Not set",
+ "wallpaperBlur": "Blur wallpaper",
+ "opacity": "Opacity",
+ "pickWallpaper": "Pick a wallpaper",
+ "wallpaperApplied": "Wallpaper applied; theme seed updates if set to wallpaper",
+ "filterRules": "Message filter rules",
+ "addRule": "Add rule",
+ "editRule": "Edit rule",
+ "add": "Add",
+ "noRules": "No rules. Block malicious messages by name/key/content;",
+ "noRules2": "blocked messages collapse in chat.",
+ "fieldText": "Message text",
+ "fieldName": "Author name",
+ "fieldPk": "Author key",
+ "modeContains": "contains",
+ "modeEquals": "equals",
+ "modeRegex": "regex",
+ "matchValue": "Match value",
+ "caseSensitive": "Case sensitive",
+ "caseSensitiveMark": " · case-sensitive",
+ "clear": "Clear",
+ "today": "Today",
+ "yesterday": "Yesterday",
+ "mon": "Monday",
+ "tue": "Tuesday",
+ "wed": "Wednesday",
+ "thu": "Thursday",
+ "fri": "Friday",
+ "sat": "Saturday",
+ "sun": "Sunday",
+ "videoFail": "Cannot play this video",
+ "tapPlayVideo": "Tap to play video",
+ "previewText": "Preview text",
+ "openWith": "Open with another app",
+ "noAppForFile": "No app can open this file",
+ "fileTooBig": "File > 2MB; use \"open with another app\"",
+ "notPlainText": "Not a plain-text file",
+ "kindImage": "Image",
+ "kindAudio": "Audio",
+ "kindVideo": "Video",
+ "kindText": "Text",
+ "kindFile": "File",
+ "pickFileToSend": "Pick a file to send",
+ "pausedMark": " · paused",
+ "blurredMark": " · blurred",
+ "tasksCount": "{n} tasks",
+ "pubkeyLabel": "Key {pk}",
+ "identity": "Identity",
+ "@syncingMissing": {
+  "placeholders": {
+   "n": {
+    "type": "Object"
+   }
+  }
+ },
+ "@historySynced": {
+  "placeholders": {
+   "n": {
+    "type": "Object"
+   }
+  }
+ },
+ "@genesisTitle": {
+  "placeholders": {
+   "name": {
+    "type": "Object"
+   }
+  }
+ },
+ "@sentSeeding": {
+  "placeholders": {
+   "h": {
+    "type": "Object"
+   }
+  }
+ },
+ "@downloadStarted": {
+  "placeholders": {
+   "name": {
+    "type": "Object"
+   }
+  }
+ },
+ "@sigDetail": {
+  "placeholders": {
+   "pk": {
+    "type": "Object"
+   },
+   "state": {
+    "type": "Object"
+   }
+  }
+ },
+ "@blockedAuthor": {
+  "placeholders": {
+   "name": {
+    "type": "Object"
+   }
+  }
+ },
+ "@blockedCount": {
+  "placeholders": {
+   "n": {
+    "type": "Object"
+   }
+  }
+ },
+ "@startDmHint": {
+  "placeholders": {
+   "name": {
+    "type": "Object"
+   }
+  }
+ },
+ "@sysCreate": {
+  "placeholders": {
+   "name": {
+    "type": "Object"
+   },
+   "detail": {
+    "type": "Object"
+   }
+  }
+ },
+ "@sysJoin": {
+  "placeholders": {
+   "name": {
+    "type": "Object"
+   }
+  }
+ },
+ "@sysLeave": {
+  "placeholders": {
+   "name": {
+    "type": "Object"
+   }
+  }
+ },
+ "@sysRename": {
+  "placeholders": {
+   "name": {
+    "type": "Object"
+   },
+   "detail": {
+    "type": "Object"
+   }
+  }
+ },
+ "@sysGeneric": {
+  "placeholders": {
+   "code": {
+    "type": "Object"
+   },
+   "detail": {
+    "type": "Object"
+   }
+  }
+ },
+ "@createdBy": {
+  "placeholders": {
+   "date": {
+    "type": "Object"
+   },
+   "name": {
+    "type": "Object"
+   }
+  }
+ },
+ "@deleteTaskQ": {
+  "placeholders": {
+   "name": {
+    "type": "Object"
+   }
+  }
+ },
+ "@filesCount": {
+  "placeholders": {
+   "n": {
+    "type": "Object"
+   }
+  }
+ },
+ "@peersCount": {
+  "placeholders": {
+   "n": {
+    "type": "Object"
+   }
+  }
+ },
+ "@savePath": {
+  "placeholders": {
+   "p": {
+    "type": "Object"
+   }
+  }
+ },
+ "@lastFetch": {
+  "placeholders": {
+   "t": {
+    "type": "Object"
+   }
+  }
+ },
+ "@deleteFeedQ": {
+  "placeholders": {
+   "name": {
+    "type": "Object"
+   }
+  }
+ },
+ "@tasksCount": {
+  "placeholders": {
+   "n": {
+    "type": "Object"
+   }
+  }
+ },
+ "@pubkeyLabel": {
+  "placeholders": {
+   "pk": {
+    "type": "Object"
+   }
+  }
+ },
+ "onlinePeers": "{n} online",
+ "@onlinePeers": {
+  "placeholders": {
+   "n": {
+    "type": "Object"
+   }
+  }
+ },
+ "chatCapableMark": " · chat-capable",
+ "coreVersionValue": "{v} · engine: {e}",
+ "@coreVersionValue": {
+  "placeholders": {
+   "v": {
+    "type": "Object"
+   },
+   "e": {
+    "type": "Object"
+   }
+  }
+ },
+ "torrentError": "Torrent error: {e}",
+ "@torrentError": {
+  "placeholders": {
+   "e": {
+    "type": "Object"
+   }
+  }
+ },
+ "rssError": "Feed error: {e}",
+ "@rssError": {
+  "placeholders": {
+   "e": {
+    "type": "Object"
+   }
+  }
+ },
+ "downloaded": "downloaded",
+ "attMeta": "{size} · {tail}",
+ "@attMeta": {
+  "placeholders": {
+   "size": {
+    "type": "Object"
+   },
+   "tail": {
+    "type": "Object"
+   }
+  }
+ },
+ "dlProgress": "{pct}% · {rate} · {peers} peers",
+ "@dlProgress": {
+  "placeholders": {
+   "pct": {
+    "type": "Object"
+   },
+   "rate": {
+    "type": "Object"
+   },
+   "peers": {
+    "type": "Object"
+   }
+  }
+ },
+ "sigState": "State: {s}",
+ "@sigState": {
+  "placeholders": {
+   "s": {
+    "type": "Object"
+   }
+  }
+ },
+ "filterRuleDesc": "{field} {mode} “{value}”",
+ "@filterRuleDesc": {
+  "placeholders": {
+   "field": {
+    "type": "Object"
+   },
+   "mode": {
+    "type": "Object"
+   },
+   "value": {
+    "type": "Object"
+   }
+  }
+ },
+ "fabGroup": "Torrent room",
+ "copyInviteLink": "Copy invite magnet",
+ "groupChat": "Group chat",
+ "identities": "Identities",
+ "identitiesHint": "Each nickname binds one private key: renaming means a NEW identity. Deleted keys cannot be recovered.",
+ "createIdentity": "New identity",
+ "newIdentityName": "New identity nickname",
+ "switchIdentity": "Switch identity",
+ "switchIdentityQ": "Switch to \"{name}\"?",
+ "@switchIdentityQ": {
+  "placeholders": {
+   "name": {
+    "type": "Object"
+   }
+  }
+ },
+ "switchIdentityHint": "After switching, new messages are signed with that identity's key (like speaking under another nickname).",
+ "switched": "Switched to \"{name}\"",
+ "@switched": {
+  "placeholders": {
+   "name": {
+    "type": "Object"
+   }
+  }
+ },
+ "deleteIdentity": "Delete identity",
+ "deleteIdentityQ": "Permanently delete identity \"{name}\"?",
+ "@deleteIdentityQ": {
+  "placeholders": {
+   "name": {
+    "type": "Object"
+   }
+  }
+ },
+ "deleteIdentityWarn": "The private key is destroyed and cannot be recovered. Past messages remain on-chain but you can no longer post as it.",
+ "identityCreated": "Identity \"{name}\" created (not active)",
+ "@identityCreated": {
+  "placeholders": {
+   "name": {
+    "type": "Object"
+   }
+  }
+ },
+ "identityCreatedSwitch": "Identity \"{name}\" created and activated",
+ "@identityCreatedSwitch": {
+  "placeholders": {
+   "name": {
+    "type": "Object"
+   }
+  }
+ },
+ "identityDeleted": "Identity deleted",
+ "activeMark": "active",
+ "setAvatar": "Change avatar",
+ "enterRoomTitle": "Enter torrent chat room",
+ "roomInputLabel": "Magnet link / info hash",
+ "magnetHashHint": "magnet:?xt=urn:btih:… or a bare 40-hex info hash",
+ "enterRoom": "Enter chat room",
+ "enterRoomNew": "Enter this torrent's chat room",
+ "addTorrentRoom": "Add torrent & enter chat",
+ "addTorrentRoomDesc": "Paste a magnet link or info hash: adds the torrent and opens its chat room",
+ "importTorrentRoomDesc": "Pick a .torrent file: adds the task and enters its chat room",
+ "roomEntered": "Entered chat room “{name}”",
+ "@roomEntered": {
+  "placeholders": {
+   "name": {
+    "type": "Object"
+   }
+  }
+ },
+ "torrentRoomKind": "Torrent chat room · shared with every BitTorrent peer of this torrent",
+ "dmChannelKind": "End-to-end encrypted DM channel",
+ "infohashLabel": "Torrent infohash",
+ "roomInviteTitle": "Invite = share this torrent",
+ "roomInviteHint": "Send the magnet link or info hash to anyone; adding the torrent enters the same room",
+ "leaveRoomHint": "Only unbinds the chat room; the torrent task stays on the Torrents page. You can also delete the local history (a chain reset).",
+ "defaultTrackers": "Default trackers",
+ "defaultTrackersSet": "{n} configured · auto-applied to new tasks",
+ "@defaultTrackersSet": {
+  "placeholders": {
+   "n": {
+    "type": "Object"
+   }
+  }
+ },
+ "defaultTrackersHint": "One announce URL per line (http/https/udp). Auto-appended to every new torrent (chat attachments included) and applied to existing tasks immediately; greatly improves connectivity where DHT alone struggles.",
+ "trackersApplied": "Saved and applied to {n} tasks",
+ "@trackersApplied": {
+  "placeholders": {
+   "n": {
+    "type": "Object"
+   }
+  }
+ },
+ "trackers": "Trackers ({n})",
+ "@trackers": {
+  "placeholders": {
+   "n": {
+    "type": "Object"
+   }
+  }
+ },
+ "addTracker": "Add tracker",
+ "trackerUrl": "Tracker URL",
+ "noTrackersHint": "No trackers: relying on DHT/PEX. Configure default trackers under Settings → Network",
+ "trackerFails": "{n} fails",
+ "@trackerFails": {
+  "placeholders": {
+   "n": {
+    "type": "Object"
+   }
+  }
+ },
+ "accept": "Accept",
+ "decline": "Decline",
+ "wallpaperEdit": "Adjust wallpaper",
+ "wallpaperEditHint": "Pinch and drag to frame the image; the controls below preview the final look",
+ "exportLogs": "Export logs",
+ "exportLogsHint": "Writes the core + UI logs to the Download directory for bug reports",
+ "logsExported": "Logs exported: {dest}",
+ "@logsExported": {
+  "placeholders": {
+   "dest": {
+    "type": "Object"
+   }
+  }
+ },
+ "exportLogsFail": "Export failed: ",
+ "videoDecoderTip": "Playback failed? Use \"Open with\" and report it via Settings → Export logs",
+ "avatarLocalOnly": "Avatar and nickname stay on this device and are never broadcast",
+ "renameLocalNote": "Local note — only visible to you",
+ "dmRequestBody": "{name} wants to start an end-to-end encrypted private chat",
+ "@dmRequestBody": {
+  "placeholders": {
+   "name": {
+    "type": "Object"
+   }
+  }
+ },
+ "dmRejectedByPeer": "The other side declined the private chat",
+ "dmAwaitingAccept": "Waiting for accept",
+ "dmRequestSent": "Request sent",
+ "dmRequestQueued": "Peer is offline — the request will be delivered when they return",
+ "dmAlreadyExists": "Private chat already exists",
+ "dmOnline": "Online",
+ "dmOffline": "Offline",
+ "dmLocalOnlyHint": "DM messages travel directly between the two devices and are stored locally only: no DHT items, no extra torrent",
+ "membersIdentified": "Members (DM capable)",
+ "attPhaseHash": "Hashing file…",
+ "attPhaseCopy": "Copying into the seed folder…",
+ "attPhaseSeed": "Seeding and sending…",
+ "attachFailed": "Attachment failed",
+ "attJobTimeout": "Attachment status timed out; stopped waiting (the file may still be processing in the background)",
+ "dmRequestSubtitle": "wants to start a private chat",
+ "block": "Block",
+ "dmBlocked": "User blocked",
+ "storage": "Storage",
+ "downloadDir": "Download directory",
+ "downloadDirHint": "New tasks and received attachments go here; existing tasks keep their location",
+ "downloadDirPick": "Pick folder",
+ "downloadDirReset": "Reset to default",
+ "downloadDirSaved": "Download directory updated",
+ "filterScript": "Filter script",
+ "filterScriptHint": "Edit, import or export the filter rule script (JSON). Rules match locally on content/nickname/pubkey × contains/equals/regex",
+ "filterScriptApply": "Apply",
+ "filterScriptApplied": "Filter script applied ({n} rules)",
+ "@filterScriptApplied": {
+  "placeholders": {
+   "n": {
+    "type": "Object"
+   }
+  }
+ },
+ "filterScriptInvalid": "Invalid script format",
+ "importFile": "Import",
+ "exportFile": "Export",
+ "rotate": "Rotate 90°",
+ "wallpaperBlurOff": "Off",
+ "wallpaperPadding": "Padding fill",
+ "wallpaperPaddingTransparent": "Transparent",
+ "wallpaperPaddingBlack": "Black",
+ "wallpaperPaddingWhite": "White",
+ "wallpaperEditGestureHint": "Drag to move · pinch to zoom & rotate · double-tap to reset",
+ "wallpaperCropHint": "The canvas is wider than the screen: the saved image is cropped to the screen ratio, so only the dashed area is finally visible",
+ "deleteLocalHistory": "Also delete local history",
+ "deleteLocalHistoryHint": "Wipes this device's messages and DAG heads (the reset path after joining the wrong hash chain). Re-entering the same torrent re-syncs from the DHT and online members.",
+ "markAsRead": "Mark as read",
+ "playbackSection": "Playback",
+ "dblTapSideSeek": "Double-tap sides to skip ±10s",
+ "dblTapSideSeekHint": "Double-tap the left/right of the picture to skip back/forward 10s; off by default",
+ "longPressSpeed": "Long-press speed",
+ "longPressSpeedHint": "Temporary playback multiplier while long-pressing the picture",
+ "defaultPlaySpeed": "Default playback speed",
+ "subtitle": "Subtitles",
+ "subtitleOff": "Subtitles off",
+ "subtitleExternal": "Load external subtitle…",
+ "subtitleNoTracks": "No embedded subtitle tracks",
+ "lockControls": "Lock controls",
+ "unlockControls": "Unlock controls",
+ "fitContain": "Fit",
+ "fitCover": "Crop to fill",
+ "fitFill": "Stretch to fill",
+ "speedActive": "speed",
+ "language": "Language",
+ "langSystem": "Follow system",
+ "langZh": "Simplified Chinese",
+ "langEn": "English",
+ "actCopy": "Copy",
+ "actReply": "Reply",
+ "quoteMissing": "Quoted message not synced yet",
+ "kindAttachment": "File",
+ "mentionUnread": "Someone mentioned you",
+ "replyUnread": "New reply",
+ "actDm": "DM",
+ "actBlock": "Block",
+ "actId": "ID",
+ "actSig": "Verify",
+ "volumeMode": "Volume control",
+ "volumeModeSystem": "System volume (default)",
+ "volumeModePlayer": "Player volume",
+ "mySeedsScope": "My published seeds (in place)",
+ "otherTasksScope": "Other tasks",
+ "videoSoftwareDecodeNotice": "Using software decoding (hardware decoder lacks this codec)",
+ "videoSpeed": "Playback speed"
+}

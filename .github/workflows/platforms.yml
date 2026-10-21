@@ -1,0 +1,106 @@
+name: Platforms
+
+# Manual-only: this workflow verifies the multi-platform GROUNDWORK
+# (see docs/PLATFORMS.md). It never runs on push, so it cannot affect the
+# gating CI; trigger it after touching the platform layer.
+
+on:
+  workflow_dispatch:
+    inputs:
+      cross_check:
+        description: "Also run the experimental Windows cross-compile check"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  FLUTTER_VERSION: "3.47.5"
+
+jobs:
+  readiness:
+    name: groundwork readiness
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: platform groundwork files exist
+        run: |
+          set -euo pipefail
+          for f in \
+            app/lib/core/platform/host_platform.dart \
+            app/lib/core/platform/core_transport.dart \
+            app/lib/core/platform/native_transport.dart \
+            app/lib/core/platform/web_transport.dart \
+            app/test/platform_test.dart \
+            docs/PLATFORMS.md; do
+            test -f "$f" || { echo "::error::missing $f"; exit 1; }
+          done
+
+      - name: ffi loader resolves desktop library names
+        run: |
+          set -euo pipefail
+          grep -q "nativeLibraryName" app/lib/core/bridge.dart
+          grep -q "libbitte_core.dylib" app/lib/core/platform/host_platform.dart
+          grep -q "bitte_core.dll" app/lib/core/platform/host_platform.dart
+
+      - name: build.rs covers desktop target families
+        run: |
+          set -euo pipefail
+          grep -q "windows-msvc" core/bitte-bt/build.rs
+          grep -q "apple" core/bitte-bt/build.rs
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: Cache pub dependencies
+        uses: actions/cache@v6
+        with:
+          path: ~/.pub-cache
+          key: pub-${{ runner.os }}-platforms-${{ hashFiles('app/pubspec.lock') }}
+          restore-keys: |
+            pub-${{ runner.os }}-platforms-
+            pub-${{ runner.os }}-emu-
+            pub-${{ runner.os }}-
+
+      - name: platform contract tests
+        working-directory: app
+        run: |
+          flutter pub get
+          flutter test test/platform_test.dart
+
+  cross-check-windows:
+    name: windows cross-check (experimental)
+    if: ${{ inputs.cross_check }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    # informational: first-contact cross compile of the core for Windows;
+    # must not gate anything while the desktop track is groundwork-only
+    continue-on-error: true
+    defaults:
+      run:
+        working-directory: core
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-gnu
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "core -> target"
+      - name: mingw toolchain
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq gcc-mingw-w64-x86-64
+      - name: cargo check bitte-core for windows-gnu (mock engine)
+        run: |
+          mkdir -p .cargo
+          printf '[target.x86_64-pc-windows-gnu]\nlinker = "x86_64-w64-mingw32-gcc"\n' \
+            > .cargo/config.toml
+          cargo check -p bitte-core --target x86_64-pc-windows-gnu

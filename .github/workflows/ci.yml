@@ -1,0 +1,540 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+permissions:
+  contents: read
+
+env:
+  FLUTTER_VERSION: "3.47.5"
+  NATIVE_CACHE_V: "4"
+
+jobs:
+  # ------------------------------------------------------------------
+  # Detect which parts of the repo exist (job-level `if` cannot use
+  # hashFiles, so a tiny job exports the facts)
+  # ------------------------------------------------------------------
+  detect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      has_app: ${{ steps.check.outputs.has_app }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: check
+        run: |
+          if [ -f app/pubspec.yaml ]; then echo "has_app=true" >> "$GITHUB_OUTPUT";
+          else echo "has_app=false" >> "$GITHUB_OUTPUT"; fi
+
+  # ------------------------------------------------------------------
+  # Rust core: fmt, clippy, unit + e2e tests (mock engine, linux)
+  # ------------------------------------------------------------------
+  core-test:
+    if: github.ref_type != 'tag'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: core
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "core -> target"
+      - name: cargo fmt --check
+        run: cargo fmt --all --check
+      - name: clippy
+        run: cargo clippy -p bitte-core -p bitte-ffi -p bitte-bt --tests -- -D warnings
+      - name: unit + e2e tests
+        run: cargo test -p bitte-core
+      - name: check ffi (mock engine)
+        run: cargo check -p bitte-ffi
+      - name: check ffi (native-bt feature, no link)
+        run: cargo check -p bitte-ffi --features native-bt
+
+  # ------------------------------------------------------------------
+  # Flutter app: analyze + widget tests
+  # ------------------------------------------------------------------
+  app-analyze:
+    needs: detect
+    if: github.ref_type != 'tag' && needs.detect.outputs.has_app == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: dart format --output=none --set-exit-if-changed lib test
+      - run: flutter analyze
+      - run: flutter test
+
+  # ------------------------------------------------------------------
+  # Real-engine FFI smoke test on linux (catches Rust<->C++ JSON contract
+  # drift that mock-engine tests cannot see)
+  # ------------------------------------------------------------------
+  native-smoke:
+    if: github.ref_type != 'tag'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "core -> target"
+      - name: system deps
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libboost-dev libssl-dev
+      - name: cache host native stack
+        uses: actions/cache@v6
+        with:
+          path: build/linux-deps
+          key: native-linux-${{ env.NATIVE_CACHE_V }}-${{ hashFiles('scripts/versions.env', 'core/bitte-bt/cpp/*') }}
+      - name: build host libtorrent + wrapper
+        run: bash scripts/build-linux-native.sh
+      - name: smoke test against real libtorrent
+        working-directory: core
+        run: |
+          BITTE_BT_PREFIX="$GITHUB_WORKSPACE/build/linux-deps/deps" \
+            cargo test -p bitte-core --features native-bt --test native_smoke -- --nocapture --test-threads=1
+
+  # ------------------------------------------------------------------
+  # Android native stack (OpenSSL + libtorrent + C++ wrapper + Rust cdylib),
+  # built ONCE and shared: the android job packages it into release APKs,
+  # the emulator job builds its debug test app against the same .so files.
+  # Split out of `android` so emulator-verify no longer waits for the
+  # release gradle build (critical path -3 min per run).
+  # ------------------------------------------------------------------
+  native-android:
+    if: github.ref_type != 'tag'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Rust toolchain (android targets)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android, x86_64-linux-android
+
+      - name: cargo-ndk
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-ndk
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "core -> target"
+
+      - name: Restore native deps cache
+        uses: actions/cache@v6
+        with:
+          path: |
+            build/android-deps/downloads
+            build/android-deps/src
+            build/android-deps/deps
+            build/android-deps/build
+          key: native-${{ env.NATIVE_CACHE_V }}-${{ runner.os }}-${{ hashFiles('scripts/versions.env') }}-${{ hashFiles('core/bitte-bt/cpp/*') }}
+          restore-keys: |
+            native-${{ env.NATIVE_CACHE_V }}-${{ runner.os }}-
+
+      - name: Show NDK
+        run: |
+          echo "NDK=$ANDROID_NDK_LATEST_HOME"
+          cat "$ANDROID_NDK_LATEST_HOME/source.properties" | head -2
+
+      - name: Build native stack
+        run: bash scripts/build-android-native.sh
+
+      - name: Upload jniLibs for android + emulator jobs
+        uses: actions/upload-artifact@v7
+        with:
+          name: jnilibs-${{ github.sha }}
+          path: app/android/app/src/main/jniLibs/**
+          retention-days: 3
+          if-no-files-found: error
+
+  # ------------------------------------------------------------------
+  # Android release APKs: packages the jniLibs produced by native-android
+  # (signing from repo secrets, gradle release, split-per-ABI rename)
+  # ------------------------------------------------------------------
+  android:
+    # tags never rebuild: the release job reuses the APKs uploaded by the
+    # branch run of the same commit (saves a full duplicate native+gradle
+    # build per release)
+    if: github.ref_type != 'tag'
+    needs: [native-android]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Restore native libs from native-android job
+        uses: actions/download-artifact@v8
+        with:
+          name: jnilibs-${{ github.sha }}
+          path: app/android/app/src/main/jniLibs
+
+      - name: Gradle cache
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('app/android/gradle/wrapper/gradle-wrapper.properties', 'app/android/app/build.gradle.kts', 'app/android/build.gradle.kts', 'app/android/settings.gradle.kts') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
+
+      # Release signing: the keystore lives in the repository secrets
+      # (KEYSTORE_BASE64 + KEYSTORE_PASSWORD + KEY_ALIAS + KEY_PASSWORD,
+      # secrets or variables both work). Decoded into app/android/ and
+      # described by key.properties, which build.gradle.kts prefers over the
+      # committed public fallback key. Forks/PRs without the secrets fall
+      # back to the committed key so CI stays green.
+      - name: Release signing from repo secrets (KEYSTORE_*)
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 || vars.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD || vars.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS || vars.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD || vars.KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            # no secrets (fork PRs): still build, but with a throwaway key so
+            # the artifact is clearly NOT release-signed
+            echo "::warning::KEYSTORE_* not configured - building with an EPHEMERAL throwaway keystore; artifacts are NOT release-signed"
+            mkdir -p app/android/keystore
+            keytool -genkeypair -noprompt -keystore app/android/keystore/ephemeral.p12 \
+              -storetype PKCS12 -alias ephemeral -keyalg RSA -keysize 2048 -validity 1 \
+              -storepass ephemeral -keypass ephemeral -dname "CN=BitteChat Ephemeral"
+            {
+              echo "BC_KEYSTORE_FILE=$GITHUB_WORKSPACE/app/android/keystore/ephemeral.p12"
+              echo "BC_STORE_PASSWORD=ephemeral"
+              echo "BC_KEY_ALIAS=ephemeral"
+              echo "BC_KEY_PASSWORD=ephemeral"
+            } >> "$GITHUB_ENV"
+            exit 0
+          fi
+          : "${KEYSTORE_PASSWORD:?KEYSTORE_BASE64 set but KEYSTORE_PASSWORD missing}"
+          : "${KEY_ALIAS:?KEYSTORE_BASE64 set but KEY_ALIAS missing}"
+          : "${KEY_PASSWORD:?KEYSTORE_BASE64 set but KEY_PASSWORD missing}"
+          mkdir -p app/android/keystore
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > app/android/keystore/ci-release.jks
+          keytool -list -keystore app/android/keystore/ci-release.jks \
+            -storepass "$KEYSTORE_PASSWORD" | sed -n '1,4p'
+          keytool -list -keystore app/android/keystore/ci-release.jks \
+            -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" >/dev/null \
+            && echo "alias $KEY_ALIAS present"
+          # JDK PKCS12 cannot carry a key password different from the store
+          # password, while AGP's getKey(alias, keyPassword) fails hard on a
+          # mismatch ("final block not properly padded"). Normalize the store:
+          # re-encrypt the signing entry so the key password is KNOWN (JKS
+          # sources are probed with the candidate passwords first).
+          src_type=$(keytool -list -keystore app/android/keystore/ci-release.jks \
+            -storepass "$KEYSTORE_PASSWORD" 2>/dev/null \
+            | sed -n 's/^Keystore type: *//p' | head -1)
+          echo "src keystore type: $src_type"
+          if [ "$src_type" = "PKCS12" ]; then
+            dest_type=PKCS12; key_pw="$KEYSTORE_PASSWORD"
+          else
+            dest_type=JKS; key_pw="$KEY_PASSWORD"
+          fi
+          norm="app/android/keystore/ci-normalized.$dest_type"
+          rm -f "$norm"
+          ok=""
+          for cand in "$KEY_PASSWORD" "$KEYSTORE_PASSWORD" ""; do
+            if keytool -importkeystore -noprompt \
+                 -srckeystore app/android/keystore/ci-release.jks \
+                 -srcstorepass "$KEYSTORE_PASSWORD" -srcalias "$KEY_ALIAS" \
+                 -srckeypass "$cand" \
+                 -destkeystore "$norm" -deststoretype "$dest_type" \
+                 -deststorepass "$KEYSTORE_PASSWORD" -destkeypass "$key_pw" \
+                 -destalias "$KEY_ALIAS" \
+                 >/dev/null 2>&1; then ok="$cand"; break; fi
+            rm -f "$norm"
+          done
+          if [ -z "$ok" ]; then
+            echo "::error::no candidate key password (KEY_PASSWORD / KEYSTORE_PASSWORD / empty) unlocks alias $KEY_ALIAS - check the repository secrets"
+            exit 1
+          fi
+          if [ "$ok" != "$KEY_PASSWORD" ]; then
+            echo "::warning::key entry was encrypted with a different password than KEY_PASSWORD; re-encrypted during normalization"
+          fi
+          mv "$norm" app/android/keystore/ci-release.jks
+          if [ "$dest_type" = "PKCS12" ] && [ "$KEY_PASSWORD" != "$KEYSTORE_PASSWORD" ]; then
+            echo "::warning::PKCS12 carries a SINGLE password - keytool ignores -keypass when generating PKCS12, so KEY_PASSWORD is not stored inside the keystore; signing uses KEYSTORE_PASSWORD"
+          fi
+          # hand the resolved credentials to gradle via env: no Properties
+          # escaping hazards for special characters in passwords
+          {
+            echo "BC_KEYSTORE_FILE=$GITHUB_WORKSPACE/app/android/keystore/ci-release.jks"
+            echo "BC_STORE_PASSWORD=$KEYSTORE_PASSWORD"
+            echo "BC_KEY_ALIAS=$KEY_ALIAS"
+            echo "BC_KEY_PASSWORD=$key_pw"
+          } >> "$GITHUB_ENV"
+          echo "signing normalized: type=$dest_type"
+
+      - name: Flutter setup
+        if: ${{ hashFiles('app/pubspec.yaml') != '' }}
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Build APK (split per ABI)
+        if: ${{ hashFiles('app/pubspec.yaml') != '' }}
+        working-directory: app
+        run: |
+          flutter pub get
+          # Per-ABI release packages instead of one universal APK: every phone
+          # downloads only its own architecture (~half the bytes — see
+          # split-per-ABI release policy). Restricted to the ABIs we build
+          # the native core for (arm64-v8a + x86_64); the gradle abiFilters +
+          # jniLibs excludes keep armeabi-v7a engine libs out of the packages.
+          flutter build apk --release --split-per-abi \
+            --target-platform android-arm64,android-x64
+
+      - name: List outputs
+        run: |
+          find app/android/app/src/main/jniLibs -type f | sort || true
+          ls -la app/build/app/outputs/flutter-apk/ 2>/dev/null || true
+
+      # Release assets must be self-describing: `app-arm64-v8a-release.apk`
+      # says nothing about which app or version it is once it sits in a
+      # Downloads folder next to every other APK. Name each split
+      # BitteChat-<version>-android-<abi>.apk from the pubspec version (+build)
+      # and upload THOSE so the Release carries the same names.
+      - name: Name the APKs (app + version + abi)
+        id: apkname
+        run: |
+          set -euo pipefail
+          VER=$(sed -n 's/^version:[[:space:]]*\([0-9][^+]*\).*/\1/p' app/pubspec.yaml)
+          BUILD=$(sed -n 's/^version:[[:space:]]*[^+]*+\([0-9]*\).*/\1/p' app/pubspec.yaml)
+          [ -n "$VER" ] || { echo "cannot read version from app/pubspec.yaml"; exit 1; }
+          DIR=app/build/app/outputs/flutter-apk
+          for abi in arm64-v8a x86_64; do
+            SRC="$DIR/app-${abi}-release.apk"
+            [ -f "$SRC" ] || { echo "::error::missing split APK $SRC"; exit 1; }
+            cp "$SRC" "$DIR/BitteChat-v${VER}+${BUILD:-0}-android-${abi}.apk"
+          done
+          echo "apk_version=$VER" >> "$GITHUB_OUTPUT"
+          ls -la "$DIR"
+
+      - name: Upload APKs
+        if: ${{ hashFiles('app/build/app/outputs/flutter-apk/BitteChat-*.apk') != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: bittechat-apk-${{ github.sha }}
+          path: |
+            app/build/app/outputs/flutter-apk/BitteChat-*.apk
+          retention-days: 14
+          if-no-files-found: warn
+
+  # ------------------------------------------------------------------
+  # On-device verification (GATING per repo policy, docs/TESTING.md): every
+  # round of changes must be covered by an emulator integration test. Runs
+  # the integration suite against the REAL libtorrent engine + REAL FFI
+  # event path (attach_test: event delivery / sender inline attachment /
+  # jump-bottom semantics + screenshots; app_test: DHT confirm; video_test:
+  # real H.264 playback through media_kit). Incremental: skipped when the
+  # source hash matches a previously green run (emu-ok marker cache).
+  # ------------------------------------------------------------------
+  emulator-verify:
+    if: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch' }}
+    needs: [native-android]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: Restore native libs from android job
+        uses: actions/download-artifact@v8
+        with:
+          name: jnilibs-${{ github.sha }}
+          path: app/android/app/src/main/jniLibs
+
+      # ---- incremental caches: pub / gradle / NDK / AVD -------------------
+      - name: Cache pub dependencies
+        uses: actions/cache@v6
+        with:
+          path: ~/.pub-cache
+          key: pub-${{ runner.os }}-emu-${{ hashFiles('app/pubspec.lock') }}
+          restore-keys: |
+            pub-${{ runner.os }}-emu-
+            pub-${{ runner.os }}-
+      # SAME key as the android job: one shared gradle cache for release and
+      # debug builds (two separate 2 GB caches blew the 10 GB repo budget)
+      - name: Gradle cache
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('app/android/gradle/wrapper/gradle-wrapper.properties', 'app/android/app/build.gradle.kts', 'app/android/build.gradle.kts', 'app/android/settings.gradle.kts') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
+      - name: AVD cache
+        uses: actions/cache@v6
+        id: avd-cache
+        with:
+          path: |
+            ~/.android/avd/*
+            ~/.android/adb*
+          key: avd-${{ runner.os }}-34-google_apis-x86_64-pixel6-v1
+
+      # gen-l10n (generate: true) rewrites app/lib/l10n/*.dart during pub get,
+      # so the gate hash must be computed on the POST-GEN workspace in both
+      # the restore and the save step — run pub get before restoring.
+      - name: Pre-generate l10n (stable gate hash)
+        run: cd app && flutter pub get
+      # ---- incremental gate: skip the whole device round when the app /
+      # ---- core sources are byte-identical to a previously green run
+      - name: Restore emulator-green marker
+        uses: actions/cache/restore@v6
+        id: emu-ok
+        with:
+          path: emu-ok-marker.txt
+          key: emu-ok-${{ hashFiles('app/lib/**', 'app/integration_test/**', 'core/**/*.rs', 'app/pubspec.lock', 'app/android/app/build.gradle.kts', 'scripts/versions.env', 'scripts/emu-run-and-pull.sh', '.github/workflows/ci.yml') }}
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
+          ls -la /dev/kvm
+      # prime the AVD (incl. boot snapshot) exactly once per cache key
+      - name: Create AVD and generate snapshot for caching
+        if: steps.avd-cache.outputs.cache-hit != 'true'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          ram-size: 4096M
+          disable-animations: true
+          force-avd-creation: false
+          emulator-options: -no-window -gpu swiftshader_indirect -camera-back none -no-audio -no-boot-anim
+          script: echo "AVD primed for caching"
+      - name: Run integration tests on emulator
+        if: steps.emu-ok.outputs.cache-hit != 'true'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          ram-size: 4096M
+          disable-animations: true
+          force-avd-creation: false
+          emulator-options: -no-window -gpu swiftshader_indirect -camera-back none -no-audio -no-boot-anim
+          script: |
+            adb wait-for-device
+            bash scripts/make-dev-keystore.sh
+            mkdir -p "$GITHUB_WORKSPACE/shots"
+            if ! command -v ffmpeg >/dev/null 2>&1; then sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg; fi
+            ffmpeg -y -f lavfi -i testsrc2=size=640x360:rate=25 -f lavfi -i sine=frequency=441:sample_rate=44100 -t 6 -c:v libx264 -pix_fmt yuv420p -profile:v high -level 3.1 -c:a aac -b:a 64k -movflags +faststart /tmp/ci_video.mp4
+            adb push /tmp/ci_video.mp4 /data/local/tmp/ci_video.mp4 && adb shell chmod 644 /data/local/tmp/ci_video.mp4
+            bash scripts/emu-run-and-pull.sh "$GITHUB_WORKSPACE/shots"
+            adb exec-out screencap -p > "$GITHUB_WORKSPACE/shots/after-attach-test.png" || true
+      - name: Mark emulator verification green for this source hash
+        if: steps.emu-ok.outputs.cache-hit != 'true' && success()
+        run: echo "${{ github.sha }}" > emu-ok-marker.txt
+      - name: Save emulator-green marker
+        if: steps.emu-ok.outputs.cache-hit != 'true' && success()
+        uses: actions/cache/save@v6
+        with:
+          path: emu-ok-marker.txt
+          key: emu-ok-${{ hashFiles('app/lib/**', 'app/integration_test/**', 'core/**/*.rs', 'app/pubspec.lock', 'app/android/app/build.gradle.kts', 'scripts/versions.env', 'scripts/emu-run-and-pull.sh', '.github/workflows/ci.yml') }}
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: emulator-shots-${{ github.sha }}
+          path: shots/
+          retention-days: 14
+          if-no-files-found: ignore
+
+  # ------------------------------------------------------------------
+  # Release on tag
+  # ------------------------------------------------------------------
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    # detect always runs (also on tags); the verify jobs are skipped on tag
+    # runs by design (the commit was already green on its main push) and an
+    # all-skipped `needs` set would skip the release too
+    needs: [detect]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      # the APKs were built once, by the branch run of this same commit
+      - name: Locate the branch run that built this commit
+        id: src
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sha="${{ github.sha }}"
+          run_id=$(curl -sS -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/runs?head_sha=$sha&per_page=20" \
+            | python3 -c 'import json,sys;d=json.load(sys.stdin);print(next((str(r["id"]) for r in d["workflow_runs"] if r["conclusion"]=="success" and r["head_branch"]=="main"), ""))')
+          if [ -z "$run_id" ]; then
+            echo "::error::no successful main-branch run for $sha - push the branch first; the release reuses its APK artifact instead of rebuilding"
+            exit 1
+          fi
+          echo "reuse build from run $run_id"
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@v8
+        with:
+          name: bittechat-apk-${{ github.sha }}
+          run-id: ${{ steps.src.outputs.run_id }}
+          github-token: ${{ github.token }}
+          path: apks
+      # the artifact already holds the descriptive name from the android job;
+      # fail loudly instead of publishing a release with no APK attached
+      - name: Check the APK landed
+        run: |
+          ls -la apks
+          test -n "$(ls -A apks/*.apk 2>/dev/null)" || {
+            echo "::error::no APK to publish"; exit 1; }
+      - uses: softprops/action-gh-release@v3
+        with:
+          files: apks/*.apk
+          name: BitteChat ${{ github.ref_name }}
+          generate_release_notes: true
