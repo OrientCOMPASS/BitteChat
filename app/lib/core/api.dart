@@ -381,6 +381,13 @@ class BitteApi extends ChangeNotifier {
   void btAddTracker(String infohash, String url) =>
       call('bt.add_tracker', {'infohash': infohash, 'url': url.trim()});
 
+  void btEditTracker(String infohash, String origUrl, String newUrl) =>
+      call('bt.edit_tracker', {
+        'infohash': infohash,
+        'orig_url': origUrl,
+        'new_url': newUrl.trim(),
+      });
+
   void btRemoveTracker(String infohash, String url) =>
       call('bt.remove_tracker', {'infohash': infohash, 'url': url});
 

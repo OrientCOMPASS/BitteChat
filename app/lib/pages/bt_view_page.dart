@@ -328,6 +328,39 @@ class _BtViewPageState extends State<BtViewPage>
     }
   }
 
+  /// qBittorrent-style tracker URL edit: replace in place, tier preserved.
+  Future<void> _editTrackerDialog(TrackerInfo tr) async {
+    final controller = TextEditingController(text: tr.url);
+    final url = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(L.t.btDetailEditTracker),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: InputDecoration(
+            labelText: L.t.trackerUrl,
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx), child: Text(L.t.cancel)),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+              child: Text(L.t.save)),
+        ],
+      ),
+    );
+    if (url == null || url.isEmpty || url == tr.url) return;
+    try {
+      _api.btEditTracker(widget.infohash, tr.url, url);
+      _load();
+    } catch (e) {
+      if (mounted) showError(context, e);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -404,6 +437,7 @@ class _BtViewPageState extends State<BtViewPage>
                 _TrackersTab(
                   trackers: _trackers,
                   onAdd: _addTrackerDialog,
+                  onEdit: _editTrackerDialog,
                   onRemove: (tr) {
                     try {
                       _api.btRemoveTracker(widget.infohash, tr.url);
@@ -1046,6 +1080,7 @@ class _TrackersTab extends StatelessWidget {
     required this.trackers,
     required this.onAdd,
     required this.onRemove,
+    required this.onEdit,
     required this.onReannounce,
     required this.onCopyUrl,
   });
@@ -1053,6 +1088,7 @@ class _TrackersTab extends StatelessWidget {
   final List<TrackerInfo> trackers;
   final VoidCallback onAdd;
   final void Function(TrackerInfo) onRemove;
+  final void Function(TrackerInfo) onEdit;
   final void Function(int index) onReannounce;
   final void Function(TrackerInfo) onCopyUrl;
 
@@ -1090,18 +1126,26 @@ class _TrackersTab extends StatelessWidget {
           final i = e.key;
           final tr = e.value;
           final Icon status;
-          if (tr.updating) {
-            status =
-                Icon(Icons.sync, size: 18, color: theme.colorScheme.primary);
-          } else if (tr.fails > 0 || tr.message.isNotEmpty) {
-            status = Icon(Icons.error_outline,
-                size: 18, color: theme.colorScheme.error);
-          } else if (tr.verified) {
-            status = Icon(Icons.verified_outlined,
-                size: 18, color: theme.colorScheme.tertiary);
-          } else {
-            status = Icon(Icons.hub_outlined,
-                size: 18, color: theme.colorScheme.outline);
+          final String statusLabel;
+          // qBittorrent status enum: 1 not contacted, 2 working,
+          // 3 updating, 4 not working
+          switch (tr.status) {
+            case 3:
+              status =
+                  Icon(Icons.sync, size: 18, color: theme.colorScheme.primary);
+              statusLabel = L.t.btDetailTrkUpdating;
+            case 4:
+              status = Icon(Icons.error_outline,
+                  size: 18, color: theme.colorScheme.error);
+              statusLabel = L.t.btDetailTrkNotWorking;
+            case 2:
+              status = Icon(Icons.verified_outlined,
+                  size: 18, color: theme.colorScheme.tertiary);
+              statusLabel = L.t.btDetailTrkWorking;
+            default:
+              status = Icon(Icons.help_outline,
+                  size: 18, color: theme.colorScheme.outline);
+              statusLabel = L.t.btDetailTrkNotContacted;
           }
           final scrape = tr.seeds >= 0
               ? ' · S${tr.seeds}/L${tr.leeches < 0 ? 0 : tr.leeches}'
@@ -1114,7 +1158,7 @@ class _TrackersTab extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: theme.textTheme.bodySmall),
             subtitle: Text(
-              'tier ${tr.tier}'
+              '$statusLabel · tier ${tr.tier}'
               '${tr.fails > 0 ? ' · ${L.t.trackerFails(tr.fails)}' : ''}'
               '$scrape'
               '${tr.message.isNotEmpty ? ' · ${tr.message}' : ''}',
@@ -1128,6 +1172,8 @@ class _TrackersTab extends StatelessWidget {
                 switch (v) {
                   case 'copy':
                     onCopyUrl(tr);
+                  case 'edit':
+                    onEdit(tr);
                   case 'reannounce':
                     onReannounce(i);
                   case 'remove':
@@ -1136,6 +1182,8 @@ class _TrackersTab extends StatelessWidget {
               },
               itemBuilder: (ctx) => [
                 PopupMenuItem(value: 'copy', child: Text(L.t.btDetailCopyUrl)),
+                PopupMenuItem(
+                    value: 'edit', child: Text(L.t.btDetailEditTracker)),
                 PopupMenuItem(
                     value: 'reannounce', child: Text(L.t.btDetailReannounce)),
                 PopupMenuItem(

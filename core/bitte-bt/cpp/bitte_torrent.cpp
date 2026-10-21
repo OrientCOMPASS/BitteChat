@@ -1251,24 +1251,51 @@ static json::value cmd_trackers(bc_session* s, json::object const& o)
             to["tier"] = static_cast<int>(ae.tier);
             to["verified"] = ae.verified;
             // libtorrent 2.x keeps per-announce state in
-            // endpoint -> announce_infohash; aggregate like qBittorrent does
+            // endpoint -> announce_infohash; aggregate exactly like
+            // qBittorrent's TorrentImpl status derivation:
+            //   endpoint: updating -> Updating(3), fails>0 -> NotWorking(4),
+            //             verified -> Working(2), else NotContacted(1)
+            //   entry:    any Updating -> Updating; else any Working ->
+            //             Working; else all NotWorking -> NotWorking;
+            //             else NotContacted
             int fails = 0;
-            bool updating = false;
+            int numEp = 0, numUpdating = 0, numWorking = 0, numNotWorking = 0;
             int sc = -1, si = -1, sd = -1;
-            std::string msg;
+            std::string firstMsg, firstErr;
             for (auto const& ep : ae.endpoints)
             {
                 auto const& ai = ep.info_hashes[protocol_version::V1];
+                ++numEp;
                 fails += ai.fails;
-                updating = updating || ai.updating;
+                if (ai.updating)
+                    ++numUpdating;
+                else if (ai.fails > 0)
+                    ++numNotWorking;
+                else if (ae.verified)
+                    ++numWorking;
                 sc = std::max(sc, ai.scrape_complete);
                 si = std::max(si, ai.scrape_incomplete);
                 sd = std::max(sd, ai.scrape_downloaded);
-                if (msg.empty() && !ai.message.empty()) msg = ai.message;
-                if (msg.empty() && ai.last_error) msg = ai.last_error.message();
+                if (!ai.message.empty() && firstMsg.empty())
+                    firstMsg = ai.message;
+                if (ai.last_error && firstErr.empty())
+                    firstErr = ai.last_error.message();
             }
+            int status = 1; // NotContacted
+            if (numEp > 0)
+            {
+                if (numUpdating > 0)
+                    status = 3;
+                else if (numWorking > 0)
+                    status = 2;
+                else if (numNotWorking == numEp)
+                    status = 4;
+            }
+            std::string msg = firstMsg;
+            if (status == 4 && msg.empty()) msg = firstErr;
             to["fails"] = fails;
-            to["updating"] = updating;
+            to["updating"] = (status == 3);
+            to["status"] = status;
             to["seeds"] = sc;
             to["leeches"] = si;
             to["downloaded"] = sd;
@@ -1295,9 +1322,59 @@ static json::value cmd_add_tracker(bc_session* s, json::object const& o)
     int const tier = static_cast<int>(jint(o, "tier", 0));
     try
     {
+        // qBittorrent semantics: adding an already-present URL is a no-op
+        for (auto const& ae : th.trackers())
+        {
+            if (ae.url == url)
+            {
+                json::object r;
+                r["ok"] = true;
+                r["added"] = false;
+                return r;
+            }
+        }
         announce_entry ae(url);
         ae.tier = static_cast<std::uint8_t>(std::max(0, std::min(255, tier)));
         th.add_tracker(ae);
+    }
+    catch (std::exception const& e)
+    {
+        return json_err(e.what());
+    }
+    json::object r;
+    r["ok"] = true;
+    r["added"] = true;
+    return r;
+}
+
+// qBittorrent editTracker: validate the new URL, reject conflicts with an
+// existing entry, replace in place keeping the tier, then replace_trackers.
+static json::value cmd_edit_tracker(bc_session* s, json::object const& o)
+{
+    torrent_handle const th = find_handle(s, jstr(o, "infohash"));
+    if (!th.is_valid()) return json_err("unknown torrent");
+    std::string const orig = jstr(o, "orig_url");
+    std::string const next = jstr(o, "new_url");
+    if (orig.empty() || next.empty()) return json_err("missing url");
+    if (orig == next) return json_ok();
+    try
+    {
+        std::vector<announce_entry> aes = th.trackers();
+        bool match = false;
+        for (auto const& ae : aes)
+        {
+            if (ae.url == next) return json_err("New tracker URL already exists");
+        }
+        for (auto& ae : aes)
+        {
+            if (ae.url == orig)
+            {
+                match = true;
+                ae.url = next;
+            }
+        }
+        if (!match) return json_err("tracker not found");
+        th.replace_trackers(std::move(aes));
     }
     catch (std::exception const& e)
     {
@@ -1321,6 +1398,9 @@ static json::value cmd_remove_tracker(bc_session* s, json::object const& o)
         if (it == aes.end()) return json_err("tracker not found");
         aes.erase(it, aes.end());
         th.replace_trackers(std::move(aes));
+        // qBittorrent re-announces after tracker removal so the swarm
+        // forgets the dropped tracker promptly
+        if (!th.status().paused) th.force_reannounce();
     }
     catch (std::exception const& e)
     {
@@ -1498,7 +1578,7 @@ static json::value cmd_reannounce(bc_session* s, json::object const& o)
     torrent_handle const th = find_handle(s, jstr(o, "infohash"));
     if (!th.is_valid()) return json_err("unknown torrent");
     int const idx = static_cast<int>(jint(o, "tracker_index", -1));
-    th.force_reannounce(seconds32(0), idx);
+    th.force_reannounce(0, idx);
     return json_ok();
 }
 
@@ -1744,6 +1824,7 @@ extern "C" char* bct_call(bc_session* s, const char* method, const char* params_
         if (m == "file_priorities") return json_to_cstr(cmd_file_priorities(s, obj));
         if (m == "trackers") return json_to_cstr(cmd_trackers(s, obj));
         if (m == "add_tracker") return json_to_cstr(cmd_add_tracker(s, obj));
+        if (m == "edit_tracker") return json_to_cstr(cmd_edit_tracker(s, obj));
         if (m == "remove_tracker") return json_to_cstr(cmd_remove_tracker(s, obj));
         if (m == "create_torrent") return json_to_cstr(cmd_create_torrent(s, obj));
         if (m == "dht_get_immutable") return json_to_cstr(cmd_dht_get_immutable(s, obj));

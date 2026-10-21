@@ -99,7 +99,16 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('bttracker-menu-0')));
       await tester.pumpAndSettle();
       expect(find.text('Force reannounce'), findsOneWidget);
+      expect(find.text('Edit tracker URL'), findsOneWidget);
       await tester.tap(find.text('Force reannounce'));
+      await tester.pumpAndSettle();
+      // edit dialog opens prefilled and cancels cleanly
+      await tester.tap(find.byKey(const ValueKey('bttracker-menu-0')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Edit tracker URL'));
+      await tester.pumpAndSettle();
+      expect(find.text('Save'), findsOneWidget);
+      await tester.tap(find.text('Cancel'));
       await tester.pumpAndSettle();
       await shotWidget(tester, 'shot-bt-detail-trackers');
 

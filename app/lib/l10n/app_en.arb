@@ -713,6 +713,11 @@
  "btDetailPieceTip": "Piece {i}/{n} · {state}",
  "btDetailPieceDone": "downloaded",
  "btDetailPieceMissing": "not downloaded",
+ "btDetailTrkNotContacted": "Not contacted yet",
+ "btDetailTrkWorking": "Working",
+ "btDetailTrkUpdating": "Updating",
+ "btDetailTrkNotWorking": "Not working",
+ "btDetailEditTracker": "Edit tracker URL",
  "@btDetailPieceTip": {
   "placeholders": {
    "i": {

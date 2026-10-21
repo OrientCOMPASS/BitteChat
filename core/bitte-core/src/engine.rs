@@ -62,6 +62,14 @@ pub struct TrackerInfo {
     pub leeches: i64,
     #[serde(default = "unknown_scrape")]
     pub downloaded: i64,
+    /// qBittorrent-style tracker status:
+    /// 1 NotContacted, 2 Working, 3 Updating, 4 NotWorking
+    #[serde(default = "default_tracker_status")]
+    pub status: i32,
+}
+
+fn default_tracker_status() -> i32 {
+    1
 }
 
 fn unknown_scrape() -> i64 {
@@ -197,6 +205,7 @@ pub trait BtEngine: Send + Sync {
     fn force_reannounce(&self, infohash: &str, tracker_index: i32) -> Result<()>;
     fn pieces(&self, infohash: &str) -> Result<PieceMap>;
     fn remove_tracker(&self, infohash: &str, url: &str) -> Result<()>;
+    fn edit_tracker(&self, infohash: &str, orig_url: &str, new_url: &str) -> Result<()>;
     fn trackers(&self, infohash: &str) -> Result<Vec<TrackerInfo>>;
 
     /// Create a v1-only torrent for `path` (file or directory).

@@ -767,6 +767,26 @@ impl BtEngine for MockEngine {
         Ok(())
     }
 
+    fn edit_tracker(&self, infohash: &str, orig_url: &str, new_url: &str) -> Result<()> {
+        if !self.mine.lock().unwrap().contains_key(infohash) {
+            return Err(CoreError::NotFound(infohash.into()));
+        }
+        let mut st = self.bus.state.lock().unwrap();
+        let v = st
+            .trackers
+            .get_mut(infohash)
+            .ok_or_else(|| CoreError::NotFound("tracker".into()))?;
+        if v.iter().any(|(u, _)| u == new_url) {
+            return Err(CoreError::Invalid("New tracker URL already exists".into()));
+        }
+        let entry = v
+            .iter_mut()
+            .find(|(u, _)| u == orig_url)
+            .ok_or_else(|| CoreError::NotFound("tracker".into()))?;
+        entry.0 = new_url.to_string();
+        Ok(())
+    }
+
     fn trackers(&self, infohash: &str) -> Result<Vec<TrackerInfo>> {
         if !self.mine.lock().unwrap().contains_key(infohash) {
             return Err(CoreError::NotFound(infohash.into()));
@@ -787,6 +807,7 @@ impl BtEngine for MockEngine {
                         seeds: -1,
                         leeches: -1,
                         downloaded: -1,
+                        status: 1,
                     })
                     .collect()
             })

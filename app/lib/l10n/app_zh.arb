@@ -712,5 +712,23 @@
  "btDetailReannounce": "强制重新宣告",
  "btDetailPieceTip": "分块 {i}/{n} · {state}",
  "btDetailPieceDone": "已下载",
- "btDetailPieceMissing": "未下载"
+ "btDetailPieceMissing": "未下载",
+ "btDetailTrkNotContacted": "尚未联系",
+ "btDetailTrkWorking": "正常",
+ "btDetailTrkUpdating": "更新中",
+ "btDetailTrkNotWorking": "不可用",
+ "btDetailEditTracker": "编辑 tracker 地址",
+ "@btDetailPieceTip": {
+  "placeholders": {
+   "i": {
+    "type": "int"
+   },
+   "n": {
+    "type": "int"
+   },
+   "state": {
+    "type": "String"
+   }
+  }
+ }
 }

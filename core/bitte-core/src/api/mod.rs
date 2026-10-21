@@ -306,6 +306,7 @@ impl Api {
             "bt.pieces" => self.bt_pieces(p),
             "bt.reannounce" => self.bt_reannounce(p),
             "bt.add_tracker" => self.bt_add_tracker(p),
+            "bt.edit_tracker" => self.bt_edit_tracker(p),
             "bt.remove_tracker" => self.bt_remove_tracker(p),
             "bt.get_default_trackers" => self.bt_get_default_trackers(),
             "bt.set_default_trackers" => self.bt_set_default_trackers(p),

@@ -333,6 +333,14 @@ impl BtEngine for LibtorrentEngine {
         Ok(())
     }
 
+    fn edit_tracker(&self, infohash: &str, orig_url: &str, new_url: &str) -> Result<()> {
+        self.call(
+            "edit_tracker",
+            json!({"infohash": infohash, "orig_url": orig_url, "new_url": new_url}),
+        )?;
+        Ok(())
+    }
+
     fn trackers(&self, infohash: &str) -> Result<Vec<TrackerInfo>> {
         let v = self.call("trackers", json!({"infohash": infohash}))?;
         let mut out = Vec::new();
@@ -348,6 +356,7 @@ impl BtEngine for LibtorrentEngine {
                     seeds: t["seeds"].as_i64().unwrap_or(-1),
                     leeches: t["leeches"].as_i64().unwrap_or(-1),
                     downloaded: t["downloaded"].as_i64().unwrap_or(-1),
+                    status: t["status"].as_i64().unwrap_or(1) as i32,
                 });
             }
         }

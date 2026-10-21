@@ -502,6 +502,30 @@ impl Api {
         Ok(json!({"ok": true}))
     }
 
+    /// qBittorrent editTracker semantics: validate the new URL, reject
+    /// no-ops and conflicts, replace in place (tier preserved by the engine).
+    pub fn bt_edit_tracker(&self, p: Json) -> Result<Json> {
+        let ih = jstr(&p, "infohash")?.to_string();
+        let orig = jstr(&p, "orig_url")?.trim().to_string();
+        let next = jstr(&p, "new_url")?.trim().to_string();
+        if orig == next {
+            return Ok(json!({"ok": true}));
+        }
+        if !crate::mock::valid_tracker_url(&next) {
+            return Err(CoreError::Invalid(
+                "无效的 tracker 地址: 需以 http:// https:// 或 udp:// 开头".into(),
+            ));
+        }
+        self.inner.engine.edit_tracker(&ih, &orig, &next)?;
+        let st = self.inner.state.lock().unwrap();
+        if let Ok(Some(row)) = st.store.torrent_get(&ih) {
+            let m = magnet_without_tracker(&row.magnet, &orig);
+            let m = magnet_with_trackers(&m, std::slice::from_ref(&next));
+            st.store.torrent_set_magnet(&ih, &m)?;
+        }
+        Ok(json!({"ok": true}))
+    }
+
     pub fn bt_get_default_trackers(&self) -> Result<Json> {
         Ok(json!({"trackers": self.default_trackers()}))
     }

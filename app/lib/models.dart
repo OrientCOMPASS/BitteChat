@@ -416,6 +416,11 @@ class TrackerInfo {
     required this.verified,
     required this.fails,
     required this.message,
+    required this.updating,
+    required this.seeds,
+    required this.leeches,
+    required this.downloaded,
+    required this.status,
   });
 
   final String url;
@@ -428,6 +433,10 @@ class TrackerInfo {
   final int leeches;
   final int downloaded;
 
+  /// qBittorrent-style status: 1 not contacted, 2 working, 3 updating,
+  /// 4 not working
+  final int status;
+
   factory TrackerInfo.fromJson(Map<String, dynamic> j) => TrackerInfo(
         url: _s(j, 'url'),
         tier: _i(j, 'tier'),
@@ -438,6 +447,7 @@ class TrackerInfo {
         seeds: _i(j, 'seeds', -1),
         leeches: _i(j, 'leeches', -1),
         downloaded: _i(j, 'downloaded', -1),
+        status: _i(j, 'status', 1),
       );
 }
 
