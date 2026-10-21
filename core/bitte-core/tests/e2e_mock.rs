@@ -1706,5 +1706,5 @@ fn e2e_two_instances_same_hash_see_peers_and_pieces() {
 
     // and the chat-side member list agrees (ext peers)
     let ea = call(&a, "chat.group_detail", json!({"group_id": gid}));
-    assert!(ea["members"].as_array().unwrap().len() >= 1);
+    assert!(!ea["members"].as_array().unwrap().is_empty());
 }
